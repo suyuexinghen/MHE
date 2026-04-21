@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Harness">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Components">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="Component" maxOccurs="unbounded">
+                <xs:complexType>
+                  <xs:sequence minOccurs="0">
+                    <xs:element name="Config" minOccurs="0" maxOccurs="1">
+                      <xs:complexType>
+                        <xs:sequence minOccurs="0" maxOccurs="unbounded">
+                          <xs:any processContents="lax" minOccurs="0" maxOccurs="unbounded"/>
+                        </xs:sequence>
+                      </xs:complexType>
+                    </xs:element>
+                  </xs:sequence>
+                  <xs:attribute name="id" type="xs:string" use="required"/>
+                  <xs:attribute name="type" type="xs:string" use="required"/>
+                  <xs:attribute name="impl" type="xs:string" use="required"/>
+                  <xs:attribute name="version" type="xs:string" use="required"/>
+                  <xs:attribute name="protected" type="xs:boolean" use="optional"/>
+                </xs:complexType>
+              </xs:element>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="Connections">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="Connection" maxOccurs="unbounded">
+                <xs:complexType>
+                  <xs:attribute name="id" type="xs:string" use="required"/>
+                  <xs:attribute name="from" type="xs:string" use="required"/>
+                  <xs:attribute name="to" type="xs:string" use="required"/>
+                  <xs:attribute name="payload" type="xs:string" use="required"/>
+                  <xs:attribute name="mode" use="required">
+                    <xs:simpleType>
+                      <xs:restriction base="xs:string">
+                        <xs:enumeration value="sync"/>
+                        <xs:enumeration value="async"/>
+                        <xs:enumeration value="event"/>
+                        <xs:enumeration value="shadow"/>
+                      </xs:restriction>
+                    </xs:simpleType>
+                  </xs:attribute>
+                  <xs:attribute name="policy" use="optional">
+                    <xs:simpleType>
+                      <xs:restriction base="xs:string">
+                        <xs:enumeration value="required"/>
+                        <xs:enumeration value="optional"/>
+                        <xs:enumeration value="shadow"/>
+                      </xs:restriction>
+                    </xs:simpleType>
+                  </xs:attribute>
+                </xs:complexType>
+              </xs:element>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+      <xs:attribute name="version" type="xs:string" use="required"/>
+      <xs:attribute name="graphVersion" type="xs:positiveInteger" use="required"/>
+      <xs:attribute name="schemaVersion" type="xs:string" use="required"/>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>
