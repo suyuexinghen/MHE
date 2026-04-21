@@ -21,8 +21,6 @@
 | [04-Testing and Extension Guide](04-testing-and-extension-guide.md) | 当前测试覆盖、真实 e2e 基线、扩展入口与后续演进建议 | draft |
 | [05-Nektar Next-Phase Blueprint](05-nektar-next-phase-blueprint.md) | 面向收敛研究、分析器实现、3D/复杂网格支持的下一阶段正式蓝图 | proposed |
 | [06-Nektar Next-Phase Roadmap](06-nektar-next-phase-roadmap.md) | 对三条方向的分阶段执行路线、里程碑、依赖与测试计划的正式路线图 | proposed |
-| [05-Nektar Next-Phase Blueprint (Draft)](05-nektar-next-phase-blueprint-draft.md) | 草案版蓝图，保留更完整的设计展开过程 | draft |
-| [06-Nektar Next-Phase Roadmap (Draft)](06-nektar-next-phase-roadmap-draft.md) | 草案版路线图，保留更完整的执行拆分与背景说明 | draft |
 | [07-Analyzers Implementation Plan](07-analyzers-implementation-plan.md) | 将 roadmap 第一阶段拆成可直接执行的 analyzers 实施计划 | proposed |
 
 ---
