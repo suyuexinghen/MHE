@@ -1,0 +1,49 @@
+{
+  "name": "validator",
+  "version": "0.1.0",
+  "kind": "governance",
+  "entry": "metaharness_ext.nektar.validator:NektarValidatorComponent",
+  "contracts": {
+    "inputs": [
+      {
+        "name": "run",
+        "type": "NektarRunArtifact",
+        "required": true,
+        "description": ""
+      }
+    ],
+    "outputs": [
+      {
+        "name": "validation",
+        "type": "NektarValidationReport",
+        "mode": "sync",
+        "description": ""
+      }
+    ],
+    "events": [],
+    "provides": [
+      {
+        "name": "nektar.validation.check",
+        "description": ""
+      }
+    ],
+    "requires": [],
+    "slots": [
+      {
+        "slot": "validator.primary",
+        "binding": "primary",
+        "required": true
+      }
+    ]
+  },
+  "safety": {
+    "protected": true,
+    "mutability": "mutable",
+    "sandbox_profile": null,
+    "hot_swap": true
+  },
+  "state_schema_version": 1,
+  "provides": [
+    "nektar.validation.check"
+  ]
+}

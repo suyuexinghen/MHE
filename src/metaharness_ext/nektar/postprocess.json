@@ -1,0 +1,49 @@
+{
+  "name": "postprocess",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.nektar.postprocess:PostprocessComponent",
+  "contracts": {
+    "inputs": [
+      {
+        "name": "run",
+        "type": "NektarRunArtifact",
+        "required": true,
+        "description": ""
+      }
+    ],
+    "outputs": [
+      {
+        "name": "postprocessed_run",
+        "type": "NektarRunArtifact",
+        "mode": "sync",
+        "description": ""
+      }
+    ],
+    "events": [],
+    "provides": [
+      {
+        "name": "nektar.postprocess.fieldconvert",
+        "description": ""
+      }
+    ],
+    "requires": [],
+    "slots": [
+      {
+        "slot": "postprocess.primary",
+        "binding": "primary",
+        "required": true
+      }
+    ]
+  },
+  "safety": {
+    "protected": false,
+    "mutability": "mutable",
+    "sandbox_profile": null,
+    "hot_swap": true
+  },
+  "state_schema_version": 1,
+  "provides": [
+    "nektar.postprocess.fieldconvert"
+  ]
+}

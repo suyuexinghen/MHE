@@ -1,0 +1,41 @@
+{
+  "name": "nektar_gateway",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.nektar.nektar_gateway:NektarGatewayComponent",
+  "contracts": {
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "task",
+        "type": "NektarProblemSpec",
+        "mode": "sync"
+      }
+    ],
+    "events": [],
+    "provides": [
+      {
+        "name": "nektar.compile.case",
+        "description": "Compile high-level requests into Nektar plans."
+      }
+    ],
+    "requires": [],
+    "slots": [
+      {
+        "slot": "nektar_gateway.primary",
+        "binding": "primary",
+        "required": true
+      }
+    ]
+  },
+  "safety": {
+    "protected": false,
+    "mutability": "mutable",
+    "sandbox_profile": null,
+    "hot_swap": true
+  },
+  "state_schema_version": 1,
+  "provides": [
+    "nektar.compile.case"
+  ]
+}

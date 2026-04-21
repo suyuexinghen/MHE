@@ -1,0 +1,54 @@
+{
+  "name": "solver_executor",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.nektar.solver_executor:SolverExecutorComponent",
+  "contracts": {
+    "inputs": [
+      {
+        "name": "plan",
+        "type": "NektarSessionPlan",
+        "required": true,
+        "description": ""
+      }
+    ],
+    "outputs": [
+      {
+        "name": "run",
+        "type": "NektarRunArtifact",
+        "mode": "sync",
+        "description": ""
+      }
+    ],
+    "events": [],
+    "provides": [
+      {
+        "name": "nektar.solver.adr",
+        "description": ""
+      },
+      {
+        "name": "nektar.solver.incns",
+        "description": ""
+      }
+    ],
+    "requires": [],
+    "slots": [
+      {
+        "slot": "solver_executor.primary",
+        "binding": "primary",
+        "required": true
+      }
+    ]
+  },
+  "safety": {
+    "protected": false,
+    "mutability": "mutable",
+    "sandbox_profile": null,
+    "hot_swap": true
+  },
+  "state_schema_version": 1,
+  "provides": [
+    "nektar.solver.adr",
+    "nektar.solver.incns"
+  ]
+}

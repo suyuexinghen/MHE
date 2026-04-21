@@ -1,0 +1,54 @@
+{
+  "name": "session_compiler",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.nektar.session_compiler:SessionCompilerComponent",
+  "contracts": {
+    "inputs": [
+      {
+        "name": "task",
+        "type": "NektarProblemSpec",
+        "required": true,
+        "description": ""
+      }
+    ],
+    "outputs": [
+      {
+        "name": "plan",
+        "type": "NektarSessionPlan",
+        "mode": "sync",
+        "description": ""
+      }
+    ],
+    "events": [],
+    "provides": [
+      {
+        "name": "nektar.compile.case",
+        "description": ""
+      },
+      {
+        "name": "nektar.mesh.prepare",
+        "description": ""
+      }
+    ],
+    "requires": [],
+    "slots": [
+      {
+        "slot": "session_compiler.primary",
+        "binding": "primary",
+        "required": true
+      }
+    ]
+  },
+  "safety": {
+    "protected": false,
+    "mutability": "mutable",
+    "sandbox_profile": null,
+    "hot_swap": true
+  },
+  "state_schema_version": 1,
+  "provides": [
+    "nektar.compile.case",
+    "nektar.mesh.prepare"
+  ]
+}
