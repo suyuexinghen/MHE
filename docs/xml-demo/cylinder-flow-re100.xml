@@ -1,0 +1,111 @@
+
+<?xml version="1.0" encoding="UTF-8"?>
+<AI4PDECase id="cylinder-flow-re100" version="0.1">
+
+  <Runtime
+    graphTemplate="examples/graphs/ai4pde-expanded.xml"
+    manifestDir="examples/manifests/ai4pde"
+    requiredComponents="pde_gateway.primary,problem_formulator.primary,method_router.primary,knowledge_adapter.primary,solver_executor.primary,reference_solver.primary,physics_validator.primary,evidence_manager.primary,experiment_memory.primary,risk_policy.primary,observability_hub.primary" />
+
+  <Problem type="forward" domainDim="2" spaceDim="2">
+    <Equation
+      system="incompressible_navier_stokes"
+      form="primitive"
+      stationary="false" />
+
+    <Variables>
+      <V id="0">u</V>
+      <V id="1">v</V>
+      <V id="2">p</V>
+    </Variables>
+
+    <Parameters>
+      <P name="Re">100</P>
+      <P name="dt">0.001</P>
+      <P name="num_steps">4000</P>
+      <P name="nu">1/Re</P>
+    </Parameters>
+
+    <InitialConditions>
+      <F var="u" value="0.0" />
+      <F var="v" value="0.0" />
+      <F var="p" value="0.0" />
+    </InitialConditions>
+
+    <BoundaryConditions>
+      <Region name="inlet" selector="x=0">
+        <BC kind="D" var="u" value="1.0" />
+        <BC kind="D" var="v" value="0.0" />
+      </Region>
+      <Region name="wall" selector="cylinder|top|bottom">
+        <BC kind="D" var="u" value="0.0" />
+        <BC kind="D" var="v" value="0.0" />
+      </Region>
+      <Region name="outlet" selector="x=L">
+        <BC kind="N" var="p" value="0.0" />
+      </Region>
+    </BoundaryConditions>
+
+    <Reference
+      kind="literature"
+      source="Kovasznay/NACA benchmark"
+      metric="drag_lift_residual" />
+  </Problem>
+
+  <Geometry representation="analytic">
+    <Domain shape="cylinder_in_channel" bounds="[0,2.2]x[0,0.41]" />
+    <Mesh source="generated" format="nektar-xml" elementType="quad" curved="true" />
+  </Geometry>
+
+  <Discretization>
+    <Solver
+      family="classical_hybrid"
+      backend="nektar++"
+      nektarSolver="IncNavierStokesSolver"
+      driver="Standard"
+      templateId="forward-fluid-mechanics" />
+    <Space
+      projection="DG"
+      basis="Modified"
+      order="6"
+      quadrature="GaussLobattoLegendre" />
+    <TimeIntegration
+      method="IMEX"
+      variant="DIRK"
+      order="2" />
+    <LinearSolver
+      type="IterativeStaticCond"
+      preconditioner="LowEnergyBlock"
+      tolerance="1e-8" />
+  </Discretization>
+
+  <Execution riskLevel="yellow">
+    <Resources
+      gpuHours="0.0"
+      cpuHours="4.0"
+      walltimeHours="2.0"
+      hpcQuota="0.2" />
+    <Checkpoint enabled="true" frequency="100" />
+  </Execution>
+
+  <Validation>
+    <Residual metric="l2" target="1e-6" />
+    <Constraint kind="boundary_consistency" target="1e-8" />
+    <Constraint kind="mass_conservation" target="1e-6" />
+  </Validation>
+
+  <Visualization>
+    <FieldOutput format="vtu" frequency="100" file="cylinder.vtu" />
+    <FieldOutput format="png" frequency="100" file="residual.png" />
+    <Probe name="wake_centerline" point="1.0,0.2,0.0" />
+    <DerivedField name="vorticity" />
+    <Plot type="residual_curve" />
+    <Plot type="drag_lift_curve" />
+  </Visualization>
+
+  <Adaptivity
+    strategy="p_refine"
+    targetError="1e-5"
+    maxIters="5"
+    stagnationLimit="3" />
+</AI4PDECase>
