@@ -1,0 +1,160 @@
+@startuml fig1_meta_harness_architecture
+!theme plain
+skinparam backgroundColor white
+skinparam defaultFontName "Noto Sans CJK SC, DejaVu Sans"
+skinparam componentStyle rectangle
+skinparam padding 6
+skinparam wrapWidth 120
+
+title 图1  Meta-Harness 系统架构图\n——SDK层、核心组件层、连接引擎、治理平面、元层优化、插件生态
+
+' ─── 外部触发 ───
+actor "用户 / Agent" as User #white
+rectangle "外部系统\n(LLM Provider, API, 文件)" as External #FCE4EC
+
+' ─── L1 Core Kernel ───
+package "Core Kernel" as L1 #E3F2FD {
+    component [HarnessRuntime\n启动/关闭/热加载] as Runtime
+    component [ConfigParser\nXML + XSD 解析] as Parser
+    component [ComponentDiscovery\n组件发现器] as Discovery
+    component [ComponentLoader\n校验/拓扑排序/加载] as Loader
+    note right of Runtime : 编排完整生命周期\nboot() → shutdown()\nhot_reload()
+    note right of Discovery : 多源扫描:\nBundled / Template\nMarket / Custom
+}
+
+' ─── L2 Component SDK ───
+package "Component SDK 层" as L2 #E8F5E9 {
+    component [HarnessComponent\n(抽象基类)] as PluginBase
+    component [HarnessAPI\n声明能力API] as API
+    component [ComponentRuntime\n运行时注入] as CompRT
+    component [ComponentRegistry\n注册表 + 冲突检测] as Registry
+    note right of PluginBase : declare_interface(): 声明端口\nactivate(): 启动\ndeactivate(): 清理\ntransform_state(): 迁移
+    note right of Registry : 统一管理:\n组件/Slot/Capability\nGraph版本/Pending变更
+}
+
+' ─── L3 Connection Engine ───
+package "连接引擎层" as L3 #FFF8E1 {
+    component [ConnectionEngine\n数据路由] as ConnEngine
+    component [EventBus\n事件分发] as EventBus
+    component [CompatibilityValidator\n五条校验规则] as Validator
+    component [ContractPruner\n搜索空间剪枝] as Pruner
+    component [GraphVersionManager\n版本链管理] as VersionMgr
+    note right of Validator : 类型匹配\n事件声明\n输入完整性\nID唯一性\n无环约束
+    note right of VersionMgr : 每次变更创建\n不可变快照\n支持原子回滚
+}
+
+' ─── L4 核心组件层 (9大组件 + 元层) ───
+package "核心组件 (九大 + 元层)" as L4 #F3E5F5 {
+    package "核心组件" as CoreComps {
+        component [Gateway\n网关接口] as CompGateway
+        component [Runtime\n运行时调度] as CompRuntime
+        component [Memory\n记忆存储] as CompMemory
+        component [ToolHub\n工具编排] as CompToolHub
+        component [Planner\n规划推理] as CompPlanner
+    }
+    package "核心组件 (续)" as CoreComps2 {
+        component [Executor\n动作执行] as CompExecutor
+        component [Evaluation\n性能评估/QC] as CompEval
+        component [Observability\n可观测性] as CompObs
+        component [Policy / Governance\n策略治理] as CompPolicy
+    }
+    component [Optimizer\n元层优化器] as CompOptimizer #FFD6D6
+    note right of CompOptimizer : 不参与任务执行\n仅在MetaCycle触发时介入\n修改核心组件配置
+}
+
+' ─── L5 治理平面 ───
+package "治理平面" as L5 #FFEBEE {
+    package "四级安全链路" as SafetyChain {
+        component [SandboxValidator\n沙箱验证] as SandboxVal
+        component [ABShadowTester\nA/B影子测试] as ABTest
+        component [PolicyVeto\n宪法否决] as PolicyVeto
+        component [AutoRollback\n自动回滚] as Rollback
+    }
+    package "三级沙箱" as SandboxTier {
+        component [V8/WASM\n快速筛选] as SandboxL1
+        component [gVisor\n通用隔离] as SandboxL2
+        component [Firecracker\n深度隔离] as SandboxL3
+    }
+    component [ProvenanceStore\nMerkle审计链] as Provenance
+    note right of SafetyChain : 候选配置必须\n逐级通过\n任何一级失败→拒绝
+    note right of SandboxTier : WASM <1ms\nFirecracker ~30ms\ngVisor 居中
+}
+
+' ─── L6 插件/模板生态 ───
+package "插件与模板生态" as L6 #FFF3E0 {
+    component [ComponentPlugin\n组件插件实现] as CompPlugin
+    component [MetaPlugin\n元层插件] as MetaPlugin
+    component [GovernancePlugin\n治理插件] as GovPlugin
+    component [ComponentTemplate\n模板库(槽位填充)] as TemplateLib
+    component [CodeGenPipeline\n代码生成管线] as CodeGen
+    note right of TemplateLib : BM25Retriever\nContextPruner\nChainOfThoughtPlanner\nRetryWithBackoff ...
+    note right of CodeGen : 模板选择→参数填充\n→代码生成→mypy检查\n→沙箱测试→注册
+}
+
+' ─── 持久化 ───
+database "Plugin Storage\n(~/.metaharness/storage/)" as Storage #ECEFF1
+database "Audit Log\n(Merkle Tree)" as AuditLog #ECEFF1
+database "Trace Store\n(热/温/冷分层)" as TraceStore #ECEFF1
+
+' ─── 控制流 (实线) ───
+User --> Runtime : "任务请求 / 命令"
+Runtime --> CompRuntime : "调度执行"
+CompRuntime --> CompGateway : "指令转动作"
+CompRuntime --> CompMemory : "上下文读写"
+CompRuntime --> CompEval : "性能评估"
+
+' ─── 连接引擎路由 ───
+ConnEngine --> CompRuntime : "数据路由"
+ConnEngine --> CompGateway : "事件触发"
+ConnEngine --> CompMemory : "轨迹持久化"
+ConnEngine --> CompObs : "指标推送"
+EventBus --> ConnEngine : "事件驱动路由"
+
+' ─── SDK 注入流 (虚线) ───
+Runtime ..> Registry : "注册组件"
+Runtime ..> API : "注入API"
+Runtime ..> CompRT : "创建运行时"
+Discovery --> Loader : "候选列表"
+Loader --> Registry : "加载并注册"
+
+' ─── 元层控制流 (点划线) ───
+CompOptimizer -[dotted]-> ConnEngine : "修改连接拓扑"
+CompOptimizer -[dotted]-> Registry : "提交PendingMutation"
+CompOptimizer -[dotted]-> Pruner : "搜索空间剪枝"
+CompOptimizer ..> CompEval : "读取性能向量"
+CompOptimizer ..> CompMemory : "读取执行轨迹"
+
+' ─── 治理拦截流 (虚线) ───
+Registry ..> Validator : "静态校验"
+Registry ..> SandboxVal : "沙箱验证"
+SandboxVal ..> ABTest : "通过→影子测试"
+ABTest ..> PolicyVeto : "通过→宪法审查"
+PolicyVeto ..> Rollback : "通过→提交+观察"
+Rollback ..> VersionMgr : "异常→回滚到上一版本"
+
+' ─── 沙箱分级 (Executor 运行时依赖) ───
+CompExecutor --> SandboxL1 : "简单逻辑"
+CompExecutor --> SandboxL2 : "Python脚本"
+CompExecutor --> SandboxL3 : "高危操作"
+
+' ─── 外部集成 ───
+CompPlanner --> External : "LLM调用"
+CompToolHub --> External : "网页检索 / API调用"
+CompGateway --> External : "外部协作通信"
+
+' ─── 数据持久化 (虚线) ───
+CompRT -[dotted]-> Storage : "私有存储"
+CompObs -[dotted]-> TraceStore : "执行轨迹"
+CompPolicy -[dotted]-> AuditLog : "审计记录"
+Provenance -[dotted]-> AuditLog : "Merkle Root"
+
+' ─── 受保护组件标记 ───
+note bottom of CompPolicy
+  受保护位点:
+  Policy / Governance 主位点
+  Evaluation 收敛判据组件
+  Optimizer不可自主修改
+  变更需经治理授权或人工审查
+end note
+
+@enduml

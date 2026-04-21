@@ -1,0 +1,401 @@
+@startuml fig2_meta_harness_lifecycle_flow
+!theme plain
+skinparam backgroundColor white
+skinparam defaultFontName "Noto Sans CJK SC, DejaVu Sans"
+skinparam padding 4
+skinparam wrapWidth 110
+
+title 图2  Meta-Harness 组件生命周期时序流程图\n——从发现到激活的完整控制流，含四级安全链路与热加载回滚
+
+actor "用户 / 系统" as User
+participant "HarnessRuntime\n核心调度" as Runtime <<L1>>
+participant "ComponentDiscovery\n发现器" as Discovery <<L1>>
+participant "ComponentLoader\n加载器" as Loader <<L1>>
+participant "ComponentRegistry\n注册表" as Registry <<L2>>
+participant "CompatibilityValidator\n兼容性校验" as Validator <<L3>>
+participant "Optimizer\n元层优化器" as Optimizer <<Meta>>
+participant "SandboxValidator\n沙箱验证" as Sandbox <<L5>>
+participant "ABShadowTester\n影子测试" as ABTest <<L5>>
+participant "PolicyVeto\n宪法否决" as Policy <<L5>>
+participant "AutoRollback\n回滚观察" as Rollback <<L5>>
+participant "GraphVersionMgr\n版本管理" as VersionMgr <<L3>>
+participant "Component\n(实例)" as Component <<L4>>
+
+autonumber
+
+== Phase 0: 启动准备 ==
+
+User -> Runtime : 启动 Meta-Harness
+activate Runtime
+
+Runtime -> Registry : 创建注册表
+Runtime -> Discovery : 配置发现器
+Runtime -> Loader : 配置加载器
+
+Runtime -> Runtime : boot()
+
+== Phase 1: 发现 (Discovery) ==
+
+Runtime -> Discovery : discover_all()
+activate Discovery
+
+Discovery -> Discovery : scan_bundled()\nmetaharness/components/*
+Discovery -> Discovery : scan_templates()\n模板库中的组件骨架
+Discovery -> Discovery : scan_market()\n组件市场（远程）
+Discovery -> Discovery : scan_custom()\n用户自定义路径
+
+Discovery -> Discovery : 冲突解决\n(高优先级覆盖低优先级)
+
+Discovery --> Runtime : 返回候选列表\nList[ComponentCandidate]
+deactivate Discovery
+
+== Phase 2: 静态验证 (Static Validation) ==
+
+loop 每个候选组件
+    Runtime -> Loader : validate_candidate()
+    activate Loader
+
+    Loader -> Loader : 检查 harness_version
+    Loader -> Loader : 检查 bins / env 依赖
+    Loader -> Loader : 解析 harness.component.json
+
+    alt 验证失败
+        Loader --> Runtime : 错误列表
+        Runtime -> Runtime : 记录失败\nphase=FAILED
+    else 验证通过
+        Loader --> Runtime : 空错误列表\nphase=VALIDATED_STATIC
+    end
+    deactivate Loader
+end
+
+Runtime -> Runtime : 过滤已禁用组件\nconfig.enabled=False → 跳过
+
+== Phase 3: 依赖解析 ==
+
+Runtime -> Loader : resolve_load_order()
+activate Loader
+
+Loader -> Loader : Kahn 算法拓扑排序
+Loader -> Loader : 检测循环依赖
+
+alt 存在循环依赖
+    Loader --> Runtime : CircularDependencyError
+    Runtime -> Runtime : 标记循环插件为 FAILED
+else 无循环
+    Loader --> Runtime : 排序后的候选列表
+end
+deactivate Loader
+
+== Phase 4: 注册与接口声明 (Register) ==
+
+loop 按依赖顺序加载每个组件
+    Runtime -> Loader : load_component_class()
+    activate Loader
+    Loader -> Loader : import_module()
+    Loader --> Runtime : Component Class
+    deactivate Loader
+
+    Runtime -> Component : 无参构造
+    activate Component
+
+    == Phase 4a: 接口声明 (declare_interface) ==
+
+    Runtime -> Component : declare_interface(api)
+    activate Component
+
+    note right of Component
+        declare_interface() 约束:
+        - 同步执行
+        - 无 I/O 操作
+        - 幂等性保证
+    end note
+
+    Component -> Registry : declare_input("command", type="Command")
+    Component -> Registry : declare_output("action", type="Action")
+    Component -> Registry : declare_event("on_config_reload")
+
+    Component --> Runtime : return
+    deactivate Component
+
+    == Phase 4b: 注册行为 (register) ==
+
+    Runtime -> Component : register(api)
+
+    Component -> Registry : register_connection_handler(...)
+    Component -> Registry : register_hook(event, handler, kind)
+    Component -> Registry : register_migration_adapter(...)
+
+    alt register() 抛出异常
+        Component --> Runtime : Exception
+        Runtime -> Registry : rollback_component()
+        Runtime -> Runtime : phase=FAILED, 继续下一组件
+    else 注册成功
+        Component --> Runtime : return
+        deactivate Component
+
+        Runtime -> Registry : commit_component()
+        activate Registry
+
+        note right of Registry
+            原子性提交:
+            1. 冲突检测 (ID/端口)
+            2. 写入 pending 区
+            3. 生成 pending mutation 记录
+        end note
+
+        alt 冲突检测失败
+            Registry --> Runtime : RegistrationConflictError
+            Runtime -> Registry : rollback_component()
+        else 提交成功
+            Registry --> Runtime : OK
+        end
+        deactivate Registry
+    end
+end
+
+== Phase 5: 候选图组装 ==
+
+Runtime -> VersionMgr : assemble_candidate_graph()
+activate VersionMgr
+
+VersionMgr -> VersionMgr : 从 pending 区收集所有组件
+VersionMgr -> Validator : 兼容性校验 (五条规则)
+activate Validator
+
+Validator -> Validator : 1. 类型匹配\nConnection.source.Output\n== Connection.target.Input
+Validator -> Validator : 2. 事件声明\ntrigger 事件必须显式声明
+Validator -> Validator : 3. 输入完整性\nrequired=true 的 Input\n必须被 Connection 满足
+Validator -> Validator : 4. ID 唯一性
+Validator -> Validator : 5. 无环约束 (可选)
+
+alt 校验失败
+    Validator --> VersionMgr : 错误列表
+    VersionMgr --> Runtime : AssemblyError
+    Runtime -> Optimizer : 反馈负向奖励信号
+    note right of Optimizer
+        Optimizer 收到校验失败
+        作为搜索的惩罚信号
+        调整下一轮候选生成
+    end note
+else 校验通过
+    Validator --> VersionMgr : 通过
+    VersionMgr -> VersionMgr : 创建 candidate_graph_version\n(不可变快照)
+    VersionMgr --> Runtime : candidate_version_id
+end
+deactivate Validator
+deactivate VersionMgr
+
+Runtime -> Runtime : phase=ASSEMBLED
+
+== Phase 6: 动态验证 — 四级安全链路 ==
+
+Runtime -> Sandbox : validate(candidate_version)
+activate Sandbox
+
+note right of Sandbox
+    根据风险等级选择沙箱层级:
+    V8/WASM (<1ms) — 简单逻辑
+    gVisor (~50ms) — Python 脚本
+    Firecracker (~30ms) — 高危操作
+end note
+
+== 第一级：沙箱验证 ==
+
+Sandbox -> Sandbox : 在隔离环境中执行\n回归测试 + 历史失败重放
+Sandbox -> Sandbox : 资源限制:\ntimeout / memory / network
+
+alt 沙箱验证失败
+    Sandbox --> Runtime : 拒绝
+    Runtime -> Optimizer : 负向奖励 -R_fail
+    note right of Optimizer
+        记录失败轨迹到 Memory
+        供反事实诊断使用
+    end note
+else 沙箱验证通过
+    Sandbox -> ABTest : 进入第二级
+end
+
+== 第二级：A/B 影子测试 ==
+
+activate ABTest
+
+ABTest -> ABTest : 复制生产流量到候选配置\n候选输出仅记录，不影响用户
+ABTest -> ABTest : 统计显著性检验\n配对 t 检验 / Wilcoxon
+
+alt 候选配置劣于基线
+    ABTest --> Runtime : 终止上线
+    Runtime -> Optimizer : 记录差异报告
+else 候选配置显著优于或持平基线
+    ABTest -> Policy : 进入第三级
+end
+deactivate ABTest
+
+== 第三级：Policy 宪法否决 ==
+
+activate Policy
+
+Policy -> Policy : 审查安全不变量
+note right of Policy
+    不可变规则:
+    C-01: 资源硬顶约束
+    C-02: 影子验证一致性
+    C-03: 关键路径不可篡改
+    C-04: Token 预算熔断
+    C-05: 隐私泄露阻断
+    ---
+    R-01: 数据溯源强制 (科研)
+    R-02: 不可重现性警报 (科研)
+    R-03: 同行评审模拟 (科研)
+end note
+
+alt 违反不可变规则
+    Policy --> Runtime : 宪法否决
+    Runtime -> Optimizer : 强惩罚信号 -R_veto
+else 通过宪法审查
+    Policy -> Rollback : 进入第四级
+end
+deactivate Policy
+
+== 第四级：自动回滚准备 ==
+
+activate Rollback
+
+Rollback -> VersionMgr : 创建 Checkpoint\n(当前 active graph 快照)
+Rollback -> Rollback : 启动观察窗口\nmax(20 tasks, 300s)
+
+Rollback --> Runtime : 安全链路全部通过
+deactivate Rollback
+deactivate Sandbox
+
+Runtime -> Runtime : phase=VALIDATED_DYNAMIC
+
+== Phase 7: 激活与提交 (Activate & Commit) ==
+
+loop 按依赖顺序激活每个组件
+    Runtime -> Component : activate(api)
+    activate Component
+
+    note right of Component
+        activate() 约束:
+        - 异步执行
+        - I/O 允许
+        - 30 秒超时
+    end note
+
+    Component -> Component : 初始化外部连接
+    Component -> Component : 加载模型 / 分配资源
+    Component -> Component : 启动后台服务
+
+    alt 激活成功
+        Component --> Runtime : return
+        deactivate Component
+        Runtime -> Registry : phase=ACTIVATED
+    else 激活失败 / 超时
+        Component --> Runtime : Exception
+        deactivate Component
+        Runtime -> Registry : phase=FAILED
+        Runtime -> Runtime : 记录失败，继续下一组件
+    end
+end
+
+Runtime -> VersionMgr : commit_graph(candidate_version_id)
+activate VersionMgr
+
+VersionMgr -> VersionMgr : 原子性切换:\ncandidate → active graph version
+VersionMgr -> VersionMgr : 递增 graph_version_number
+VersionMgr -> VersionMgr : 旧版本标记为 rollback_target
+
+VersionMgr --> Runtime : committed_version_id
+deactivate VersionMgr
+
+Runtime -> Runtime : phase=COMMITTED
+
+== Phase 7b: 热加载 — Suspend-Transform-Resume ==
+
+opt "Optimizer 发起热替换（非首次启动）"
+
+    Runtime -> Component : suspend()
+    activate Component
+    Component -> Component : 停止接收新消息
+    Component -> Component : drain(timeout=30s)\n等待当前操作完成
+    Component --> Runtime : state_snapshot
+    deactivate Component
+
+    Runtime -> VersionMgr : create_checkpoint(state_snapshot)
+
+    note right of Runtime
+        Transform 阶段:
+        τ: S_old × ΔP → S_new
+        Optimizer 同步生成 Python 转换逻辑
+    end note
+
+    Runtime -> Component : resume(new_state)
+    activate Component
+    Component -> Component : 注入迁移后的状态
+    Component -> Component : 恢复消息处理
+    Component --> Runtime : return
+    deactivate Component
+
+end
+
+== Phase 8: 观察与回滚 (Observe & Rollback) ==
+
+Runtime -> Rollback : 开始观察窗口
+activate Rollback
+
+loop "观察窗口内持续监控"
+    Rollback -> Rollback : 采集健康指标:\n错误率 / 延迟 P99 / 资源异常
+    Rollback -> Rollback : Z-Score 异常检测:\nT_new > μ(T_old) + 3σ(T_old)
+end
+
+alt 性能退化 / 异常行为
+    Rollback -> Runtime : 触发回滚
+    Runtime -> VersionMgr : rollback_to(rollback_target_version)
+    activate VersionMgr
+    VersionMgr -> VersionMgr : 恢复上一 stable Checkpoint
+    VersionMgr -> VersionMgr : 切换 active graph pointer
+    VersionMgr --> Runtime : rollback_complete
+    deactivate VersionMgr
+
+    Runtime -> Optimizer : 回滚事件 + 失败轨迹
+
+    opt "同一意图连续 3 次回滚"
+        Runtime -> Runtime : 标记为 Dead End\n写入 Memory 禁止重复
+    end
+
+else 观察窗口通过
+    Rollback -> Runtime : 确认稳定
+    Runtime -> VersionMgr : 标记版本为 stable
+end
+deactivate Rollback
+
+== Phase 9: 运行状态 ==
+
+Runtime --> User : BootResult\n(loaded, failed 列表)
+deactivate Runtime
+
+User -> Runtime : 正常运行中...\n组件图处理任务请求
+
+== Phase 10: 关闭 (Shutdown) ==
+
+User -> Runtime : 关闭请求
+activate Runtime
+
+Runtime -> Runtime : stop_all_services()
+
+loop 按逆序反激活组件
+    Runtime -> Component : deactivate()
+    activate Component
+    Component -> Component : 保存持久化状态
+    Component -> Component : 关闭连接 / 释放资源
+    Component --> Runtime : return
+    deactivate Component
+    Runtime -> Registry : phase=SUSPENDED
+end
+
+Runtime -> VersionMgr : 归档当前 graph version
+
+Runtime --> User : 关闭完成
+deactivate Runtime
+
+@enduml
