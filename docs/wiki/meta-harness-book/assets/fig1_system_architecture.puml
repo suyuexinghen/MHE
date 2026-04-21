@@ -1,0 +1,48 @@
+@startuml
+!define RECTANGLE class
+
+skinparam backgroundColor #FEFEFE
+skinparam componentStyle rectangle
+
+title 元Harness系统总体架构（当前实现对齐版）
+
+package "外部世界" {
+    [用户/其他Agent] as User
+}
+
+package "元Harness核心" {
+    [Gateway\n(指令接口)] as Gateway
+    [Runtime\n(核心调度器)] as Runtime
+    [Memory\n(记忆存储)] as Memory
+    [Policy\n(治理/否决)] as Policy
+    [Evaluation\n(最小评估组件)] as Evaluation
+    [Observability\n(审计/证据)] as Observability
+    [Optimizer\n(Proposal-only)] as Optimizer
+    [HarnessRuntime\n(boot orchestrator)] as Boot
+    [ConnectionEngine\n(stage/commit/emit)] as Engine
+}
+
+package "安全与执行基础设施" {
+    [SafetyPipeline\n(四级门控)] as Safety
+    [A/B Shadow\n(比较器驱动)] as ABTest
+    [Checkpoint/HotSwap\n(内存态骨架)] as Checkpoint
+}
+
+User --> Gateway : 输入/任务
+Gateway --> Runtime : task payload
+Runtime --> Engine : emit/route
+Engine --> Evaluation : routed payload
+Boot --> Engine : stage/commit graph
+Boot --> Policy : reviewer / hooks
+Runtime --> Memory : 状态读写
+Observability --> Memory : 经验/索引协作
+Evaluation --> Optimizer : 评分/观测
+Optimizer --> Policy : mutation proposal
+Policy --> Safety : guard/mutate/reduce
+Safety --> ABTest : L2 gate
+Policy --> Engine : allow / reject after validation
+Checkpoint --> Engine : rollback target support
+
+Gateway --> User : 响应
+
+@enduml

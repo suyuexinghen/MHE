@@ -1,0 +1,372 @@
+\chapter{工程化实现与关键技术}
+
+本章从工程落地视角出发，详细讨论元Harness框架的实现路径与关键技术。内容涵盖基础框架开发路线、组件模板库与代码生成管线、Optimizer 中的搜索与优化策略（以进化搜索为主、以强化学习为可选增强）、沙箱与 A/B 测试基础设施，以及可观测性与执行轨迹管理系统。
+
+\section{基础框架开发路线}
+
+元Harness的工程化落地可分为六个阶段，如表 \ref{tab:roadmap} 所示。该路线图遵循“先基础后高级、先安全后开放”的原则，确保每一阶段都有可验证的交付物。
+
+\begin{table}[htbp]
+\centering
+\caption{元Harness工程化落地路线图}
+\label{tab:roadmap}
+\begin{tabular}{@{}clp{8cm}@{}}
+\toprule
+\textbf{阶段} & \textbf{任务} & \textbf{交付物与里程碑} \\
+\midrule
+1 & 基础框架开发 & 实现 9 大核心组件基础功能；开发带 XSD Schema 的 XML 配置解析器；实现组件连接引擎与静态兼容性校验器。 \\
+2 & 接口契约与模板库 & 定义 \texttt{<Interface>} 标准；建立包含 5--10 种扩展模板的组件模板库；校验器支持类型匹配与事件声明检查。 \\
+3 & 安全沙箱与 A/B 测试 & 搭建 Docker/容器化沙箱环境；实现回归测试自动化；建立影子流量 A/B 对比基础设施；实现 Policy 宪法否决与自动回滚。 \\
+4 & 进化搜索优化器 & 在 Optimizer 中嵌入进化策略与多目标贝叶斯优化；实现 Hypervolume 计算模块；建立历史轨迹诊断接口。 \\
+5 & 组件生成模块开发 & 基于模板库 + LLM 代码生成实现受约束的新组件生成；将静态类型检查（mypy）集成到生成管线。 \\
+6 & RL 增强（可选） & 在数据充足后引入 PPO/MOEA-RL 作为辅助优化手段；训练 GNN 状态编码模型；端到端测试与阈值调优。 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{quote}
+\textbf{路线图调整说明}：与初版相比，本路线图将安全沙箱与 A/B 测试从阶段 4 前移至阶段 3，原因是 Optimizer 的任何搜索算法（包括进化搜索）都需要沙箱来安全评估候选配置；安全基础设施是后续所有优化工作的前提，而非可后置的附加模块。此外，RL 被定位为阶段 6 的可选增强，而非核心依赖——这与 Meta-Harness 论文采用的进化搜索方法保持一致。
+\end{quote}
+
+\section{组件模板库与代码生成}
+
+\subsection{模板库的设计原则}
+
+组件模板库是约束 Optimizer 动作空间、加速收敛的核心工程设施。模板库中的每个模板都是一个“半成品”组件：它具备完整的 \texttt{<Interface>} 定义和固定的执行骨架，但内部的某些逻辑（如 prompt 模板、过滤条件）允许被 Optimizer 动态填充。
+
+模板库的设计遵循以下原则：
+\begin{itemize}
+    \item \textbf{接口完备}：每个模板在入库前必须通过完整的兼容性校验与单元测试；
+    \item \textbf{功能正交}：不同模板之间尽可能减少功能重叠，降低组合冗余；
+    \item \textbf{可扩展}：开发者可以手动向模板库中添加新模板，从而在不修改 Optimizer 的情况下扩展系统能力；
+    \item \textbf{版本管理}：每个模板带有版本号，确保旧配置在模板升级后仍可解析。
+\end{itemize}
+
+\subsection{典型模板示例}
+
+表 \ref{tab:templates} 列出了模板库中的几种典型扩展模板。
+
+\begin{table}[htbp]
+\centering
+\caption{组件模板库典型模板}
+\label{tab:templates}
+\begin{tabular}{@{}llp{6.5cm}@{}}
+\toprule
+\textbf{模板名} & \textbf{基类型} & \textbf{可定制逻辑} \\
+\midrule
+BM25Retriever & Memory & top\_k、过滤条件、去重策略、重排逻辑 \\
+ContextPruner & Memory & 滑动窗口长度、摘要触发阈值、相关性过滤规则 \\
+ChainOfThoughtPlanner & Planner & 分步提示词、终止条件、反思触发词 \\
+RetryWithBackoff & Executor & 重试次数、退避策略、可重试异常类型 \\
+LoopGuard & Evaluation & 死循环判定规则（步数/Token/进展阈值）、无效策略终止条件 \\
+SemanticValidator & Evaluation & 校验规则（正则/语义相似度阈值）、失败反馈模板 \\
+TokenBudgetGuard & Policy & Token 上限、超限时的截断/摘要策略 \\
+BrowserAgent & ToolHub & 访问域名白名单、速率限制、页面截取策略 \\
+CodeSandbox & Executor & 语言运行时、允许的标准库列表、网络隔离策略 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{代码生成管线}
+
+当 Optimizer 决定从模板库实例化一个新组件并对其进行定制时，会触发以下代码生成管线：
+
+\begin{enumerate}
+    \item \textbf{模板选择}：Optimizer 从模板库中选择一个基模板；
+    \item \textbf{参数填充}：通过规则或轻量级 LLM 调用，填充模板中的可变参数（如 prompt 文本、阈值数值）；
+    \item \textbf{代码生成}：对于更复杂的逻辑（如自定义过滤函数），调用 LLM 生成 Python 代码片段；
+    \item \textbf{静态检查}：使用 mypy 等工具对生成的代码进行类型检查；
+    \item \textbf{单元测试}：在沙箱中运行模板附带的单元测试用例；
+    \item \textbf{注册入库}：通过全部检查后，将生成的组件注册为候选配置的一部分。
+\end{enumerate}
+
+任何一步失败都会将错误信息反馈给 Optimizer，作为负向奖励信号。
+
+\subsection{细粒度骨架与槽位填充}
+
+从工程实现角度看，模板库不应只是“可复用组件清单”，还应当是代码生成的\textbf{约束边界}。推荐采用“细粒度骨架 + 槽位填充（slot filling）”模式：模板预先固定类名、生命周期钩子、输入输出契约、异常处理与监控埋点，仅把少量可变逻辑暴露为受限槽位，例如过滤谓词、重排函数、提示词片段或阈值策略。这样做的目标不是削弱 Optimizer 的创造性，而是将搜索集中在\textbf{高价值、低耦合、可验证}的局部区域。
+
+一个可执行的工程分层是：\texttt{Skeleton} 层定义组件框架，\texttt{Slot} 层声明允许填充的位置与类型，\texttt{Guard} 层定义每个槽位的静态约束、测试夹具与回退策略。对于检索、路由、预算控制等常见组件，Optimizer 优先修改槽位而不是生成完整模块；只有当多个候选槽位组合都无法提升性能时，才升级到更高成本的受限代码生成。
+
+表 \ref{tab:template-vs-freeform} 对比了模板驱动生成与自由形式生成的工程特征。需要强调的是，表中的数值应理解为\textbf{文献综述中的指示性区间或建议采证方向}，用于指导实验设计，而非对本系统的既定性能承诺。
+
+\begin{table}[htbp]
+\centering
+\caption{模板驱动与自由形式生成的工程对比}
+\label{tab:template-vs-freeform}
+\begin{tabular}{@{}p{3cm}p{4cm}p{4cm}@{}}
+\toprule
+\textbf{维度} & \textbf{模板驱动（细粒度骨架 + 槽位）} & \textbf{自由形式生成} \\
+\midrule
+集成边界 & 接口、生命周期与依赖提前固定 & 常需额外清理依赖、命名和结构漂移 \\
+首轮通过率 & 文献常报告更高的首轮可集成概率，可作为重点采证指标 & 文献常报告波动更大，需更多回合修补 \\
+静态检查成本 & 可预测，易与 Schema、mypy、单测夹具联动 & 检查面更广，失败模式更分散 \\
+回归风险 & 副作用集中在槽位附近，便于局部回滚 & 易引入跨模块耦合，回归定位更难 \\
+适用场景 & 检索、路由、预算、校验等重复结构组件 & 仅用于模板无法覆盖的新原子逻辑 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+因此，元Harness 的代码生成应优先围绕\textbf{细粒度模板实例化}展开：例如不要求 LLM 重写完整的 \texttt{Memory} 或 \texttt{Runtime} 组件，而是只填充 \texttt{score(query, chunk)}、\texttt{should\_retry(error)} 这类局部函数，并复用既有的观测、限流和异常封装骨架。这样的设计既保留了进化搜索优先、RL 可选增强的主线，也把后续验证、回滚与审计对象压缩到更可管理的粒度。
+
+\section{Optimizer中的搜索与优化策略}
+
+\subsection{算法选择：从进化搜索到强化学习}
+
+Optimizer 的核心任务是：在由组件配置、连接拓扑和参数构成的组合空间中，搜索性能更优的系统结构。算法选择需要综合考虑\textbf{数据效率}、\textbf{搜索空间特性}和\textbf{工程成熟度}。
+
+\begin{quote}
+\textbf{非马尔可夫性说明}：Optimizer 的状态 $s_t$ 包含当前 Pareto 前沿 $\mathcal{F}_t$，而 $\mathcal{F}_t$ 本身是 Optimizer 历史决策的累积结果。这意味着状态转移不满足 Markov 性，基于 MDP 假设的标准 RL 算法（如 PPO）的理论收敛保证不再成立。此外，Agent 系统在特定任务上的运行实例有限，难以产生足够的 $(state, action, reward)$ 样本来训练有效的 RL 策略。因此，本手册推荐采用\textbf{分阶段策略}：在系统早期使用样本效率更高的搜索算法，在数据充足后再考虑引入 RL。
+\end{quote}
+
+基于上述分析，推荐以下分阶段算法策略：
+
+\textbf{阶段一（推荐首选）：进化搜索与贝叶斯优化}
+
+\begin{itemize}
+    \item \textbf{进化策略（ES）}：与 Meta-Harness 论文的外循环搜索方法对齐。维护一个候选配置种群，通过变异（参数扰动、连接增删）与选择（基于 Pareto 支配关系）驱动搜索。进化策略无需梯度、对非凸非连续空间天然适应、样本效率高。
+    \item \textbf{多目标贝叶斯优化（MOBO）}：利用代理模型（如 Gaussian Process）建模配置空间到性能向量的映射，通过采集函数（如 EHVI——Expected Hypervolume Improvement）指导搜索。适合配置空间维度较低的早期阶段。
+    \item \textbf{基于 LLM 的编程搜索}：与 ADAS 方法对齐。让 LLM 作为提议器，基于历史执行轨迹诊断失败并生成新候选代码/配置。Meta-Harness 的实验表明，保留原始执行轨迹的诊断式搜索比抽象摘要更有效。
+\end{itemize}
+
+\textbf{阶段二（可选增强）：强化学习}
+
+当系统积累足够运行数据（如候选配置评估记录达到数百条以上）后，可以考虑引入 RL 作为辅助优化手段：
+
+\begin{itemize}
+    \item \textbf{PPO（Proximal Policy Optimization）}：适用于动作空间以离散选择为主的场景。PPO 的训练稳定性好，但需注意其 MDP 假设在元Harness场景下并不严格成立，实际效果需要通过实验验证。
+    \item \textbf{MOEA-RL（基于分解的多目标强化学习）}：如 MOEA/D-RL 或基于 Preference-conditioned 的 RL 算法，适用于需要显式维护 Pareto 前沿的场景。
+\end{itemize}
+
+在实践中，可以采用 \textbf{分层策略}：高层策略使用进化搜索或 LLM 提议决定结构修改动作（如选择模板、调整连接），低层策略使用规则引擎或基于梯度的方法优化连续参数（如温度系数、阈值）。
+
+\subsection{状态编码}
+
+组件组合图 $G_t$ 的编码方案取决于 Optimizer 所采用的搜索算法。
+
+\textbf{对于进化搜索 / 贝叶斯优化}：无需显式编码为学习模型的输入。进化策略通过 XML 配置的变异操作（增删连接、修改参数）直接在配置空间中搜索；贝叶斯优化则将配置展平为参数向量（如邻接矩阵的扁平化 + 参数列表），输入给 Gaussian Process 代理模型。
+
+\textbf{对于 RL 增强阶段}：推荐采用以下两种方案：
+
+\begin{itemize}
+    \item \textbf{图神经网络（GNN）}：将组件视为节点、连接视为边，利用 Graph Convolutional Network（GCN）或 Graph Attention Network（GAT）提取拓扑特征。GNN 的优点是能够自然处理变长图结构，但对小样本训练稳定性要求较高。
+    \item \textbf{固定长度向量编码}：将图结构展开为固定维度的邻接矩阵与节点特征拼接向量，输入给标准 MLP。优点是实现简单、训练稳定；缺点是对大规模图的扩展性较差。
+\end{itemize}
+
+在系统早期，建议优先使用进化搜索以快速验证端到端流程；在数据量充足且确有需要时，再引入 GNN 编码 + RL 以支持更复杂的拓扑演化。
+
+\subsection{适应度函数与奖励塑形}
+
+在进化搜索阶段，Optimizer 的适应度函数基于 Pareto 超体积增量与复杂度惩罚：
+$$
+\text{fitness}(c) = \Delta HV(c) - \lambda \cdot \Delta_{\text{complexity}}(c)
+$$
+若候选配置 $c$ 在沙箱或 A/B 测试中失败，则给予固定的大额负适应度，并将失败轨迹存入 Memory 供后续诊断。
+
+在引入 RL 的增强阶段，可以在训练过程中额外引入 \textbf{稠密奖励}（Reward Shaping）以加速收敛：
+\begin{itemize}
+    \item 成功通过静态兼容性校验：$+r_{\text{valid}}$；
+    \item 成功通过沙箱回归测试：$+r_{\text{sandbox}}$；
+    \item 新配置在 A/B 测试中显著优于基线：$+r_{\text{ab}}$；
+    \item 新增组件导致图复杂度增加：$-\lambda_{\text{complexity}} \cdot \Delta C$；
+    \item 生成代码触发 Policy 宪法否决：$-r_{\text{veto}}$。
+\end{itemize}
+
+\section{沙箱与A/B测试基础设施}
+
+\subsection{容器化沙箱环境}
+
+沙箱是隔离候选配置影响的第一道防线。工程实现上，建议采用轻量级容器技术（如 Docker 或 containerd）。沙箱镜像应包含：
+\begin{itemize}
+    \item 与生产环境一致的 Python 运行时和依赖库；
+    \item 一组不可变的基线数据集和回归测试脚本；
+    \item 一组历史失败案例（用于回归重放）；
+    \item 资源监控 sidecar（采集 CPU、内存、Token 消耗）。
+\end{itemize}
+
+沙箱执行由 Runtime 统一调度。每个候选配置被挂载为只读卷，沙箱内进程对其执行结果的写操作被重定向到临时目录，执行结束后立即销毁容器，确保无副作用残留。
+
+\subsection{分层沙箱基础设施}
+
+在生产级自修改系统中，沙箱不宜被实现为单一技术选型，而应被设计为\textbf{按风险分层的隔离基础设施}。工程上的关键不是“永远选择最强隔离”，而是根据候选变更的\textbf{代码形态、权限需求与副作用半径}选择合适边界，以控制评估成本。
+
+推荐采用三层选择边界：
+\begin{itemize}
+    \item \textbf{快速筛选层}：用于 XML/JSON 配置校验、轻量脚本、纯函数式转换或正则规则测试。这一层强调毫秒级启动和高吞吐，适合使用 WASM、V8 isolate 或同类逻辑沙箱，只开放极小的宿主能力集合；
+    \item \textbf{通用隔离层}：用于大多数 Python 组件单测、模板实例化验证和无高危系统调用的数据处理任务。此层关注“足够强的系统调用隔离 + 可接受的启动成本”，适合容器 + 用户态内核拦截或受限运行时；
+    \item \textbf{深度隔离层}：用于涉及网络出站、第三方二进制依赖、长期运行任务或未知副作用代码的候选配置。此时应切换到 MicroVM 级别隔离，并结合只读根文件系统、受控 egress 与快照回收机制。
+\end{itemize}
+
+一个实用的调度策略是先由 Optimizer 或 Policy 输出风险标签（例如
+\texttt{pure-config}、\texttt{python-logic}、\texttt{networked-code}），
+再由 Runtime 将候选配置路由到相应沙箱层。这样可以避免低风险变更过度消耗深度隔离资源，同时保证高风险候选不会在弱隔离环境中执行。
+
+下面给出一个简化的 Firecracker jailer 风格配置示意，用于表达深度隔离层的最小约束集合：
+
+\begin{verbatim}
+sandbox:
+  runtime: firecracker
+  vcpu: 2
+  mem_mib: 512
+  rootfs: /opt/microvm/rootfs.ext4:ro
+  workdisk: /tmp/sbx-${run_id}.ext4:cow
+  net: none
+  seccomp: /etc/aeloon/seccomp/sandbox.json
+  snapshot: /var/lib/aeloon/snapshots/python311
+  stdout: /var/log/aeloon/sandbox/${run_id}.log
+\end{verbatim}
+
+这一配置块强调三个实现点：其一，\textbf{只读根镜像 + CoW 工作盘}用于保证执行后可瞬时擦除副作用；其二，\textbf{默认无网络}将出站能力降为显式授权；其三，\textbf{预热快照}用于把深度隔离的额外时延控制在可接受范围内，使其可以服务于候选配置的批量评估而非仅限极少数手工审计任务。
+
+\subsection{A/B 影子测试基础设施}
+
+影子测试需要能够同时运行多个配置实例并对比其输出。工程实现上可以采用以下架构：
+\begin{itemize}
+    \item \textbf{请求复制器}：位于 Gateway 层，将流入的生产请求（或从 Memory 中读取的历史请求）异步复制到主配置和影子配置；
+    \item \textbf{结果收集器}：独立收集主配置与影子配置的输出、延迟和资源指标；
+    \item \textbf{差异分析器}：对两者的输出进行语义相似度或业务规则对比，判断是否存在功能性回归；
+    \item \textbf{统计引擎}：在收集到足够样本后，自动执行显著性检验并输出报告。
+\end{itemize}
+
+\subsection{分布式事务回滚与 Saga Pattern}
+
+热加载并不是单步操作，而是一个包含\textbf{新配置装载、状态迁移、影子验证、切流确认}的跨组件序列。若把它简单视为“替换配置文件”，就难以在部分成功、部分失败的中间状态下保持系统一致性。因此，本章建议将“加载新配置 + 状态迁移 + 验证”建模为\textbf{分布式事务风格的 Saga}：每一步都定义前向动作，同时准备对应的补偿动作。
+
+对于元Harness，一个典型事务序列可以写成：
+\begin{enumerate}
+    \item 加载候选配置并完成 Schema/契约校验；
+    \item 冻结旧 Runtime 的可变入口，保存旧配置与关键状态快照；
+    \item 执行组件级状态迁移；
+    \item 在沙箱和影子流量上验证新配置；
+    \item 原子切流并进入观察窗口；
+    \item 观察窗口结束后提交事务，清理旧快照。
+\end{enumerate}
+
+上述每一步都必须附带可执行的补偿动作。例如，状态迁移失败则恢复旧配置与旧状态；影子验证失败则卸载新组件并回放挂起消息；观察窗口内出现显著退化则切回旧指针并撤销新配置注册。这样做的核心收益是：即使重构流程横跨 Runtime、Memory、Sandbox 和 Observability，多组件系统仍可以用局部补偿来避免“半升级”状态。
+
+下面给出一个简化的补偿伪代码示意：
+
+\begin{verbatim}
+steps = [load_config, snapshot_state,
+         migrate_state, validate_shadow,
+         cutover]
+completed = []
+try:
+    for step in steps:
+        step.run()
+        completed.append(step)
+    commit_observation_window()
+except Exception as err:
+    for step in reversed(completed):
+        step.compensate(err)
+    restore_checkpoint()
+    replay_buffered_events()
+\end{verbatim}
+
+需要注意，Saga 并不保证像单机数据库事务那样的强原子性；它依赖\textbf{补偿动作可重入、快照可恢复、事件可重放}来获得工程上的最终一致性。因此，系统应把快照 ID、迁移版本、补偿结果和回放区间统一写入审计日志，以便后续追责和诊断。
+
+\subsection{Checkpoint 类型与策略}
+
+热加载过程中的状态快照并非单一形态，根据组件特性和迁移风险，可采用不同类型的 Checkpoint：
+
+\begin{table}[htbp]
+\centering
+\caption{Checkpoint 类型对比}
+\label{tab:checkpoint_types}
+\begin{tabular}{@{}lp{3.5cm}p{4cm}p{3.5cm}@{}}
+\toprule
+\textbf{类型} \u0026 \textbf{内容} \u0026 \textbf{适用场景} \u0026 \textbf{存储开销} \\
+\midrule
+Full Checkpoint \u0026 组件完整运行时状态 \u0026 小型组件、关键状态 \u0026 高 \\
+Skeletal Checkpoint \u0026 仅持久化配置与元数据 \u0026 无状态组件、配置变更 \u0026 低 \\
+Differential Checkpoint \u0026 自上次快照以来的增量状态 \u0026 大型状态、频繁热加载 \u0026 中 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Graph version 退役}：旧 graph version 在超出回滚保留窗口后，其关联的 candidate snapshot 和 Checkpoint 可回收以释放存储，但审计轨迹（evidence 对象、Merkle root、补偿记录）须永久保留，以满足长期追责与合规要求。
+
+\section{可观测性与执行轨迹管理}
+
+\subsection{观测数据的层次结构}
+
+Observability 模块采集的数据可分为三个层次，对应从物理基础设施到业务语义的不同抽象级别：
+
+\begin{table}[htbp]
+\centering
+\caption{可观测性三层模型}
+\label{tab:observability_layers}
+\begin{tabular}{@{}lp{3.5cm}p{7.5cm}@{}}
+\toprule
+\textbf{层级} \u0026 \textbf{名称} \u0026 \textbf{内容} \\
+\midrule
+L1 \u0026 遥测层（Telemetry） \u0026 CPU/GPU/内存/网络指标、容器资源限额、进程级性能计数器 \\
+L2 \u0026 生命周期层（Lifecycle） \u0026 组件调用次数、执行耗时、输入/输出数据量、异常频率、staged lifecycle 状态迁移事件 \\
+L3 \u0026 证据层（Evidence） \u0026 端到端任务轨迹、修改证据对象、Merkle 审计链、Provenance 谱系查询结果 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+L1 层服务于运维告警与容量规划；L2 层服务于组件级诊断与性能归因；L3 层服务于安全审计、反事实诊断与长期治理。三层数据在存储策略上采用热/温/冷分层：L1/L2 近期数据驻留高速存储，L3 证据对象永久保留。
+
+除此之外，Observability 还必须支持 Harness 运行期的关键运维能力：
+\begin{itemize}
+    \item \textbf{全链路 Trace}：追踪请求从 Gateway 进入，经过 Runtime、Planner、ToolHub、Executor 到最终返回的完整调用链；
+    \item \textbf{执行回放（Replay）}：基于持久化的 Session 日志，在隔离环境中精确重放某次历史执行，用于复现非确定性行为；
+    \item \textbf{崩溃恢复支持}：当 Agent 进程在运行中途崩溃时，Observability 与 Memory 联动，从最后一步已记录的断点恢复执行，而无需从头开始。
+\end{itemize}
+
+\subsection{执行轨迹的存储与检索}
+
+Memory 模块必须支持原始执行轨迹的全量持久化。这与仅存储摘要或标量分数的做法截然不同。推荐采用以下存储策略，与可观测性三层模型对齐：
+\begin{itemize}
+    \item \textbf{热数据（L1/L2 近期）}：最近 $H$ 小时内的遥测与生命周期指标存储在高速存储（如 Redis、本地 SSD）中，供 Optimizer 快速检索和实时监控；
+    \item \textbf{温数据（L2 历史）}：近期的生命周期事件与组件轨迹保留在温存储中，供诊断查询；
+    \item \textbf{冷数据（L3 永久）}：证据对象、修改谱系、Merkle 审计链永久归档到对象存储（如 S3、MinIO），供长期分析与合规审计；
+    \item \textbf{索引结构}：为轨迹建立按任务类型、成功/失败状态、异常类型、涉及组件、graph version 等维度的索引，方便 Optimizer 和开发者进行反事实诊断。
+\end{itemize}
+
+\subsection{修改证据对象与谱系追踪}
+
+除了记录执行轨迹外，工程系统还需要把每一次自修改本身建模为\textbf{可检索、可验证的证据对象}。这里可以简要借鉴 W3C PROV 的思想：将一次修改视为由某个 \texttt{Agent} 触发、对某个 \texttt{Entity}（旧配置、快照、代码模板）施加的 \texttt{Activity}，并记录其输入、输出、依赖关系与评估结果。这样，系统不仅知道“某次运行失败了”，还知道“是哪一次结构修改、由谁提出、基于哪些轨迹证据、经何种验证后进入观察窗口”。
+
+一个紧凑的 \texttt{ModificationEvidence} 对象可采用如下 JSON 风格结构：
+
+\begin{verbatim}
+{
+  "evidence_id": "prov:mh:2026-04-17:run-1842",
+  "parent_config": "cfg_sha256:...",
+  "candidate_config": "cfg_sha256:...",
+  "trigger": "latency regression diagnosis",
+  "proposer": {"agent": "optimizer", "model": "llm-or-es"},
+  "inputs": ["trace:8841", "trace:8847",
+             "template:RetryWithBackoff@v2"],
+  "artifacts": {"diff": "diff:...", "snapshot": "ckpt:..."},
+  "validation": {
+    "schema": "passed",
+    "sandbox": "passed",
+    "shadow": "failed"
+  },
+  "rollback": {"triggered": true, "reason": "shadow mismatch"},
+  "lineage": {"parent_evidence": "prov:mh:2026-04-16:run-1771"},
+  "log": {"prev_hash": "sha256:...", "entry_hash": "sha256:..."}
+}
+\end{verbatim}
+
+该结构中，\texttt{parent\_config} 与 \texttt{candidate\_config} 用于标识配置演化边；\texttt{inputs} 和 \texttt{artifacts} 指向支撑本次修改的轨迹、模板与快照；\texttt{validation} 与 \texttt{rollback} 则把修改结果与安全控制链路绑定起来。这样的对象既可以被 Observability 用于审计，也可以被 Optimizer 用于后续反事实诊断。
+
+为了防止审计日志被事后篡改，建议将证据对象写入\textbf{不可变日志}：每条记录包含前一条记录哈希，并周期性汇总为 Merkle-tree 风格的根哈希。这样，日志既支持逐条追踪，又支持批量校验完整性。Memory 模块则负责把这些证据对象与原始执行轨迹、回放索引、失败模式标签一起存入“长期资产区”，使系统能够回答诸如“当前版本为何引入该组件”“最近三次回滚是否来自同一模板槽位”这类谱系问题。
+
+\subsection{对 Optimizer 的反事实诊断支持}
+
+Meta-Harness 的研究表明，原始执行轨迹是比 LLM 摘要更有价值的诊断信号。为了支持 Optimizer 的反事实诊断，Memory 与 Observability 应联合提供以下检索接口：
+\begin{itemize}
+    \item \texttt{get\_failed\_traces(component=X, limit=N)}：获取组件 X 最近 $N$ 条失败轨迹；
+    \item \texttt{compare\_traces(config\_a, config\_b, task\_id)}：对比同一任务在两个配置下的执行差异；
+    \item \texttt{search\_traces(keyword, time\_range)}：基于关键词和时间范围检索相关轨迹片段；
+    \item \texttt{replay\_trace(execution\_id, from\_step=k)}：从第 $k$ 步开始重放指定执行，用于验证修复效果或分析非确定性来源。
+\end{itemize}
+
+\section{本章小结}
+
+本章从工程实现角度详细阐述了元Harness框架的关键技术。首先给出了分六阶段（安全前置、进化搜索优先、RL 可选增强）的工程化落地路线图；随后介绍了组件模板库的设计原则、典型模板以及”细粒度骨架 + 槽位填充”主导的代码生成管线，强调模板驱动生成应作为默认实现路径，自由形式生成仅作为受限补充；接着讨论了 Optimizer 中搜索与优化策略的选择（进化搜索→贝叶斯优化→RL 增强的分阶段方案）、状态编码方案与适应度/奖励塑形策略；然后描述了分层沙箱基础设施、A/B 影子测试，以及将”配置加载—状态迁移—验证—切流”建模为 Saga 的事务式回滚机制，并补充了 Checkpoint 类型策略与 graph version 退役规则；最后强调了可观测性数据的\textbf{三层模型}（L1 遥测/L2 生命周期/L3 证据）、热/温/冷分层存储、执行轨迹全量存储，以及基于 W3C PROV 思路的修改证据对象、不可变审计日志与谱系追踪能力对反事实诊断和长期治理的重要性。这些内容共同构成了将元Harness从理论设计转化为可运行系统的工程指南。

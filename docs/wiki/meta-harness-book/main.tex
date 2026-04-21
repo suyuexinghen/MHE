@@ -1,0 +1,102 @@
+\documentclass[UTF8,a4paper,12pt]{ctexbook}
+
+% ==================== 基础宏包 ====================
+\usepackage{geometry}
+\geometry{left=3cm,right=2.5cm,top=2.5cm,bottom=2.5cm}
+
+\usepackage{graphicx}
+\usepackage{amsmath,amsfonts,amssymb}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{enumitem}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{cleveref}
+\usepackage{cite}
+\usepackage{fancyhdr}
+\usepackage{setspace}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning, fit, backgrounds}
+
+% ==================== 代码样式 ====================
+\lstset{
+    basicstyle=\small\ttfamily,
+    keywordstyle=\color{blue},
+    commentstyle=\color{gray},
+    stringstyle=\color{orange},
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    frame=single,
+    breaklines=true,
+    showstringspaces=false,
+    tabsize=2,
+    language=XML,
+    morekeywords={Component,Connection,MetaCycle,Step,Sandbox,Interface,Input,Output,Event,Property}
+}
+
+% ==================== 超链接设置 ====================
+\hypersetup{
+    colorlinks=true,
+    linkcolor=black,
+    citecolor=blue,
+    urlcolor=blue
+}
+
+% ==================== 页眉页脚 ====================
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[C]{\small Meta-Harness 工程设计手册}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\setlength{\headheight}{14.5pt}
+
+% ==================== 标题格式 ====================
+\ctexset{
+    chapter = {
+        format = \zihao{3}\heiti\centering,
+        beforeskip = 20pt,
+        afterskip = 20pt
+    },
+    section = {
+        format = \zihao{4}\heiti\raggedright
+    },
+    subsection = {
+        format = \zihao{-4}\heiti\raggedright
+    }
+}
+
+% ==================== 文档信息 ====================
+\title{\vspace{-2cm}\textbf{Meta-Harness 工程设计手册} \\ \vspace{0.5cm} \large 基于自我重长机制的元智能体系统设计与实现}
+\author{元智能体系统研究组}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\thispagestyle{empty}
+
+\frontmatter
+\tableofcontents
+\newpage
+
+\mainmatter
+\onehalfspacing
+
+% 各章节引用
+\input{chapters/ch1_introduction}
+\input{chapters/ch2_related_work}
+\input{chapters/ch3_architecture}
+\input{chapters/ch4_self_growth}
+\input{chapters/ch5_engineering}
+\input{chapters/ch6_conclusion}
+
+% 参考文献
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}

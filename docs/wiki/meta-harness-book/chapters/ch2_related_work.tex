@@ -1,0 +1,125 @@
+\chapter{相关研究与基础概念}
+
+本章系统梳理与元Harness框架密切相关的研究领域与核心概念，包括 Harness 工程的自动化优化、自动代理设计系统、自我改进型智能体的安全挑战、多目标 Pareto 优化以及组件化系统的接口契约理论。这些内容为后续章节的框架设计与机制阐述奠定理论基础。
+
+\section{Harness 工程与 LLM 系统优化}
+
+\subsection{Harness 的定义与重要性}
+
+在大语言模型系统中，\textbf{Harness} 指的是包裹固定模型的“外壳代码”——它决定每一步给模型看什么上下文、如何更新内部状态、何时调用检索工具以及如何组织提示词（Prompt）。Meta-Harness 的研究者指出：\textbf{同一个底模，仅改变 harness，在同一 benchmark 上就可能拉出 6 倍的性能差距} \cite{lee2026metaharness}。这表明，当模型能力逐渐接近时，决定系统上限的往往不再是参数规模，而是模型外层那套能否被持续优化的“工作方式”。
+
+与传统的 Prompt 工程不同，Harness 工程关注的是 \textbf{完整程序} 的优化。这包括：
+\begin{itemize}
+    \item 上下文管理（Context Management）与记忆更新策略；
+    \item 检索路由（Retrieval Routing）与重排逻辑；
+    \item 工具定义（Tool Definitions）与编排（Orchestration）；
+    \item 完成检查（Completion Checking）与错误恢复逻辑。
+\end{itemize}
+
+\subsection{Meta-Harness 的关键方法论}
+
+Meta-Harness 的核心创新在于其“外循环 + 文件系统历史经验”的设计。与传统方法将反馈压缩成摘要、标量分数或短模板不同，Meta-Harness 将所有历史候选的源码、评分和原始执行轨迹写入文件系统，让 coding agent（proposer）主动通过 \texttt{grep}、\texttt{cat} 等工具检索所需信息 \cite{lee2026metaharness}。在高难设定下，proposer 每轮中位数读取 \textbf{82 个文件}，其中约 41\% 是旧 harness 代码，40\% 是执行轨迹。这说明 harness search 的关键不在于更精致的摘要，而在于 \textbf{保留原始执行轨迹中的诊断细节}。
+
+Meta-Harness 的另一个重要方法论是 \textbf{Pareto 前沿筛选}。在同时考虑准确率与上下文成本时，Meta-Harness 不追求单一最优解，而是维护一组在多个目标上均无法被其他候选支配的 harness 集合，供决策者根据场景需求选择。
+
+\section{自动代理设计系统（ADAS）}
+
+\subsection{ADAS 的研究范式}
+
+ADAS（Automated Design of Agentic Systems）\cite{hu2025adas} 是英属哥伦比亚大学与 Vector 研究所提出的新兴研究方向。其核心思想是：利用一个 \textbf{元智能体（Meta Agent）} 自动编写和修改代码，从而发现和设计更优秀的智能体系统。ADAS 将代理设计转化为一个搜索问题，搜索空间不再是超参数，而是 \textbf{代码} 本身。由于编程语言的图灵完备性，这种方法理论上可以学习任何代理系统，包括新的提示、工具使用方式和控制流。
+
+ADAS 的核心算法 \textbf{Meta Agent Search} 的工作流程如下：
+\begin{enumerate}
+    \item 元智能体基于当前最优代理代码提出修改；
+    \item 生成的新代理在验证集上执行并评估性能；
+    \item 将评估结果反馈给元智能体，用于指导下一轮搜索；
+    \item 迭代直至发现满足性能要求的代理设计。
+\end{enumerate}
+
+实验结果表明，ADAS 发现的代理在编码、数学和科学等多个领域均显著优于最先进的手工设计代理，并且具有良好的跨领域和跨模型迁移能力。
+
+\subsection{从 ADAS 到元Harness的映射}
+
+本手册提出的元Harness框架可以看作 ADAS 思想在 \textbf{结构化配置空间} 中的工程化实现。与 ADAS 直接在无约束的代码空间中搜索不同，元Harness 通过 XML 配置和组件模板库将搜索空间约束在一个更易验证、更安全的范围内，从而降低工程落地的复杂度。
+
+\section{自我改进型智能体与安全挑战}
+
+\subsection{Gödel Agent 与递归自我改进}
+
+Gödel Agent \cite{godelagent2024} 是一个自参照的自我改进框架。其名字来源于哥德尔不完备定理中的“自指”思想：系统能够读取自身代码，将其作为输入进行推理，并在认为有益时生成新代码以动态修改自身。Gödel Agent 的核心能力包括：
+\begin{itemize}
+    \item \textbf{代码自省}：读取并理解构成自身操作的变量、函数与类；
+    \item \textbf{动态代码修改}：生成新代码并写入运行时内存，即时生效；
+    \item \textbf{错误恢复}：当修改导致异常时，回滚并将错误信息用于改进未来决策。
+\end{itemize}
+
+\subsection{Darwin Gödel Machine（DGM）}
+
+Darwin Gödel Machine（DGM）\cite{dgm2025} 将 Gödel Agent 的自改进能力与达尔文式的开放式演化结合。DGM 不仅优化任务策略，还能优化自身的奖励函数与元认知模块。DGM-Hyperagents（DGM-H）更进一步，允许智能体修改自身的改进机制（即“元认知自我修改”）。
+
+DGM 的研究者进行了关键的消融实验：如果去掉自我改进能力，仅保留固定的元智能体，测试准确率会大幅下降（如在论文评审任务上降至 0\%）。这证明了 \textbf{自我改进能力本身对系统性能至关重要}。但同时，研究者也专门用一节讨论安全风险：随着系统越来越能开放式地修改自己，其演化速度可能超过人类审计和理解速度。
+
+\subsection{安全防护的共识}
+
+综合现有研究，自我改进系统的安全防护已形成以下共识：
+\begin{itemize}
+    \item \textbf{沙箱隔离}：所有执行与修改在 Docker 或虚拟机等隔离环境中进行；
+    \item \textbf{时间/资源限制}：为每次沙箱执行设定严格的 CPU 时间、内存和网络策略上限；
+    \item \textbf{范围约束}：限定自我修改仅限于特定领域（如修改自身 Python 代码库以提升某基准性能），禁止触及操作系统或外部网络；
+    \item \textbf{人工监督与可追溯性}：记录完整的修改谱系（Lineage），便于后续审查；
+    \item \textbf{自动回滚}：在新版本导致性能退化或系统异常时，自动恢复至上一稳定版本。
+\end{itemize}
+
+\section{多目标优化与 Pareto 收敛}
+
+\subsection{多目标优化问题}
+
+在 Agent 系统设计中，通常需要同时优化多个相互冲突的目标，例如：
+\begin{itemize}
+    \item 准确率（Accuracy）
+    \item 响应时间 / 吞吐量（Latency / Throughput）
+    \item 资源消耗（GPU 显存、CPU 占用）
+    \item 上下文成本（Context Token Cost）
+\end{itemize}
+
+这些目标往往无法同时达到最优。例如，提高准确率可能需要引入更复杂的检索或验证流程，从而增加响应时间和 Token 消耗。因此，单一标量加权求和的方法容易陷入局部最优，且权重的选择具有很强的主观性。
+
+\subsection{Pareto 支配与 Pareto 前沿}
+
+在多目标优化中，\textbf{Pareto 支配}（Pareto Dominance）是判断解之间优劣的标准。对于一个解 $x$ 和另一个解 $y$：
+\begin{itemize}
+    \item 如果在所有目标上 $x$ 都不劣于 $y$，且至少在一个目标上 $x$ 严格优于 $y$，则称 $x$ \textbf{支配} $y$；
+    \item 如果一个解不被任何其他解支配，则称其为 \textbf{Pareto 最优解}；
+    \item 所有 Pareto 最优解构成的集合称为 \textbf{Pareto 前沿}（Pareto Front）。
+\end{itemize}
+
+\subsection{超体积（Hypervolume）}
+
+\textbf{Hypervolume}（也称为 S-metric）是衡量 Pareto 前沿质量的重要指标。它表示 Pareto 前沿所覆盖的目标空间体积。在迭代优化过程中，若新一代的 Pareto 前沿相对于参考点的 \textbf{Hypervolume Improvement}（超体积增量）趋于 0，则说明优化已经收敛。相比于简单的加权求和，Hypervolume 能够同时反映解集的收敛性与多样性，因此被广泛用于多目标强化学习与神经架构搜索中。
+
+\section{组件化系统与接口契约}
+
+\subsection{组件化设计的优势}
+
+组件化（Component-based）设计通过将复杂系统分解为功能独立、接口清晰的模块，降低了开发复杂度并提升了系统的可维护性与可扩展性。在动态自适应系统中，组件化设计的另一大优势是支持 \textbf{运行时的结构重构}（Dynamic Reconfiguration）：在不中断系统服务的前提下，增删或替换组件实例及其连接关系。
+
+\subsection{接口契约与动态重构}
+
+然而，动态重构的前提是 \textbf{接口契约}（Interface Contract）的严格定义。BIP 框架 \cite{bip2011} 指出：只有在组件的端口类型、交互协议与行为约束被显式声明并验证后，才能安全地执行结构重组。DynaComm \cite{dynacomm2007} 进一步提出，动态软件架构的重构应当被建模为图转换（Graph Transformation），且重构规则需与实现代码分离。
+
+对于本手册的元 Harness 框架而言，接口契约体现在 XML 配置中的
+\texttt{<Interface>} 标签：每个组件必须声明其输入端口（\texttt{<Input>}）、
+输出端口（\texttt{<Output>}）和事件类型（\texttt{<Event>}）。Runtime 在执行热加载前，
+必须对 \texttt{<Connection>} 进行静态兼容性检查，包括类型匹配、事件声明和输入完整性验证。
+
+\section{本章小结}
+
+本章从 Harness 工程、自动代理设计、自我改进安全、多目标优化和组件化系统五个维度，梳理了元Harness框架的理论基础与相关研究。核心结论如下：
+\begin{enumerate}
+    \item Harness 工程的优化对象是完整程序，保留原始执行轨迹是实现高效诊断的关键；
+    \item 自我改进型智能体必须具备沙箱、回滚与范围约束等安全机制；
+    \item 多目标 Pareto 优化与 Hypervolume 收敛判据比单一标量误差更适合评估 Agent 系统；
+    \item 接口契约是组件化系统支持动态重构的前提条件。
+\end{enumerate}
+
+在后续章节中，我们将把这些理论与工程原则融入到元Harness框架的具体设计中。

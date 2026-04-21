@@ -1,0 +1,64 @@
+@startuml
+skinparam backgroundColor #FEFEFE
+
+title Pareto前沿与Hypervolume示意图（概念图，非当前核心实现）
+
+scale 1.5
+
+rectangle "目标空间" as Space #F5F5F5 {
+  
+  skinparam objectBackgroundColor #FFFFFF
+  skinparam objectBorderColor #333333
+  
+  object "参考点 r" as Ref {
+    (最差Accuracy, 最差Latency)
+  }
+  
+  object "候选A" as A {
+    高Accuracy\n低Latency
+  }
+  
+  object "候选B" as B {
+    中Accuracy\n中Latency
+  }
+  
+  object "候选C" as C {
+    低Accuracy\n高Latency
+  }
+  
+  object "候选D" as D {
+    中Accuracy\n低Latency
+  }
+  
+  object "候选E" as E {
+    低Accuracy\n中Latency
+  }
+}
+
+A -[hidden]-> B
+B -[hidden]-> D
+D -[hidden]-> A
+
+C -[hidden]-> E
+E -[hidden]-> Ref
+Ref -[hidden]-> C
+
+note right of A
+  **Pareto前沿**: {A, B, D}
+  A支配B? 否 (B latency更低)
+  B支配D? 否 (D accuracy更高)
+  A支配C? 是
+  D支配E? 是
+end note
+
+note bottom of Ref
+  该图用于说明目标优化语义：
+  Pareto / Hypervolume 仍主要是
+  文档与研究层概念。
+
+  当前 MHE 实现的核心优化信号
+  仍以标量 fitness、trigger、
+  convergence 与 Bayesian search 为主。
+end note
+
+@enduml

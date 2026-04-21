@@ -1,0 +1,120 @@
+@startuml
+skinparam backgroundColor #FEFEFE
+skinparam ArrowColor #333333
+skinparam ActivityDiamondFontSize 12
+
+title Nektar Domain Extension — 单次执行链与收敛研究流
+
+|#LightBlue| NektarGateway |
+start
+:接收 NektarProblemSpec;
+note right
+  solver_family: ADR / IncNS
+  dimension, variables,
+  boundary conditions
+end note
+
+|#LightGreen| SessionCompiler |
+:build_session_plan();
+note right
+  → NektarSessionPlan
+  solver_binary, equation_type,
+  expansion, mesh, conditions
+end note
+
+|#LightGray| XMLRenderer |
+:render_session_xml();
+note right
+  → session.xml 文件
+  可直接输入 Nektar++ 求解器
+end note
+
+|#Wheat| SolverExecutor |
+:execute_plan();
+note right
+  调用 Nektar++ 二进制
+  捕获 stdout/stderr/log
+  提取 error norms, metrics
+  → NektarRunArtifact
+end note
+
+|#LightCoral| PostprocessComponent |
+:run_postprocess();
+note right
+  FieldConvert -e (误差评估)
+  派生文件 (.vtu/.dat)
+  收敛 metrics 提取
+  → enriched NektarRunArtifact
+end note
+
+|#LightSkyBlue| NektarValidator |
+:validate_run();
+note right
+  solver 干净退出检查
+  field files 存在性
+  error vs reference 比较
+  → NektarValidationReport
+end note
+
+:单次执行完成;
+
+if (ConvergenceStudy?) then (是)
+
+  |#Orchid| ConvergenceStudyComponent |
+  :遍历 axis.values\n(NumModes sweep);
+  note right
+    deep-copy base_problem
+    mutate NumModes per trial
+  end note
+
+  repeat
+    :_run_single_trial();
+    note right
+      compile → execute →
+      postprocess → validate
+      失败时降级为 failed trial report
+    end note
+
+    :构建 analyzer evidence;
+    note right
+      parse_solver_log()
+      parse_filter_outputs()
+      summarize_reference_error()
+      → SolverLogAnalysis
+      → FilterOutputAnalysis
+      → ErrorSummary
+    end note
+
+  repeat while (还有 axis values?\nstop_on_first_pass?)
+  ->否;
+
+  :计算 study-level 派生指标;
+  note right
+    error_sequence
+    drop_ratios
+    observed_order
+    (log(e_i/e_{i+1}) / log(N_{i+1}/N_i))
+  end note
+
+  :评估 convergence rule;
+  note right
+    **absolute**: metric ≤ target_tolerance
+    **relative_drop**: ratio ≤ relative_drop_ratio
+    **plateau**: |Δratio| < plateau_tolerance
+    未命中 → fallback 最佳 metric trial
+  end note
+
+  :生成 ConvergenceStudyReport;
+  note right
+    trials, recommended_value,
+    converged, observed_order,
+    recommended_reason,
+    error_sequence, drop_ratios
+  end note
+
+else (否)
+endif
+
+stop
+
+@enduml

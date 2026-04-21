@@ -1,0 +1,100 @@
+\contentsline {chapter}{\numberline {第一章\hspace {.3em}}引言}{1}{chapter.1}%
+\contentsline {section}{\numberline {1.1}研究背景与意义}{1}{section.1.1}%
+\contentsline {section}{\numberline {1.2}国内外研究现状}{1}{section.1.2}%
+\contentsline {subsection}{\numberline {1.2.1}Harness 工程的自动化优化}{1}{subsection.1.2.1}%
+\contentsline {subsection}{\numberline {1.2.2}自我改进型智能体与安全挑战}{2}{subsection.1.2.2}%
+\contentsline {subsection}{\numberline {1.2.3}组件化系统与接口契约}{2}{subsection.1.2.3}%
+\contentsline {section}{\numberline {1.3}研究目标与主要贡献}{2}{section.1.3}%
+\contentsline {section}{\numberline {1.4}论文结构}{3}{section.1.4}%
+\contentsline {chapter}{\numberline {第二章\hspace {.3em}}相关研究与基础概念}{5}{chapter.2}%
+\contentsline {section}{\numberline {2.1}Harness 工程与 LLM 系统优化}{5}{section.2.1}%
+\contentsline {subsection}{\numberline {2.1.1}Harness 的定义与重要性}{5}{subsection.2.1.1}%
+\contentsline {subsection}{\numberline {2.1.2}Meta-Harness 的关键方法论}{5}{subsection.2.1.2}%
+\contentsline {section}{\numberline {2.2}自动代理设计系统（ADAS）}{6}{section.2.2}%
+\contentsline {subsection}{\numberline {2.2.1}ADAS 的研究范式}{6}{subsection.2.2.1}%
+\contentsline {subsection}{\numberline {2.2.2}从 ADAS 到元Harness的映射}{6}{subsection.2.2.2}%
+\contentsline {section}{\numberline {2.3}自我改进型智能体与安全挑战}{6}{section.2.3}%
+\contentsline {subsection}{\numberline {2.3.1}Gödel Agent 与递归自我改进}{6}{subsection.2.3.1}%
+\contentsline {subsection}{\numberline {2.3.2}Darwin Gödel Machine（DGM）}{7}{subsection.2.3.2}%
+\contentsline {subsection}{\numberline {2.3.3}安全防护的共识}{7}{subsection.2.3.3}%
+\contentsline {section}{\numberline {2.4}多目标优化与 Pareto 收敛}{7}{section.2.4}%
+\contentsline {subsection}{\numberline {2.4.1}多目标优化问题}{7}{subsection.2.4.1}%
+\contentsline {subsection}{\numberline {2.4.2}Pareto 支配与 Pareto 前沿}{8}{subsection.2.4.2}%
+\contentsline {subsection}{\numberline {2.4.3}超体积（Hypervolume）}{8}{subsection.2.4.3}%
+\contentsline {section}{\numberline {2.5}组件化系统与接口契约}{8}{section.2.5}%
+\contentsline {subsection}{\numberline {2.5.1}组件化设计的优势}{8}{subsection.2.5.1}%
+\contentsline {subsection}{\numberline {2.5.2}接口契约与动态重构}{8}{subsection.2.5.2}%
+\contentsline {section}{\numberline {2.6}本章小结}{8}{section.2.6}%
+\contentsline {chapter}{\numberline {第三章\hspace {.3em}}元Harness框架总体设计}{11}{chapter.3}%
+\contentsline {section}{\numberline {3.1}设计理念}{11}{section.3.1}%
+\contentsline {subsection}{\numberline {3.1.1}从固定配置到自我衍生}{11}{subsection.3.1.1}%
+\contentsline {subsection}{\numberline {3.1.2}迭代收敛与后验误差}{11}{subsection.3.1.2}%
+\contentsline {section}{\numberline {3.2}统一术语基线}{12}{section.3.2}%
+\contentsline {section}{\numberline {3.3}九大核心基础组件 + 元层优化器}{13}{section.3.3}%
+\contentsline {subsection}{\numberline {3.3.1}扩展能力（非核心分类）}{14}{subsection.3.3.1}%
+\contentsline {subsection}{\numberline {3.3.2}组件组合规则}{14}{subsection.3.3.2}%
+\contentsline {section}{\numberline {3.4}结构化配置方案}{15}{section.3.4}%
+\contentsline {subsection}{\numberline {3.4.1}配置文件的核心标签}{15}{subsection.3.4.1}%
+\contentsline {subsubsection}{组件定义：\texttt {<Component>}}{15}{subsubsection*.7}%
+\contentsline {subsubsection}{连接关系：\texttt {<Connection>}}{16}{subsubsection*.8}%
+\contentsline {subsubsection}{元循环：\texttt {<MetaCycle>}}{16}{subsubsection*.9}%
+\contentsline {subsubsection}{沙箱策略：\texttt {<Sandbox>}}{17}{subsubsection*.10}%
+\contentsline {section}{\numberline {3.5}接口契约与兼容性校验}{17}{section.3.5}%
+\contentsline {subsection}{\numberline {3.5.1}接口标准化的必要性}{17}{subsection.3.5.1}%
+\contentsline {subsection}{\numberline {3.5.2}兼容性校验规则}{17}{subsection.3.5.2}%
+\contentsline {subsection}{\numberline {3.5.3}契约驱动的动作空间剪枝}{18}{subsection.3.5.3}%
+\contentsline {subsection}{\numberline {3.5.4}候选图组装与版本管理}{18}{subsection.3.5.4}%
+\contentsline {subsection}{\numberline {3.5.5}组件生命周期（Staged Lifecycle）}{18}{subsection.3.5.5}%
+\contentsline {subsection}{\numberline {3.5.6}设计约束}{19}{subsection.3.5.6}%
+\contentsline {subsection}{\numberline {3.5.7}接口契约的工程实现}{19}{subsection.3.5.7}%
+\contentsline {subsection}{\numberline {3.5.8}热加载状态迁移协议}{21}{subsection.3.5.8}%
+\contentsline {section}{\numberline {3.6}本章小结}{21}{section.3.6}%
+\contentsline {chapter}{\numberline {第四章\hspace {.3em}}自我重长机制与安全控制}{23}{chapter.4}%
+\contentsline {section}{\numberline {4.1}性能瓶颈驱动的触发条件}{23}{section.4.1}%
+\contentsline {subsection}{\numberline {4.1.1}多维性能向量的计算}{23}{subsection.4.1.1}%
+\contentsline {subsection}{\numberline {4.1.2}瓶颈判断逻辑}{24}{subsection.4.1.2}%
+\contentsline {section}{\numberline {4.2}Pareto 多目标后验误差评估}{24}{section.4.2}%
+\contentsline {subsection}{\numberline {4.2.1}从加权求和到 Pareto 优化}{24}{subsection.4.2.1}%
+\contentsline {subsection}{\numberline {4.2.2}带约束的标量化策略}{24}{subsection.4.2.2}%
+\contentsline {subsection}{\numberline {4.2.3}Hypervolume 作为收敛指标}{25}{subsection.4.2.3}%
+\contentsline {section}{\numberline {4.3}受约束的组件生成与优化}{25}{section.4.3}%
+\contentsline {subsection}{\numberline {4.3.1}状态空间}{25}{subsection.4.3.1}%
+\contentsline {subsection}{\numberline {4.3.2}状态编码的工程权衡}{26}{subsection.4.3.2}%
+\contentsline {subsection}{\numberline {4.3.3}动作空间（四层动作漏斗）}{27}{subsection.4.3.3}%
+\contentsline {subsection}{\numberline {4.3.4}奖励函数 / 适应度函数}{27}{subsection.4.3.4}%
+\contentsline {subsection}{\numberline {4.3.5}最小可行 Proposer}{28}{subsection.4.3.5}%
+\contentsline {section}{\numberline {4.4}四级安全控制机制}{28}{section.4.4}%
+\contentsline {subsection}{\numberline {4.4.1}第一级：沙箱验证（Sandbox Validation）}{28}{subsection.4.4.1}%
+\contentsline {subsection}{\numberline {4.4.2}第二级：A/B 影子测试（Shadow A/B Test）}{30}{subsection.4.4.2}%
+\contentsline {subsection}{\numberline {4.4.3}第三级：Policy 宪法否决（Constitutional Veto）}{31}{subsection.4.4.3}%
+\contentsline {subsection}{\numberline {4.4.4}第四级：自动回滚（Automatic Rollback）}{33}{subsection.4.4.4}%
+\contentsline {section}{\numberline {4.5}收敛判断与复杂度控制}{33}{section.4.5}%
+\contentsline {subsection}{\numberline {4.5.1}统计收敛准则}{33}{subsection.4.5.1}%
+\contentsline {subsection}{\numberline {4.5.2}复杂度上限约束}{35}{subsection.4.5.2}%
+\contentsline {section}{\numberline {4.6}本章小结}{35}{section.4.6}%
+\contentsline {chapter}{\numberline {第五章\hspace {.3em}}工程化实现与关键技术}{37}{chapter.5}%
+\contentsline {section}{\numberline {5.1}基础框架开发路线}{37}{section.5.1}%
+\contentsline {section}{\numberline {5.2}组件模板库与代码生成}{38}{section.5.2}%
+\contentsline {subsection}{\numberline {5.2.1}模板库的设计原则}{38}{subsection.5.2.1}%
+\contentsline {subsection}{\numberline {5.2.2}典型模板示例}{38}{subsection.5.2.2}%
+\contentsline {subsection}{\numberline {5.2.3}代码生成管线}{38}{subsection.5.2.3}%
+\contentsline {subsection}{\numberline {5.2.4}细粒度骨架与槽位填充}{39}{subsection.5.2.4}%
+\contentsline {section}{\numberline {5.3}Optimizer中的搜索与优化策略}{39}{section.5.3}%
+\contentsline {subsection}{\numberline {5.3.1}算法选择：从进化搜索到强化学习}{39}{subsection.5.3.1}%
+\contentsline {subsection}{\numberline {5.3.2}状态编码}{41}{subsection.5.3.2}%
+\contentsline {subsection}{\numberline {5.3.3}适应度函数与奖励塑形}{41}{subsection.5.3.3}%
+\contentsline {section}{\numberline {5.4}沙箱与A/B测试基础设施}{42}{section.5.4}%
+\contentsline {subsection}{\numberline {5.4.1}容器化沙箱环境}{42}{subsection.5.4.1}%
+\contentsline {subsection}{\numberline {5.4.2}分层沙箱基础设施}{42}{subsection.5.4.2}%
+\contentsline {subsection}{\numberline {5.4.3}A/B 影子测试基础设施}{43}{subsection.5.4.3}%
+\contentsline {subsection}{\numberline {5.4.4}分布式事务回滚与 Saga Pattern}{43}{subsection.5.4.4}%
+\contentsline {subsection}{\numberline {5.4.5}Checkpoint 类型与策略}{45}{subsection.5.4.5}%
+\contentsline {section}{\numberline {5.5}可观测性与执行轨迹管理}{45}{section.5.5}%
+\contentsline {subsection}{\numberline {5.5.1}观测数据的层次结构}{45}{subsection.5.5.1}%
+\contentsline {subsection}{\numberline {5.5.2}执行轨迹的存储与检索}{46}{subsection.5.5.2}%
+\contentsline {subsection}{\numberline {5.5.3}修改证据对象与谱系追踪}{46}{subsection.5.5.3}%
+\contentsline {subsection}{\numberline {5.5.4}对 Optimizer 的反事实诊断支持}{47}{subsection.5.5.4}%
+\contentsline {section}{\numberline {5.6}本章小结}{47}{section.5.6}%
+\contentsline {chapter}{\numberline {第六章\hspace {.3em}}总结与展望}{49}{chapter.6}%
+\contentsline {section}{\numberline {6.1}主要工作总结}{49}{section.6.1}%
+\contentsline {section}{\numberline {6.2}未来研究方向}{50}{section.6.2}%

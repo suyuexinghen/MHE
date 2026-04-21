@@ -1,0 +1,66 @@
+@startuml
+skinparam backgroundColor #FEFEFE
+skinparam ArrowColor #333333
+
+title 元循环四级安全控制链路（当前实现对齐版）
+
+|Evaluation|
+start
+:输出最小 performance / status 观测;
+
+|Optimizer|
+:接收观测;
+:生成 mutation proposal;
+
+|ConnectionEngine|
+:stage candidate graph;
+:运行语义校验(validate_graph);
+if (校验通过?) then (否)
+  :discard candidate;
+  |Optimizer|
+  :记录低分/负反馈;
+  stop
+else (是)
+endif
+
+|Sandbox Gate|
+:执行 L1 gate\n(当前为抽象门控/validator);
+if (通过?) then (否)
+  |ConnectionEngine|
+  :discard candidate;
+  stop
+else (是)
+endif
+
+|A/B Shadow|
+:执行 L2 shadow comparison;
+if (匹配/允许?) then (否)
+  |ConnectionEngine|
+  :discard candidate;
+  stop
+else (是)
+endif
+
+|Policy|
+:reviewer + hooks + veto;
+if (触发拒绝?) then (是)
+  |ConnectionEngine|
+  :discard candidate;
+  stop
+else (否)
+endif
+
+|ConnectionEngine|
+:commit graph snapshot;
+
+|AutoRollback|
+:运行 post-commit probes;
+if (probe 失败?) then (是)
+  :rollback 到上一个稳定版本;
+else (否)
+  :保留新 active graph;
+endif
+
+stop
+
+@enduml

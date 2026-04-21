@@ -1,0 +1,70 @@
+@startuml
+!define RECTANGLE class
+
+skinparam backgroundColor #FEFEFE
+skinparam componentStyle rectangle
+skinparam PackageBorderColor #555555
+skinparam PackageFontSize 14
+
+title AI4PDE Domain Extension — 系统架构与执行流
+
+package "外部输入" {
+    [AI4PDE Case XML] as CaseXML
+    [用户 / CLI] as CLI
+}
+
+package "metaharness_ext.ai4pde" {
+    package "入口与编译" {
+        [PDEGateway\n(issue_task / issue_task_from_case)] as Gateway
+        [CaseParser\n(XML → PDETaskRequest + PDEPlan)] as Parser
+        [ProblemFormulator\n(规范化 / 细化)] as Formulator
+        [MethodRouter\n(构建执行计划)] as Router
+    }
+
+    package "执行与求解" {
+        [SolverExecutor\n(PDE 求解执行)] as Executor
+        [ReferenceSolver\n(参考解计算)] as RefSolver
+    }
+
+    package "验证与证据" {
+        [PhysicsValidator\n(物理约束验证)] as Validator
+        [EvidenceManager\n(科学证据组装)] as Evidence
+        [ExperimentMemory\n(实验记忆存储)] as Memory
+    }
+
+    package "治理与可观测" {
+        [RiskPolicy\n(风险分级)] as Risk
+        [ObservabilityHub\n(审计事件)] as Observability
+        [KnowledgeAdapter\n(领域知识注入)] as Knowledge
+    }
+}
+
+package "元Harness 核心" #DDDDDD {
+    [ComponentRegistry] as Registry
+    [ConnectionEngine\n(stage / commit graph)] as Engine
+    [GraphVersionStore] as Store
+    [GraphTemplate XML] as GraphXML
+}
+
+CLI --> Gateway : task request
+CaseXML --> Parser : parse
+Parser --> Gateway : PDETaskRequest + PDEPlan
+Gateway --> Formulator : formulated task
+Formulator --> Router : refined task
+Router --> Executor : PDEPlan
+Executor --> Validator : PDERunArtifact
+Router --> RefSolver : PDEPlan
+RefSolver --> Validator : reference result
+Validator --> Evidence : ValidationBundle
+Evidence --> Memory : ScientificEvidenceBundle
+
+Knowledge --> Formulator : domain hints
+Risk --> Router : risk classification
+Observability ..> Memory : audit trail
+
+Gateway ..> Registry : register manifests
+Gateway ..> Engine : commit runtime graph
+Engine ..> Store : graph versions
+GraphXML ..> Engine : graph template
+
+@enduml

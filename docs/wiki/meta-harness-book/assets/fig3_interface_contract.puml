@@ -1,0 +1,47 @@
+@startuml
+skinparam backgroundColor #FEFEFE
+skinparam rectangleBackgroundColor #E3F2FD
+skinparam rectangleBorderColor #1565C0
+
+title 接口契约与候选图提交流程（当前实现对齐版）
+
+rectangle "Optimizer生成\nmutation proposal" as Gen
+rectangle "XML/XSD\n结构校验" as XSD
+rectangle "语义图校验\n(validate_graph)" as Static
+rectangle "L1 Sandbox Gate\n(抽象门控)" as Sandbox
+rectangle "L2 A/B Shadow\n(比较器)" as AB
+rectangle "Policy Reviewer\n+ Hooks" as Policy
+rectangle "ConnectionEngine\ncommit graph" as Hotload
+rectangle "AutoRollback\npost-commit probes" as Rollback
+
+Gen --> XSD
+XSD --> Static : 通过
+XSD --> Gen : 失败(反馈错误)
+
+Static --> Sandbox : 通过
+Static --> Gen : 失败(反馈错误)
+
+Sandbox --> AB : 通过
+Sandbox --> Gen : 失败(反馈错误)
+
+AB --> Policy : 通过
+AB --> Gen : 失败(反馈错误)
+
+Policy --> Hotload : 批准
+Policy --> Gen : 否决(强惩罚)
+
+Hotload --> Rollback : 上线后退化
+Hotload --> "新配置生效" : 稳定运行
+
+note right of Static
+  当前实现包含：
+  - duplicate connection
+  - unknown component / port
+  - payload mismatch
+  - required input completeness
+  - protected slot override
+  - cycle detection
+  - orphan detection
+end note
+
+@enduml
