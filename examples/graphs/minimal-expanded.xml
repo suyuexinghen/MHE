@@ -1,0 +1,17 @@
+<Harness version="0.1.0" graphVersion="1" schemaVersion="1.1">
+  <Components>
+    <Component id="gateway.primary" type="Gateway" impl="metaharness.components.gateway" version="0.1.0" />
+    <Component id="runtime.primary" type="Runtime" impl="metaharness.components.runtime" version="0.1.0" />
+    <Component id="planner.primary" type="Planner" impl="metaharness.components.planner" version="0.1.0" />
+    <Component id="executor.primary" type="Executor" impl="metaharness.components.executor" version="0.1.0" />
+    <Component id="evaluation.primary" type="Evaluation" impl="metaharness.components.evaluation" version="0.1.0" />
+    <Component id="memory.primary" type="Memory" impl="metaharness.components.memory" version="0.1.0" />
+  </Components>
+  <Connections>
+    <Connection id="c1" from="gateway.primary.task" to="runtime.primary.task" payload="TaskRequest" mode="sync" policy="required" />
+    <Connection id="c2" from="runtime.primary.result" to="planner.primary.task" payload="TaskRequest" mode="sync" policy="required" />
+    <Connection id="c3" from="planner.primary.plan" to="executor.primary.task" payload="TaskRequest" mode="sync" policy="required" />
+    <Connection id="c4" from="executor.primary.result" to="evaluation.primary.task_result" payload="TaskResult" mode="async" policy="required" />
+    <Connection id="c5" from="executor.primary.result" to="memory.primary.task_result" payload="TaskResult" mode="async" policy="optional" />
+  </Connections>
+</Harness>

@@ -1,0 +1,9 @@
+<Harness version="0.1.0" graphVersion="2" schemaVersion="1.1">
+  <Components>
+    <Component id="gateway.primary" type="Gateway" impl="metaharness.components.gateway" version="0.1.0" />
+    <Component id="runtime.primary" type="Runtime" impl="metaharness.components.runtime" version="0.1.0" />
+  </Components>
+  <Connections>
+    <Connection id="c1" from="gateway.primary.task" to="runtime.primary.task" payload="WrongPayload" mode="sync" policy="required" />
+  </Connections>
+</Harness>

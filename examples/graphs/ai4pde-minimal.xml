@@ -1,0 +1,18 @@
+<Harness version="0.1.0" graphVersion="1" schemaVersion="1.1">
+  <Components>
+    <Component id="pde_gateway.primary" type="PDEGateway" impl="metaharness_ext.ai4pde.components.pde_gateway" version="0.1.0" />
+    <Component id="problem_formulator.primary" type="ProblemFormulator" impl="metaharness_ext.ai4pde.components.problem_formulator" version="0.1.0" />
+    <Component id="method_router.primary" type="MethodRouter" impl="metaharness_ext.ai4pde.components.method_router" version="0.1.0" />
+    <Component id="solver_executor.primary" type="SolverExecutor" impl="metaharness_ext.ai4pde.components.solver_executor" version="0.1.0" />
+    <Component id="physics_validator.primary" type="PhysicsValidator" impl="metaharness_ext.ai4pde.components.physics_validator" version="0.1.0" />
+    <Component id="evidence_manager.primary" type="EvidenceManager" impl="metaharness_ext.ai4pde.components.evidence_manager" version="0.1.0" protected="true" />
+  </Components>
+  <Connections>
+    <Connection id="c1" from="pde_gateway.primary.task" to="problem_formulator.primary.task" payload="PDETaskRequest" mode="sync" policy="required" />
+    <Connection id="c2" from="problem_formulator.primary.formulated_task" to="method_router.primary.task" payload="PDETaskRequest" mode="sync" policy="required" />
+    <Connection id="c3" from="method_router.primary.plan" to="solver_executor.primary.plan" payload="PDEPlan" mode="sync" policy="required" />
+    <Connection id="c4" from="solver_executor.primary.run_artifact" to="physics_validator.primary.run_artifact" payload="PDERunArtifact" mode="sync" policy="required" />
+    <Connection id="c5" from="solver_executor.primary.run_artifact" to="evidence_manager.primary.run_artifact" payload="PDERunArtifact" mode="sync" policy="required" />
+    <Connection id="c6" from="physics_validator.primary.validation_bundle" to="evidence_manager.primary.validation_bundle" payload="ValidationBundle" mode="sync" policy="required" />
+  </Connections>
+</Harness>

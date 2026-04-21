@@ -1,0 +1,8 @@
+<Harness version="0.1.0" graphVersion="4" schemaVersion="1.1">
+  <Components>
+    <Component id="policy.primary" type="Policy" impl="metaharness.components.policy" version="0.1.0" protected="true" />
+    <Component id="policy.secondary" type="Policy" impl="metaharness.components.policy" version="0.1.0" protected="true" />
+  </Components>
+  <Connections>
+  </Connections>
+</Harness>

@@ -1,0 +1,10 @@
+<Harness version="0.1.0" graphVersion="3" schemaVersion="1.1">
+  <Components>
+    <Component id="runtime.primary" type="Runtime" impl="metaharness.components.runtime" version="0.1.0" />
+    <Component id="planner.primary" type="Planner" impl="metaharness.components.planner" version="0.1.0" />
+  </Components>
+  <Connections>
+    <Connection id="c1" from="runtime.primary.result" to="planner.primary.task" payload="TaskRequest" mode="sync" policy="required" />
+    <Connection id="c2" from="planner.primary.plan" to="runtime.primary.task" payload="TaskRequest" mode="sync" policy="required" />
+  </Connections>
+</Harness>
