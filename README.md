@@ -232,8 +232,30 @@ MHE/
 │   ├── provenance/
 │   ├── safety/
 │   └── sdk/
+├── src/metaharness_ext/
+│   ├── ai4pde/
+│   └── nektar/
 └── tests/
 ```
+
+Key notes:
+
+- `src/metaharness/`: core Meta-Harness runtime, SDK, safety, optimizer, provenance, and hot-reload implementation.
+- `src/metaharness/components/`: built-in component implementations such as gateway, planner, runtime, policy, and evaluation.
+- `src/metaharness/config/`: XML parsing, XSD schema, and configuration validation utilities.
+- `src/metaharness/core/`: graph model, lifecycle tracking, validators, event bus, and connection engine internals.
+- `src/metaharness/hotreload/`: checkpoint, migration, observation window, and swap orchestration logic.
+- `src/metaharness/identity/`: identity boundary and attestation-related abstractions.
+- `src/metaharness/observability/`: metrics, traces, and trajectory capture for runtime inspection.
+- `src/metaharness/optimizer/`: action space, convergence, fitness, search strategies, and template-based optimization.
+- `src/metaharness/provenance/`: audit logging, evidence, Merkle anchoring, and provenance query support.
+- `src/metaharness/safety/`: sandbox validation, gates, rollback hooks, policy veto, and safety pipeline logic.
+- `src/metaharness/sdk/`: component SDK, manifest loading, discovery, registry, and runtime injection infrastructure.
+- `src/metaharness_ext/ai4pde/`: AI4PDE domain extension for PDE-oriented agent workflows and policies.
+- `src/metaharness_ext/nektar/`: Nektar++ integration for session compilation, solver execution, postprocess, and validation.
+- `docs/`: primary documentation tree, including guides, ADRs, blueprints, and wiki material.
+- `examples/`: reference graphs and manifests for demos, tests, and baseline setups.
+- `tests/`: pytest suite covering the core runtime and both extension packages.
 
 ## Requirements
 
