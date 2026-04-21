@@ -1,0 +1,4 @@
+.omc/
+docs/wiki/meta-harness-book/main.*
+!docs/wiki/meta-harness-book/main.tex
+!docs/wiki/meta-harness-book/main.pdf
