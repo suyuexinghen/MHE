@@ -323,7 +323,11 @@ class ConvergenceStudyComponent(HarnessComponent):
         spec: ConvergenceStudySpec,
     ) -> tuple[ConvergenceTrialReport | None, bool, str | None]:
         for trial in metric_series:
-            if trial.metric_value is not None and trial.metric_value <= float(spec.target_tolerance):
+            if (
+                trial.passed
+                and trial.metric_value is not None
+                and trial.metric_value <= float(spec.target_tolerance)
+            ):
                 return trial, True, (
                     f"First trial meeting absolute tolerance {float(spec.target_tolerance):.6g}."
                 )
@@ -342,7 +346,7 @@ class ConvergenceStudyComponent(HarnessComponent):
             if previous.metric_value is None or current.metric_value is None or previous.metric_value <= 0:
                 continue
             ratio = current.metric_value / previous.metric_value
-            if ratio <= spec.relative_drop_ratio:
+            if ratio <= spec.relative_drop_ratio and current.passed:
                 return current, True, (
                     f"Error ratio {ratio:.6g} met relative_drop threshold {spec.relative_drop_ratio:.6g}."
                 )
@@ -367,9 +371,11 @@ class ConvergenceStudyComponent(HarnessComponent):
             delta = abs(ratios[index] - ratios[index - 1])
             if delta < spec.plateau_tolerance:
                 recommended = metric_series[index + 1]
-                return recommended, True, (
-                    f"Drop-ratio change {delta:.6g} was within plateau tolerance {spec.plateau_tolerance:.6g}."
-                )
+                if recommended.passed:
+                    return recommended, True, (
+                        f"Drop-ratio change {delta:.6g} was within plateau tolerance"
+                        f" {spec.plateau_tolerance:.6g}."
+                    )
         fallback = self._fallback_trial(trials)
         if fallback is None:
             return None, False, None

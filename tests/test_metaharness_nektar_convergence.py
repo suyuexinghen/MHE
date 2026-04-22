@@ -106,6 +106,22 @@ class _FakeValidator:
         )
 
 
+class _RejectingValidator:
+    """Always returns passed=False regardless of metric value."""
+
+    def validate_run(self, run: NektarRunArtifact) -> NektarValidationReport:
+        metric = float(run.filter_output.error_norms.get("l2_error_u", 99.0))
+        return NektarValidationReport(
+            task_id=run.task_id,
+            passed=False,
+            solver_exited_cleanly=True,
+            field_files_exist=True,
+            error_vs_reference=False,
+            messages=["rejected"],
+            metrics={"l2_error_u": metric},
+        )
+
+
 class _RaisingExecutor:
     def execute_plan(self, plan) -> NektarRunArtifact:
         raise RuntimeError("compile chain failed")
@@ -184,7 +200,7 @@ async def test_convergence_study_absolute_rule_requires_target_tolerance(tmp_pat
 async def test_convergence_study_relative_drop_stops_on_first_match(tmp_path: Path) -> None:
     component = ConvergenceStudyComponent()
     await component.activate(ComponentRuntime(storage_path=tmp_path))
-    executor = _MetricExecutor({2: 1.0, 4: 0.7, 8: 0.3})
+    executor = _MetricExecutor({2: 1.0, 4: 0.6, 8: 0.15})
     spec = ConvergenceStudySpec(
         study_id="study-relative",
         task_id="task-relative",
@@ -208,7 +224,7 @@ async def test_convergence_study_relative_drop_stops_on_first_match(tmp_path: Pa
     assert executor.calls == [2, 4, 8]
     assert report.recommended_value == 8
     assert report.converged is True
-    assert report.drop_ratios == pytest.approx([0.7, 0.4285714286])
+    assert report.drop_ratios == pytest.approx([0.6, 0.25])
 
 
 @pytest.mark.asyncio

@@ -5,6 +5,9 @@ CAP_DEEPMD_ENV_PROBE = "deepmd.environment.probe"
 CAP_DEEPMD_TRAIN_RUN = "deepmd.train.run"
 CAP_DEEPMD_MODEL_FREEZE = "deepmd.model.freeze"
 CAP_DEEPMD_MODEL_TEST = "deepmd.model.test"
+CAP_DEEPMD_MODEL_COMPRESS = "deepmd.model.compress"
+CAP_DEEPMD_MODEL_DEVI = "deepmd.model.devi"
+CAP_DEEPMD_NEIGHBOR_STAT = "deepmd.dataset.neighbor_stat"
 CAP_DEEPMD_VALIDATE = "deepmd.validation.check"
 
 CANONICAL_CAPABILITIES = frozenset(
@@ -14,6 +17,9 @@ CANONICAL_CAPABILITIES = frozenset(
         CAP_DEEPMD_TRAIN_RUN,
         CAP_DEEPMD_MODEL_FREEZE,
         CAP_DEEPMD_MODEL_TEST,
+        CAP_DEEPMD_MODEL_COMPRESS,
+        CAP_DEEPMD_MODEL_DEVI,
+        CAP_DEEPMD_NEIGHBOR_STAT,
         CAP_DEEPMD_VALIDATE,
     }
 )

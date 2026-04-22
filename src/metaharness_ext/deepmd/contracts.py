@@ -5,7 +5,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, model_validator
 
 DeepMDApplicationFamily = Literal["deepmd_train"]
-DeepMDExecutionMode = Literal["train", "freeze", "test"]
+DeepMDExecutionMode = Literal["train", "freeze", "test", "compress", "model_devi", "neighbor_stat"]
 DeepMDRunStatus = Literal["planned", "completed", "failed", "unavailable"]
 
 
@@ -65,6 +65,14 @@ class DeepMDFittingNetSpec(BaseModel):
         return self
 
 
+class DeepMDModeInputSpec(BaseModel):
+    model_path: str | None = None
+    output_model_path: str | None = None
+    system_path: str | None = None
+    system_paths: list[str] = Field(default_factory=list)
+    sample_count: int | None = None
+
+
 class DeepMDTrainSpec(BaseModel):
     task_id: str
     application_family: DeepMDApplicationFamily = "deepmd_train"
@@ -77,6 +85,7 @@ class DeepMDTrainSpec(BaseModel):
     learning_rate: dict[str, Any] = Field(default_factory=dict)
     loss: dict[str, Any] = Field(default_factory=dict)
     working_directory: str | None = None
+    mode_inputs: DeepMDModeInputSpec = Field(default_factory=DeepMDModeInputSpec)
 
     @model_validator(mode="after")
     def validate_type_map(self) -> "DeepMDTrainSpec":
@@ -84,6 +93,25 @@ class DeepMDTrainSpec(BaseModel):
             raise ValueError("spec type_map must match dataset type_map when provided")
         if not self.type_map:
             self.type_map = list(self.dataset.type_map)
+
+        mode = self.executable.execution_mode
+        system_paths = [
+            *self.mode_inputs.system_paths,
+            *([self.mode_inputs.system_path] if self.mode_inputs.system_path else []),
+        ]
+        if mode == "compress":
+            if not self.mode_inputs.model_path:
+                raise ValueError("compress mode requires mode_inputs.model_path")
+            if self.mode_inputs.output_model_path is None:
+                self.mode_inputs.output_model_path = "compressed_model.pb"
+        elif mode == "model_devi":
+            if not self.mode_inputs.model_path:
+                raise ValueError("model_devi mode requires mode_inputs.model_path")
+            if not system_paths:
+                raise ValueError("model_devi mode requires at least one system path")
+        elif mode == "neighbor_stat":
+            if not system_paths:
+                raise ValueError("neighbor_stat mode requires at least one system path")
         return self
 
 
@@ -106,6 +134,7 @@ class DeepMDRunPlan(BaseModel):
     dataset_paths: list[str] = Field(default_factory=list)
     input_json: dict[str, Any] = Field(default_factory=dict)
     executable: DeepMDExecutableSpec
+    mode_inputs: DeepMDModeInputSpec = Field(default_factory=DeepMDModeInputSpec)
 
 
 class DeepMDDiagnosticSummary(BaseModel):
@@ -114,6 +143,9 @@ class DeepMDDiagnosticSummary(BaseModel):
     rmse_e_trn: float | None = None
     rmse_f_trn: float | None = None
     test_metrics: dict[str, float] = Field(default_factory=dict)
+    compressed_model_path: str | None = None
+    model_devi_metrics: dict[str, float] = Field(default_factory=dict)
+    neighbor_stat_metrics: dict[str, float] = Field(default_factory=dict)
     messages: list[str] = Field(default_factory=list)
 
 
@@ -141,7 +173,11 @@ class DeepMDValidationReport(BaseModel):
     status: Literal[
         "environment_invalid",
         "trained",
+        "frozen",
         "tested",
+        "compressed",
+        "model_devi_computed",
+        "neighbor_stat_computed",
         "runtime_failed",
         "validation_failed",
     ]

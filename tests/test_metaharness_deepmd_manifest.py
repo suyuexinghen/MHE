@@ -7,8 +7,11 @@ from metaharness.sdk.manifest import ComponentManifest
 from metaharness_ext.deepmd.capabilities import (
     CAP_DEEPMD_CASE_COMPILE,
     CAP_DEEPMD_ENV_PROBE,
+    CAP_DEEPMD_MODEL_COMPRESS,
+    CAP_DEEPMD_MODEL_DEVI,
     CAP_DEEPMD_MODEL_FREEZE,
     CAP_DEEPMD_MODEL_TEST,
+    CAP_DEEPMD_NEIGHBOR_STAT,
     CAP_DEEPMD_TRAIN_RUN,
     CAP_DEEPMD_VALIDATE,
 )
@@ -48,7 +51,14 @@ EXPECTED_MANIFESTS = {
         "entry": "metaharness_ext.deepmd.executor:DeepMDExecutorComponent",
         "slot": DEEPMD_EXECUTOR_SLOT,
         "output": "run",
-        "capabilities": [CAP_DEEPMD_MODEL_FREEZE, CAP_DEEPMD_MODEL_TEST, CAP_DEEPMD_TRAIN_RUN],
+        "capabilities": [
+            CAP_DEEPMD_MODEL_COMPRESS,
+            CAP_DEEPMD_MODEL_DEVI,
+            CAP_DEEPMD_MODEL_FREEZE,
+            CAP_DEEPMD_MODEL_TEST,
+            CAP_DEEPMD_NEIGHBOR_STAT,
+            CAP_DEEPMD_TRAIN_RUN,
+        ],
     },
     "validator.json": {
         "name": "deepmd_validator",
@@ -75,7 +85,7 @@ def test_metaharness_deepmd_manifests_are_valid() -> None:
         assert manifest.entry == expected["entry"]
         assert manifest.contracts.slots[0].slot == expected["slot"]
         assert manifest.contracts.outputs[0].name == expected["output"]
-        assert manifest.all_provided_capabilities() == expected["capabilities"]
+        assert sorted(manifest.all_provided_capabilities()) == sorted(expected["capabilities"])
 
 
 def test_metaharness_deepmd_manifest_entries_are_importable() -> None:

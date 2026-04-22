@@ -15,20 +15,20 @@
 
 ### `DeepMDExecutionMode`
 
+当前实现已经落地并受测试覆盖的 execution mode 为：
+
 ```python
 Literal[
-    "prepare_data",
     "train",
     "freeze",
-    "compress",
     "test",
+    "compress",
     "model_devi",
     "neighbor_stat",
-    "convert_from",
 ]
 ```
 
-这里的 mode 设计应尽量贴近上游实际 CLI，而不是抽象成过粗的 `apply`。对于部署与推理路径，建议在 artifact / evidence 层再区分 Python、C/C++、LAMMPS 等不同消费语义。
+这里的 mode 仍然尽量贴近上游 DeePMD CLI，但首版 contract 只覆盖已经接入到统一 `compiler -> executor -> validator` 管线中的六种命令；`prepare_data`、`convert_from` 等更外围命令暂不纳入当前 typed surface。
 
 ### `DeepMDDatasetSpec`
 
@@ -96,50 +96,65 @@ Literal[
 - `seed: int | None = None`
 - `trainable: bool | list[bool] | None = None`
 
+### `DeepMDModeInputSpec`
+
+phase-two 在不新增 task family 的前提下，引入了一层轻量 mode-specific 输入：
+
+- `model_path: str | None = None`
+- `output_model_path: str | None = None`
+- `system_path: str | None = None`
+- `system_paths: list[str] = []`
+- `sample_count: int | None = None`
+
+当前 contract 约束为：
+
+- `compress` 需要 `mode_inputs.model_path`，若未给定 `output_model_path`，默认补成 `compressed_model.pb`
+- `model_devi` 需要 `mode_inputs.model_path` 且至少一个 system path
+- `neighbor_stat` 需要至少一个 system path
+- `test` 的 dataset path 优先来自 `mode_inputs.system_paths` / `mode_inputs.system_path`，否则回落到 dataset 中的 train/validation systems
+
 ### `DeepMDTrainSpec`
 
-字段建议：
+当前实现中的核心字段为：
 
 - `task_id: str`
-- `study_id: str | None = None`
-- `execution_mode: DeepMDExecutionMode`
+- `application_family: Literal["deepmd_train"]`
+- `executable: DeepMDExecutableSpec`
 - `dataset: DeepMDDatasetSpec`
 - `type_map: list[str]`
 - `descriptor: DeepMDDescriptorSpec`
 - `fitting_net: DeepMDFittingNetSpec`
-- `learning_rate: dict[str, object]`
-- `loss: dict[str, object]`
-- `training: dict[str, object]`
+- `training: dict[str, Any]`
+- `learning_rate: dict[str, Any]`
+- `loss: dict[str, Any]`
 - `working_directory: str | None = None`
-- `restart_from: str | None = None`
-- `init_model_path: str | None = None`
-- `init_frozen_model_path: str | None = None`
-- `finetune_from: str | None = None`
-- `frozen_model_path: str | None = None`
-- `compressed_model_path: str | None = None`
+- `mode_inputs: DeepMDModeInputSpec`
 
-这里应显式区分几类初始化/恢复语义，因为它们直接影响 validator 和 workspace 恢复边界：
-
-- `--init-model`
-- `--restart`
-- `--init-frz-model`
-- finetune / transfer-learning
-
-如果 contract 不把这些路径单独表达，后续很容易把“冷启动训练”“断点恢复”“冻结模型继续训练”混成同一种 run。
+首版依然保持 `DeepMDTrainSpec` 作为唯一任务合同，不拆新的 spec family。也就是说，`train`、`freeze`、`test`、`compress`、`model_devi`、`neighbor_stat` 都通过同一个 typed task 进入 compiler，只在 `mode_inputs` 与 `execution_mode` 上做最小分流。
 
 ### `DeepMDRunPlan`
 
-字段建议：
+当前实现中的核心字段为：
 
 - `task_id: str`
 - `run_id: str`
-- `execution_mode: str`
+- `execution_mode: DeepMDExecutionMode`
 - `command: list[str]`
 - `working_directory: str`
 - `input_json_path: str | None`
 - `expected_outputs: list[str]`
 - `expected_logs: list[str]`
 - `dataset_paths: list[str]`
+- `input_json: dict[str, Any]`
+- `executable: DeepMDExecutableSpec`
+- `mode_inputs: DeepMDModeInputSpec`
+
+当前 plan 生成语义是：
+
+- `train` 会生成 `input_json`，并把 `input_json_path` 指向 `input.json`
+- 非 `train` 模式不强制写训练 JSON，通常使用 `input_json = {}` 与 `input_json_path = None`
+- `dataset_paths` 优先取 `mode_inputs.system_paths` / `mode_inputs.system_path`，再回落到 dataset 的 train/validation systems
+- `expected_outputs` 会按模式变化：`frozen_model.pb`、`test.out`、`compressed_model.pb`、`model_devi.out`、`neighbor_stat.out`
 
 ### `DeepMDRunArtifact`
 
@@ -160,56 +175,69 @@ Literal[
 
 ### `DeepMDDiagnosticSummary`
 
-字段建议：
+当前实现已经落地的 summary 字段为：
 
 - `learning_curve_path: str | None`
 - `last_step: int | None`
-- `rmse_val: float | None`
-- `rmse_trn: float | None`
-- `rmse_e_val: float | None`
 - `rmse_e_trn: float | None`
-- `rmse_f_val: float | None`
 - `rmse_f_trn: float | None`
-- `learning_rate_final: float | None`
-- `checkpoint_count: int | None`
-- `frozen_model_path: str | None`
-- `compressed_model_path: str | None`
-- `neighbor_stat_summary: dict[str, float | int] | None`
 - `test_metrics: dict[str, float]`
-- `test_detail_files: list[str]`
-- `training_env_summary: dict[str, str]`
+- `compressed_model_path: str | None`
+- `model_devi_metrics: dict[str, float]`
+- `neighbor_stat_metrics: dict[str, float]`
 - `messages: list[str]`
 
-除了“RMSE 是否存在”，summary 还应能回答：
+其中 phase-two 新增并已接入 executor stdout / diagnostic-file 解析的字段主要是：
 
-- 训练是否真的持续保存 checkpoint
-- `freeze` / `compress` 是否真正产出了可交付模型
-- `neighbor-stat` 是否给出了可复用的 `sel` 依据
-- `dp test -d <prefix>` 一类细节文件是否可追踪
-- 当前训练环境、版本与 launcher 线索是否可审计
+- `compressed_model_path`：记录 `compress` 模式识别到的压缩模型路径
+- `model_devi_metrics`：承载 `model_devi` 的解析结果，例如 `max_devi_f`、`avg_devi_f`、`min_devi_f`
+- `neighbor_stat_metrics`：承载 `neighbor_stat` 的解析结果，例如 `min_nbor_dist`、`max_nbor_size`，以及由 `sel = [...]` 提取出的数值槽位
+
+因此 summary 不再只回答“RMSE 是否存在”，还要能回答：
+
+- `compress` 是否真的产出了可交付的 `.pb` 模型
+- `model_devi` 是否输出了最小可解释的偏差统计
+- `neighbor_stat` 是否输出了可复用的邻居统计与 `sel` 线索
+- phase-two stdout 与 `*.out` 诊断文件中的值是否已经被收敛到统一 typed summary 中
 
 ### `DeepMDValidationReport`
 
-字段建议：
+当前实现中的字段为：
 
 - `task_id: str`
 - `run_id: str`
 - `passed: bool`
 - `status: Literal[
     "environment_invalid",
-    "input_invalid",
-    "prepared",
     "trained",
     "frozen",
-    "compressed",
     "tested",
+    "compressed",
+    "model_devi_computed",
+    "neighbor_stat_computed",
     "runtime_failed",
     "validation_failed",
-    "scientific_check_failed",
   ]`
 - `messages: list[str]`
 - `summary_metrics: dict[str, float | str]`
 - `evidence_files: list[str]`
+
+这里的 validator 语义已经与 phase-two 模式对齐：
+
+- 缺失 binary 或环境不可用时返回 `environment_invalid`
+- 非零退出、超时或运行期失败返回 `runtime_failed`
+- 零退出但没有足够 evidence 时返回 `validation_failed`
+- `freeze` 成功状态是 `frozen`，而不是复用 `trained`
+- `compress` 成功状态是 `compressed`
+- `model_devi` 成功状态是 `model_devi_computed`
+- `neighbor_stat` 成功状态是 `neighbor_stat_computed`
+
+`summary_metrics` 也已经承担 phase-two 的对外汇总职责：
+
+- `compress` 会同步 `compressed_model_path`
+- `model_devi` 会同步 `model_devi_metrics`
+- `neighbor_stat` 会同步 `neighbor_stat_metrics`
+- `train` / `test` 仍会继续同步 `last_step`、`rmse_e_trn`、`rmse_f_trn` 与 `test_metrics`
 
 ---
 
@@ -374,23 +402,23 @@ artifact provenance 最好还能回答“哪个命令产生了什么”：
 
 ### 3.6.1 最小工程证据
 
-首版至少应检查：
+当前 DeePMD 首版至少检查：
 
 - binary / Python env / launcher 是否存在
-- required config / dataset / model paths 是否存在
-- 关键目录结构是否建立
-- checkpoint / frozen / compressed model 是否生成
-- `record.dpgen` 与 iteration 目录是否一致
+- required dataset / model path 是否存在并能进入命令构造
+- `train` 是否生成 checkpoint 或 `lcurve.out`
+- `freeze` / `compress` 是否生成 `.pb` 模型文件
+- `model_devi` / `neighbor_stat` 是否生成最小诊断 evidence（stdout 或 `*.out`）
 
 ### 3.6.2 最小科学证据
 
-首版至少应支持：
+当前 DeePMD 首版至少支持：
 
-- `lcurve.out` 是否显示 loss 有界且可解析
-- `dp test` 是否产生 energy / force / virial RMSE
-- `model_devi.out` 是否可解析 candidate / accurate / failed 分布
-- autotest 是否产出最小性质报告
-- 当 workflow 提供必要信息时，validator 能返回最小科学结论，而不仅是 `return_code == 0`
+- `lcurve.out` 是否能提供最小训练收敛线索
+- `dp test` 是否产生 parseable RMSE metrics
+- `dp model_devi` 是否能解析最小偏差统计，如 `max_devi_f`、`avg_devi_f`、`min_devi_f`
+- `dp neighbor_stat` 是否能解析最小邻居统计，如 `min_nbor_dist`、`max_nbor_size` 与 `sel`
+- 当 workflow 提供必要信息时，validator 能返回 mode-specific 成功状态，而不仅是 `return_code == 0`
 
 ### 3.6.3 不应延后的领域判据
 

@@ -1,5 +1,6 @@
-import asyncio
 from pathlib import Path
+
+import pytest
 
 from metaharness.config.xml_parser import parse_graph_xml
 from metaharness.core.connection_engine import ConnectionEngine
@@ -32,7 +33,8 @@ def _build_registry(manifest_dir: Path) -> ComponentRegistry:
     return registry
 
 
-def test_deepmd_minimal_path_runs(examples_dir: Path, monkeypatch, tmp_path: Path) -> None:
+@pytest.mark.asyncio
+async def test_deepmd_minimal_path_runs(examples_dir: Path, monkeypatch, tmp_path: Path) -> None:
     manifest_dir = examples_dir / "manifests" / "deepmd"
     graphs_dir = examples_dir / "graphs"
     registry = _build_registry(manifest_dir)
@@ -48,7 +50,7 @@ def test_deepmd_minimal_path_runs(examples_dir: Path, monkeypatch, tmp_path: Pat
     compiler = DeepMDTrainConfigCompilerComponent()
     executor = DeepMDExecutorComponent()
     validator = DeepMDValidatorComponent()
-    asyncio.run(executor.activate(ComponentRuntime(storage_path=tmp_path)))
+    await executor.activate(ComponentRuntime(storage_path=tmp_path))
 
     dataset_dir = examples_dir / "deepmd-demo-system"
     dataset_dir.mkdir(exist_ok=True)

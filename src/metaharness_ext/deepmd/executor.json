@@ -34,6 +34,18 @@
       {
         "name": "deepmd.model.test",
         "description": ""
+      },
+      {
+        "name": "deepmd.model.compress",
+        "description": ""
+      },
+      {
+        "name": "deepmd.model.devi",
+        "description": ""
+      },
+      {
+        "name": "deepmd.dataset.neighbor_stat",
+        "description": ""
       }
     ],
     "requires": [],
@@ -55,6 +67,9 @@
   "provides": [
     "deepmd.train.run",
     "deepmd.model.freeze",
-    "deepmd.model.test"
+    "deepmd.model.test",
+    "deepmd.model.compress",
+    "deepmd.model.devi",
+    "deepmd.dataset.neighbor_stat"
   ]
 }

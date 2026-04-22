@@ -1,11 +1,21 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 from metaharness.sdk.api import HarnessAPI
 from metaharness.sdk.base import HarnessComponent
 from metaharness.sdk.runtime import ComponentRuntime
 from metaharness_ext.deepmd.capabilities import CAP_DEEPMD_VALIDATE
 from metaharness_ext.deepmd.contracts import DeepMDRunArtifact, DeepMDValidationReport
 from metaharness_ext.deepmd.slots import DEEPMD_VALIDATOR_SLOT
+
+
+def _is_success_exit_code(value: object) -> bool:
+    return value in {0, 0.0, "0"}
+
+
+def _has_named_artifact(paths: Iterable[str], suffix: str) -> bool:
+    return any(path.endswith(suffix) for path in paths)
 
 
 class DeepMDValidatorComponent(HarnessComponent):
@@ -73,7 +83,7 @@ class DeepMDValidatorComponent(HarnessComponent):
                 messages.append("Training produced checkpoints or a learning curve.")
         elif artifact.execution_mode == "freeze":
             passed = any(path.endswith(".pb") for path in artifact.model_files)
-            status = "trained" if passed else "validation_failed"
+            status = "frozen" if passed else "validation_failed"
             if passed:
                 messages.append("Freeze produced a frozen model artifact.")
         elif artifact.execution_mode == "test":
@@ -82,6 +92,34 @@ class DeepMDValidatorComponent(HarnessComponent):
             if passed:
                 messages.append("Test produced parseable RMSE metrics.")
                 metrics.update(artifact.summary.test_metrics)
+        elif artifact.execution_mode == "compress":
+            compressed_model_path = artifact.summary.compressed_model_path
+            passed = _has_named_artifact(artifact.model_files, "compressed_model.pb") or (
+                compressed_model_path is not None and compressed_model_path.endswith(".pb")
+            )
+            status = "compressed" if passed else "validation_failed"
+            if passed:
+                messages.append("Compress produced a compressed model artifact.")
+                if compressed_model_path is not None:
+                    metrics["compressed_model_path"] = compressed_model_path
+        elif artifact.execution_mode == "model_devi":
+            passed = bool(
+                artifact.diagnostic_files
+                or (artifact.stdout_path and _is_success_exit_code(artifact.result_summary.get("exit_code")))
+            )
+            status = "model_devi_computed" if passed else "validation_failed"
+            if passed:
+                messages.append("Model deviation diagnostics were produced.")
+                metrics.update(artifact.summary.model_devi_metrics)
+        elif artifact.execution_mode == "neighbor_stat":
+            passed = bool(
+                artifact.diagnostic_files
+                or (artifact.stdout_path and _is_success_exit_code(artifact.result_summary.get("exit_code")))
+            )
+            status = "neighbor_stat_computed" if passed else "validation_failed"
+            if passed:
+                messages.append("Neighbor statistics diagnostics were produced.")
+                metrics.update(artifact.summary.neighbor_stat_metrics)
 
         if artifact.summary.last_step is not None:
             metrics["last_step"] = float(artifact.summary.last_step)
