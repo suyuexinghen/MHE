@@ -1,0 +1,50 @@
+{
+  "name": "deepmd_environment",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.deepmd.environment:DeepMDEnvironmentProbeComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [
+      {
+        "name": "task",
+        "type": "DeepMDTrainSpec",
+        "required": true,
+        "description": ""
+      }
+    ],
+    "outputs": [
+      {
+        "name": "environment",
+        "type": "DeepMDEnvironmentReport",
+        "mode": "sync",
+        "description": ""
+      }
+    ],
+    "events": [],
+    "provides": [
+      {
+        "name": "deepmd.environment.probe",
+        "description": ""
+      }
+    ],
+    "requires": [],
+    "slots": [
+      {
+        "slot": "deepmd_environment.primary",
+        "binding": "primary",
+        "required": true
+      }
+    ]
+  },
+  "safety": {
+    "protected": false,
+    "mutability": "mutable",
+    "sandbox_profile": null,
+    "hot_swap": true
+  },
+  "state_schema_version": 1,
+  "provides": [
+    "deepmd.environment.probe"
+  ]
+}
