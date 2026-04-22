@@ -83,6 +83,7 @@ Key contracts: `NektarProblemSpec`, `NektarSessionPlan`, `NektarRunArtifact`, `C
 Supported solver families: `ADR` (advection-diffusion-reaction) and `IncNS` (incompressible Navier-Stokes)
 
 For details, see:
+- `MHE/docs/AI4PDE_NEKTAR_COMPARISON_MANUAL.md` for the current same-problem AI4PDE vs Nektar comparison workflow and interpretation limits
 - `MHE/docs/wiki/meta-harness-engineer/nektar-engine-wiki/`
 - `MHE/src/metaharness_ext/nektar/`
 
@@ -111,6 +112,7 @@ Key contracts: `PDETaskRequest`, `PDEPlan`, `PDERunArtifact`, `ValidationBundle`
 Supported solver families: `pinn_strong`, `dem_energy`, `operator_learning`, `pino`, `classical_hybrid`
 
 For details, see:
+- `MHE/docs/AI4PDE_NEKTAR_COMPARISON_MANUAL.md` for the current same-problem AI4PDE vs Nektar comparison workflow and interpretation limits
 - `MHE/docs/wiki/meta-harness-engineer/ai4pde-agent-wiki/`
 - `MHE/src/metaharness_ext/ai4pde/`
 

@@ -10,6 +10,10 @@
   - `metaharness_ext.nektar` 的架构、contracts、执行链、测试与 roadmap
 - [ai4pde-agent-wiki/](ai4pde-agent-wiki/README.md)
   - `metaharness_ext.ai4pde` 的 runtime、数据模型、治理、模板与 roadmap
+- [jedi-engine-wiki/](jedi-engine-wiki/README.md)
+  - `metaharness_ext.jedi` 的扩展设计 wiki：架构、contracts、执行链与实施路径
+- [deepmd-engine-wiki/](deepmd-engine-wiki/README.md)
+  - `metaharness_ext.deepmd` 的 JSON/workspace 执行模型、contracts、blueprint 与 roadmap
 
 ## 推荐阅读路径
 
@@ -27,3 +31,15 @@
 
 先看：
 - [ai4pde-agent-wiki/README.md](ai4pde-agent-wiki/README.md)
+
+### 如果你正在规划或实现 JEDI 扩展
+
+先看：
+- [jedi-engine-wiki/README.md](jedi-engine-wiki/README.md)
+
+### 如果你正在规划或实现 DeepMD 扩展
+
+先看：
+- [deepmd-engine-wiki/README.md](deepmd-engine-wiki/README.md)
+- [blueprint/04-deepmd-extension-blueprint.md](blueprint/04-deepmd-extension-blueprint.md)
+- [blueprint/04-deepmd-roadmap.md](blueprint/04-deepmd-roadmap.md)

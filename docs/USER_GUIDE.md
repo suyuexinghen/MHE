@@ -13,6 +13,8 @@ It focuses on the practical surfaces that work today:
 
 For internal architecture details, read `MHE/docs/TECHNICAL_MANUAL.md` after this guide.
 
+For a cross-extension workflow that runs `AI4PDE` and `Nektar` against the same PDE problem definition and compares their outputs honestly, read `MHE/docs/AI4PDE_NEKTAR_COMPARISON_MANUAL.md`.
+
 ## 1. What MHE Is
 
 MHE is a contract-first runtime for assembling and operating a graph of components.
@@ -649,6 +651,9 @@ report = study.run_study(spec, executor=executor, postprocessor=postprocessor, v
 For full Nektar extension documentation, see:
 `MHE/docs/wiki/meta-harness-engineer/nektar-engine-wiki/`
 
+For the current AI4PDE-versus-Nektar same-problem run-and-compare workflow, see:
+`MHE/docs/AI4PDE_NEKTAR_COMPARISON_MANUAL.md`
+
 ### 15.2 AI4PDE Extension (`metaharness_ext.ai4pde`)
 
 The AI4PDE extension provides a multi-layer scientific-agent runtime.
@@ -674,6 +679,9 @@ template = catalog.get("forward-solid-mechanics")
 
 For full AI4PDE extension documentation, see:
 `MHE/docs/wiki/meta-harness-engineer/ai4pde-agent-wiki/`
+
+For the current AI4PDE-versus-Nektar same-problem run-and-compare workflow, see:
+`MHE/docs/AI4PDE_NEKTAR_COMPARISON_MANUAL.md`
 
 ## 16. Common Workflows
 

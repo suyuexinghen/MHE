@@ -6,7 +6,7 @@
 
 - [meta-harness-engineer/](meta-harness-engineer/README.md)
   - 工程实现导向的技术 wiki
-  - 包含：Meta-Harness 核心 wiki、Nektar extension wiki、AI4PDE agent wiki
+  - 包含：Meta-Harness 核心 wiki、Nektar extension wiki、AI4PDE agent wiki、JEDI extension wiki、DeepMD extension wiki
 - [meta-harness-book/](meta-harness-book/README.md)
   - 研究/设计手册与论文式资料
   - 包含：章节草稿、研究报告、参考文献、导出的 PDF
@@ -27,6 +27,17 @@
 
 先看：
 - [meta-harness-engineer/ai4pde-agent-wiki/README.md](meta-harness-engineer/ai4pde-agent-wiki/README.md)
+
+### 如果你要理解 JEDI 扩展设计
+
+先看：
+- [meta-harness-engineer/jedi-engine-wiki/README.md](meta-harness-engineer/jedi-engine-wiki/README.md)
+
+### 如果你要理解 DeepMD 扩展规划
+
+先看：
+- [meta-harness-engineer/README.md](meta-harness-engineer/README.md)
+- [meta-harness-engineer/deepmd-engine-wiki/README.md](meta-harness-engineer/deepmd-engine-wiki/README.md)
 
 ### 如果你要看更完整的研究背景或设计论述
 
