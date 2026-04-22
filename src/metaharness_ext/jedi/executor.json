@@ -30,6 +30,10 @@
       {
         "name": "jedi.validate_only.run",
         "description": ""
+      },
+      {
+        "name": "jedi.real_run.run",
+        "description": ""
       }
     ],
     "requires": [],
@@ -50,6 +54,7 @@
   "state_schema_version": 1,
   "provides": [
     "jedi.schema.generate",
-    "jedi.validate_only.run"
+    "jedi.validate_only.run",
+    "jedi.real_run.run"
   ]
 }

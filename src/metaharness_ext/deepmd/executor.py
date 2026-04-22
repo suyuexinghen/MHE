@@ -281,19 +281,11 @@ class DeepMDExecutorComponent(HarnessComponent):
 
         stdout_file = Path(stdout_path)
         stdout_text = stdout_file.read_text() if stdout_file.exists() else ""
-        has_model_devi_diagnostic = any(
-            Path(diagnostic).name.startswith("model_devi") for diagnostic in diagnostic_files
-        )
-        has_neighbor_stat_diagnostic = any(
-            Path(diagnostic).name.startswith("neighbor_stat") for diagnostic in diagnostic_files
-        )
         if stdout_text:
             self._parse_test_metrics(stdout_text, summary)
             self._parse_compress_output(stdout_text, summary)
-            if not has_model_devi_diagnostic:
-                self._parse_model_devi_output(stdout_text, summary)
-            if not has_neighbor_stat_diagnostic:
-                self._parse_neighbor_stat_output(stdout_text, summary)
+            self._parse_model_devi_output(stdout_text, summary)
+            self._parse_neighbor_stat_output(stdout_text, summary)
 
         for diagnostic in diagnostic_files:
             diagnostic_path = Path(diagnostic)

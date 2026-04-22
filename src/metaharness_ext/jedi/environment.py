@@ -57,6 +57,16 @@ class JediEnvironmentProbeComponent(HarnessComponent):
                 required_paths_present = False
                 messages.append(f"Missing required path: {path}")
 
+        smoke_candidate: str | None = None
+        smoke_ready = False
+        if binary_available and launcher_available and shared_libraries_resolved and required_paths_present:
+            smoke_candidate = "hofx" if isinstance(spec, JediHofXSpec) else spec.application_family
+            smoke_ready = True
+            messages.append(f"Toy smoke candidate ready: {smoke_candidate}.")
+        else:
+            smoke_candidate = "hofx" if isinstance(spec, JediHofXSpec) else "variational"
+            messages.append(f"Toy smoke candidate not ready: {smoke_candidate}.")
+
         return JediEnvironmentReport(
             binary_available=binary_available,
             launcher_available=launcher_available,
@@ -64,6 +74,8 @@ class JediEnvironmentProbeComponent(HarnessComponent):
             required_paths_present=required_paths_present,
             binary_path=binary_path,
             launcher_path=launcher_path,
+            smoke_candidate=smoke_candidate,
+            smoke_ready=smoke_ready,
             messages=messages,
         )
 
@@ -112,4 +124,6 @@ class JediEnvironmentProbeComponent(HarnessComponent):
                 *([spec.initial_condition_path] if spec.initial_condition_path else []),
                 *spec.required_paths,
             ]
-        return []
+        raise NotImplementedError(
+            f"Unsupported JEDI application family for required path resolution: {spec!r}"
+        )

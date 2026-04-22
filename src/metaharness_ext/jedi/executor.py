@@ -1,13 +1,19 @@
 from __future__ import annotations
 
+import shutil
 import subprocess
 from pathlib import Path
 
 from metaharness.sdk.api import HarnessAPI
 from metaharness.sdk.base import HarnessComponent
 from metaharness.sdk.runtime import ComponentRuntime
-from metaharness_ext.jedi.capabilities import CAP_JEDI_SCHEMA, CAP_JEDI_VALIDATE_ONLY
+from metaharness_ext.jedi.capabilities import (
+    CAP_JEDI_REAL_RUN,
+    CAP_JEDI_SCHEMA,
+    CAP_JEDI_VALIDATE_ONLY,
+)
 from metaharness_ext.jedi.contracts import JediRunArtifact, JediRunPlan
+from metaharness_ext.jedi.preprocessor import JediRunPreprocessor
 from metaharness_ext.jedi.slots import JEDI_EXECUTOR_SLOT
 
 
@@ -24,27 +30,28 @@ class JediExecutorComponent(HarnessComponent):
         api.declare_output("run", "JediRunArtifact", mode="sync")
         api.provide_capability(CAP_JEDI_SCHEMA)
         api.provide_capability(CAP_JEDI_VALIDATE_ONLY)
+        api.provide_capability(CAP_JEDI_REAL_RUN)
 
     def execute_plan(self, plan: JediRunPlan) -> JediRunArtifact:
         run_dir = self._resolve_run_dir(plan)
-        config_path = run_dir / "config.yaml"
-        config_path.write_text(plan.config_text)
-
-        if plan.execution_mode == "real_run":
+        try:
+            prepared_inputs = JediRunPreprocessor().prepare(plan, run_dir)
+        except ValueError as error:
             stdout_path, stderr_path = self._write_logs(
                 run_dir,
                 stdout_text="",
-                stderr_text="JEDI Phase 0 only supports schema and validate_only modes.",
+                stderr_text=str(error),
             )
             return self._build_artifact(
                 plan,
                 run_dir=run_dir,
-                command=self._build_command(plan, plan.executable.binary_name, None),
+                command=[plan.executable.binary_name, plan.execution_mode],
                 stdout_path=stdout_path,
                 stderr_path=stderr_path,
                 return_code=None,
                 status="unavailable",
-                result_summary={"fallback_reason": "execution_mode_not_supported", "exit_code": None},
+                prepared_inputs=[],
+                result_summary={"fallback_reason": "missing_required_runtime_path", "exit_code": None},
             )
 
         resolved_binary = self._resolve_binary(plan.executable.binary_name)
@@ -57,11 +64,12 @@ class JediExecutorComponent(HarnessComponent):
             return self._build_artifact(
                 plan,
                 run_dir=run_dir,
-                command=self._build_command(plan, plan.executable.binary_name, None),
+                command=[plan.executable.binary_name, plan.execution_mode],
                 stdout_path=stdout_path,
                 stderr_path=stderr_path,
                 return_code=None,
                 status="unavailable",
+                prepared_inputs=prepared_inputs,
                 result_summary={"fallback_reason": "binary_not_found", "exit_code": None},
             )
 
@@ -82,6 +90,7 @@ class JediExecutorComponent(HarnessComponent):
                     stderr_path=stderr_path,
                     return_code=None,
                     status="unavailable",
+                    prepared_inputs=prepared_inputs,
                     result_summary={"fallback_reason": "launcher_not_found", "exit_code": None},
                 )
 
@@ -113,6 +122,7 @@ class JediExecutorComponent(HarnessComponent):
                 stderr_path=stderr_path,
                 return_code=None,
                 status="failed",
+                prepared_inputs=prepared_inputs,
                 result_summary={"fallback_reason": "command_timeout", "exit_code": None},
             )
 
@@ -130,6 +140,7 @@ class JediExecutorComponent(HarnessComponent):
             stderr_path=stderr_path,
             return_code=result.returncode,
             status=status,
+            prepared_inputs=prepared_inputs,
             result_summary={"fallback_reason": None, "exit_code": result.returncode},
         )
 
@@ -152,9 +163,7 @@ class JediExecutorComponent(HarnessComponent):
             return str(candidate)
         if candidate.exists():
             return str(candidate.resolve())
-        from shutil import which
-
-        return which(binary_name)
+        return shutil.which(binary_name)
 
     def _build_command(
         self,
@@ -166,8 +175,10 @@ class JediExecutorComponent(HarnessComponent):
         if plan.execution_mode == "schema":
             schema_name = Path(plan.schema_path or "schema.json").name
             base_command = [resolved_binary, f"--output-json-schema={schema_name}"]
-        else:
+        elif plan.execution_mode == "validate_only":
             base_command = [resolved_binary, "--validate-only", Path(plan.config_path).name]
+        else:
+            base_command = [resolved_binary, Path(plan.config_path).name]
 
         if resolved_launcher is None:
             return base_command
@@ -217,9 +228,16 @@ class JediExecutorComponent(HarnessComponent):
         stderr_path: str,
         return_code: int | None,
         status: str,
+        prepared_inputs: list[str],
         result_summary: dict[str, object],
     ) -> JediRunArtifact:
         schema_path = run_dir / "schema.json"
+        output_files = self._discover_files(run_dir, plan.expected_outputs)
+        diagnostic_files = [
+            path
+            for path in self._discover_files(run_dir, ["*.log", "*.out", "*.nc", "*.ioda"])
+            if Path(path).name not in {"stdout.log", "stderr.log"}
+        ]
         return JediRunArtifact(
             task_id=plan.task_id,
             run_id=plan.run_id,
@@ -231,7 +249,24 @@ class JediExecutorComponent(HarnessComponent):
             schema_path=str(schema_path) if schema_path.exists() else None,
             stdout_path=stdout_path,
             stderr_path=stderr_path,
+            prepared_inputs=prepared_inputs,
+            output_files=output_files,
+            diagnostic_files=diagnostic_files,
             working_directory=str(run_dir),
             status=status,
             result_summary=result_summary,
         )
+
+    def _discover_files(self, run_dir: Path, patterns: list[str]) -> list[str]:
+        files: list[str] = []
+        seen: set[str] = set()
+        for pattern in patterns:
+            for path in sorted(run_dir.glob(pattern)):
+                if not path.is_file():
+                    continue
+                path_str = str(path)
+                if path_str in seen:
+                    continue
+                seen.add(path_str)
+                files.append(path_str)
+        return files

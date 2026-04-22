@@ -62,7 +62,7 @@ class JediConfigCompilerComponent(HarnessComponent):
         )
         config_text = render_jedi_yaml(build_jedi_config(spec))
         command = [spec.executable.binary_name, spec.executable.execution_mode]
-        expected_outputs = ["schema.json"] if schema_path is not None else []
+        expected_outputs = ["schema.json"] if schema_path is not None else _expected_outputs(spec)
         return JediRunPlan(
             task_id=spec.task_id,
             run_id=run_id,
@@ -74,6 +74,7 @@ class JediConfigCompilerComponent(HarnessComponent):
             schema_path=schema_path,
             expected_outputs=expected_outputs,
             expected_logs=["stdout.log", "stderr.log"],
+            required_runtime_paths=_required_runtime_paths(spec),
             config_text=config_text,
             executable=spec.executable,
         )
@@ -138,6 +139,34 @@ def _build_forecast_config(spec: JediForecastSpec) -> dict[str, Any]:
         "output": spec.output,
         "test": spec.test,
     }
+
+
+def _required_runtime_paths(spec: JediExperimentSpec) -> list[str]:
+    if isinstance(spec, JediVariationalSpec):
+        return [
+            *([spec.background_path] if spec.background_path else []),
+            *([spec.background_error_path] if spec.background_error_path else []),
+            *spec.observation_paths,
+            *spec.required_paths,
+        ]
+    if isinstance(spec, JediLocalEnsembleDASpec):
+        return [*spec.ensemble_paths, *spec.observation_paths, *spec.required_paths]
+    if isinstance(spec, JediHofXSpec):
+        return [*([spec.state_path] if spec.state_path else []), *spec.observation_paths, *spec.required_paths]
+    return [*([spec.initial_condition_path] if spec.initial_condition_path else []), *spec.required_paths]
+
+
+def _expected_outputs(spec: JediExperimentSpec) -> list[str]:
+    output_filename = spec.output.get("filename")
+    if isinstance(output_filename, str) and output_filename.strip():
+        return [output_filename]
+    defaults = {
+        "variational": "analysis.out",
+        "local_ensemble_da": "letkf.out",
+        "hofx": "hofx.out",
+        "forecast": "forecast.out",
+    }
+    return [defaults[spec.application_family]] if spec.executable.execution_mode == "real_run" else []
 
 
 def _render_yaml_lines(value: Any, indent: int) -> list[str]:

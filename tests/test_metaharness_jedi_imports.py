@@ -4,6 +4,7 @@ from metaharness_ext.jedi import (
     CANONICAL_CAPABILITIES,
     CAP_JEDI_CASE_COMPILE,
     CAP_JEDI_ENV_PROBE,
+    CAP_JEDI_REAL_RUN,
     CAP_JEDI_SCHEMA,
     CAP_JEDI_VALIDATE,
     CAP_JEDI_VALIDATE_ONLY,
@@ -14,6 +15,7 @@ from metaharness_ext.jedi import (
     JediLocalEnsembleDASpec,
     JediRunArtifact,
     JediRunPlan,
+    JediRunPreprocessor,
     JediValidationReport,
     JediVariationalSpec,
     build_jedi_config,
@@ -72,9 +74,11 @@ def test_metaharness_jedi_exports_exist() -> None:
     assert CAP_JEDI_ENV_PROBE in CANONICAL_CAPABILITIES
     assert CAP_JEDI_SCHEMA in CANONICAL_CAPABILITIES
     assert CAP_JEDI_VALIDATE_ONLY in CANONICAL_CAPABILITIES
+    assert CAP_JEDI_REAL_RUN in CANONICAL_CAPABILITIES
     assert CAP_JEDI_VALIDATE in CANONICAL_CAPABILITIES
     assert callable(build_jedi_config)
     assert callable(render_jedi_yaml)
+    assert JediRunPreprocessor is not None
 
 
 def test_metaharness_jedi_rejects_invalid_cost_type() -> None:
@@ -89,3 +93,19 @@ def test_metaharness_jedi_rejects_invalid_cost_type() -> None:
 def test_metaharness_jedi_rejects_ctest_style_binary_name() -> None:
     with pytest.raises(ValueError, match="CTest"):
         JediExecutableSpec(binary_name="qg_4dvar_rpcg.x", execution_mode="validate_only")
+
+
+def test_metaharness_jedi_rejects_empty_ensemble_path_and_launcher_arg() -> None:
+    with pytest.raises(ValueError, match="ensemble_paths"):
+        JediLocalEnsembleDASpec(
+            task_id="task-bad-ensemble",
+            executable=JediExecutableSpec(binary_name="qgLETKF.x", execution_mode="validate_only"),
+            ensemble_paths=[""],
+        )
+
+    with pytest.raises(ValueError, match="launcher_args"):
+        JediExecutableSpec(
+            binary_name="qg4DVar.x",
+            execution_mode="validate_only",
+            launcher_args=["", "--bind-to", "core"],
+        )

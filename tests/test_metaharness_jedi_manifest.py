@@ -7,6 +7,7 @@ from metaharness.sdk.manifest import ComponentManifest
 from metaharness_ext.jedi.capabilities import (
     CAP_JEDI_CASE_COMPILE,
     CAP_JEDI_ENV_PROBE,
+    CAP_JEDI_REAL_RUN,
     CAP_JEDI_SCHEMA,
     CAP_JEDI_VALIDATE,
     CAP_JEDI_VALIDATE_ONLY,
@@ -47,7 +48,7 @@ EXPECTED_MANIFESTS = {
         "entry": "metaharness_ext.jedi.executor:JediExecutorComponent",
         "slot": JEDI_EXECUTOR_SLOT,
         "output": "run",
-        "capabilities": [CAP_JEDI_SCHEMA, CAP_JEDI_VALIDATE_ONLY],
+        "capabilities": [CAP_JEDI_SCHEMA, CAP_JEDI_VALIDATE_ONLY, CAP_JEDI_REAL_RUN],
     },
     "validator.json": {
         "name": "jedi_validator",

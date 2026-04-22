@@ -2,6 +2,7 @@ from metaharness_ext.jedi.capabilities import (
     CANONICAL_CAPABILITIES,
     CAP_JEDI_CASE_COMPILE,
     CAP_JEDI_ENV_PROBE,
+    CAP_JEDI_REAL_RUN,
     CAP_JEDI_SCHEMA,
     CAP_JEDI_VALIDATE,
     CAP_JEDI_VALIDATE_ONLY,
@@ -27,6 +28,7 @@ from metaharness_ext.jedi.contracts import (
 from metaharness_ext.jedi.environment import JediEnvironmentProbeComponent
 from metaharness_ext.jedi.executor import JediExecutorComponent
 from metaharness_ext.jedi.gateway import JediGatewayComponent
+from metaharness_ext.jedi.preprocessor import JediRunPreprocessor
 from metaharness_ext.jedi.slots import (
     JEDI_CONFIG_COMPILER_SLOT,
     JEDI_ENVIRONMENT_SLOT,
@@ -49,6 +51,7 @@ __all__ = [
     "CANONICAL_CAPABILITIES",
     "CAP_JEDI_CASE_COMPILE",
     "CAP_JEDI_ENV_PROBE",
+    "CAP_JEDI_REAL_RUN",
     "CAP_JEDI_SCHEMA",
     "CAP_JEDI_VALIDATE",
     "CAP_JEDI_VALIDATE_ONLY",
@@ -74,6 +77,7 @@ __all__ = [
     "JediLocalEnsembleDASpec",
     "JediRunArtifact",
     "JediRunPlan",
+    "JediRunPreprocessor",
     "JediRunStatus",
     "JediValidationReport",
     "JediValidationStatus",

@@ -10,6 +10,7 @@ JediRunStatus = Literal["planned", "completed", "failed", "unavailable"]
 JediValidationStatus = Literal[
     "environment_invalid",
     "validated",
+    "executed",
     "validation_failed",
     "runtime_failed",
 ]

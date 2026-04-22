@@ -42,6 +42,14 @@ class JediExecutableSpec(BaseModel):
             raise ValueError("binary_name looks like a CTest test name, not an executable")
         return stripped
 
+    @field_validator("launcher_args")
+    @classmethod
+    def validate_launcher_args(cls, value: list[str]) -> list[str]:
+        for arg in value:
+            if not arg or not arg.strip():
+                raise ValueError("launcher_args must not contain empty strings")
+        return [arg.strip() for arg in value]
+
 
 class JediVariationalSpec(BaseModel):
     task_id: str
@@ -85,6 +93,8 @@ class JediLocalEnsembleDASpec(BaseModel):
     def validate_ensemble_paths(self) -> "JediLocalEnsembleDASpec":
         if not self.ensemble_paths:
             raise ValueError("local_ensemble_da requires at least one ensemble path")
+        if any(not path.strip() for path in self.ensemble_paths):
+            raise ValueError("ensemble_paths must not contain empty strings")
         return self
 
 
@@ -130,6 +140,8 @@ class JediEnvironmentReport(BaseModel):
     required_paths_present: bool
     binary_path: str | None = None
     launcher_path: str | None = None
+    smoke_candidate: JediApplicationFamily | None = None
+    smoke_ready: bool = False
     messages: list[str] = Field(default_factory=list)
 
 
@@ -144,6 +156,7 @@ class JediRunPlan(BaseModel):
     schema_path: str | None = None
     expected_outputs: list[str] = Field(default_factory=list)
     expected_logs: list[str] = Field(default_factory=list)
+    required_runtime_paths: list[str] = Field(default_factory=list)
     config_text: str
     executable: JediExecutableSpec
 
@@ -159,6 +172,9 @@ class JediRunArtifact(BaseModel):
     schema_path: str | None = None
     stdout_path: str | None = None
     stderr_path: str | None = None
+    prepared_inputs: list[str] = Field(default_factory=list)
+    output_files: list[str] = Field(default_factory=list)
+    diagnostic_files: list[str] = Field(default_factory=list)
     working_directory: str
     status: JediRunStatus = "planned"
     result_summary: dict[str, Any] = Field(default_factory=dict)

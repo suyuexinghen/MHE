@@ -75,3 +75,241 @@ async def test_jedi_minimal_path_runs(examples_dir: Path, monkeypatch, tmp_path:
     assert artifact.status == "unavailable"
     assert validation.passed is False
     assert validation.status == "environment_invalid"
+
+
+@pytest.mark.asyncio
+async def test_jedi_schema_happy_path_runs(examples_dir: Path, monkeypatch, tmp_path: Path) -> None:
+    manifest_dir = examples_dir / "manifests" / "jedi"
+    graphs_dir = examples_dir / "graphs"
+    registry = _build_registry(manifest_dir)
+    engine = ConnectionEngine(registry, GraphVersionStore())
+    snapshot = parse_graph_xml(graphs_dir / "jedi-minimal.xml")
+    candidate, report = engine.stage(
+        PendingConnectionSet(nodes=snapshot.nodes, edges=snapshot.edges)
+    )
+    version = engine.commit("jedi-schema-happy", candidate, report)
+
+    gateway = JediGatewayComponent()
+    environment = JediEnvironmentProbeComponent()
+    compiler = JediConfigCompilerComponent()
+    executor = JediExecutorComponent()
+    validator = JediValidatorComponent()
+    await executor.activate(ComponentRuntime(storage_path=tmp_path))
+
+    background = examples_dir / "jedi-schema-background.nc"
+    background.write_text("background")
+
+    task = gateway.issue_task(
+        task_id="schema-demo-1",
+        execution_mode="schema",
+        binary_name="qg4DVar.x",
+        background_path=str(background),
+    )
+
+    def fake_which(name: str) -> str | None:
+        if name == "ldd":
+            return "/usr/bin/ldd"
+        if name == "qg4DVar.x":
+            return "/usr/bin/qg4DVar.x"
+        return None
+
+    class _LddResult:
+        returncode = 0
+        stdout = ""
+
+    monkeypatch.setattr("metaharness_ext.jedi.environment.shutil.which", fake_which)
+    monkeypatch.setattr(
+        "metaharness_ext.jedi.environment.subprocess.run",
+        lambda *args, **kwargs: _LddResult(),
+    )
+    environment_report = environment.probe(task)
+    plan = compiler.build_plan(task)
+
+    monkeypatch.setattr(
+        "metaharness_ext.jedi.executor.JediExecutorComponent._resolve_binary",
+        lambda self, binary_name: f"/usr/bin/{Path(binary_name).name}",
+    )
+
+    def fake_run(command, *, cwd, text, capture_output, check, timeout):
+        (cwd / "schema.json").write_text("{}")
+        return type(
+            "_SchemaCompletedProcess",
+            (),
+            {"returncode": 0, "stdout": "schema ok", "stderr": ""},
+        )()
+
+    monkeypatch.setattr("metaharness_ext.jedi.executor.subprocess.run", fake_run)
+
+    artifact = executor.execute_plan(plan)
+    validation = validator.validate_run(artifact)
+
+    assert report.valid is True
+    assert version == 1
+    assert environment_report.required_paths_present is True
+    assert environment_report.binary_available is True
+    assert environment_report.shared_libraries_resolved is True
+    assert plan.execution_mode == "schema"
+    assert artifact.status == "completed"
+    assert artifact.command == ["/usr/bin/qg4DVar.x", "--output-json-schema=schema.json"]
+    assert artifact.schema_path is not None
+    assert validation.passed is True
+    assert validation.status == "validated"
+
+
+@pytest.mark.asyncio
+async def test_jedi_validate_only_happy_path_runs(
+    examples_dir: Path, monkeypatch, tmp_path: Path
+) -> None:
+    manifest_dir = examples_dir / "manifests" / "jedi"
+    graphs_dir = examples_dir / "graphs"
+    registry = _build_registry(manifest_dir)
+    engine = ConnectionEngine(registry, GraphVersionStore())
+    snapshot = parse_graph_xml(graphs_dir / "jedi-minimal.xml")
+    candidate, report = engine.stage(
+        PendingConnectionSet(nodes=snapshot.nodes, edges=snapshot.edges)
+    )
+    version = engine.commit("jedi-validate-only-happy", candidate, report)
+
+    gateway = JediGatewayComponent()
+    environment = JediEnvironmentProbeComponent()
+    compiler = JediConfigCompilerComponent()
+    executor = JediExecutorComponent()
+    validator = JediValidatorComponent()
+    await executor.activate(ComponentRuntime(storage_path=tmp_path))
+
+    background = examples_dir / "jedi-validate-background.nc"
+    background.write_text("background")
+
+    task = gateway.issue_task(
+        task_id="validate-demo-1",
+        execution_mode="validate_only",
+        binary_name="qg4DVar.x",
+        background_path=str(background),
+    )
+
+    def fake_which(name: str) -> str | None:
+        if name == "ldd":
+            return "/usr/bin/ldd"
+        if name == "qg4DVar.x":
+            return "/usr/bin/qg4DVar.x"
+        return None
+
+    class _LddResult:
+        returncode = 0
+        stdout = ""
+
+    monkeypatch.setattr("metaharness_ext.jedi.environment.shutil.which", fake_which)
+    monkeypatch.setattr(
+        "metaharness_ext.jedi.environment.subprocess.run",
+        lambda *args, **kwargs: _LddResult(),
+    )
+    environment_report = environment.probe(task)
+    plan = compiler.build_plan(task)
+
+    monkeypatch.setattr(
+        "metaharness_ext.jedi.executor.JediExecutorComponent._resolve_binary",
+        lambda self, binary_name: f"/usr/bin/{Path(binary_name).name}",
+    )
+
+    def fake_run(command, *, cwd, text, capture_output, check, timeout):
+        return type(
+            "_ValidateCompletedProcess",
+            (),
+            {"returncode": 0, "stdout": "validate ok", "stderr": ""},
+        )()
+
+    monkeypatch.setattr("metaharness_ext.jedi.executor.subprocess.run", fake_run)
+
+    artifact = executor.execute_plan(plan)
+    validation = validator.validate_run(artifact)
+
+    assert report.valid is True
+    assert version == 1
+    assert environment_report.required_paths_present is True
+    assert environment_report.binary_available is True
+    assert environment_report.shared_libraries_resolved is True
+    assert environment_report.smoke_ready is True
+    assert plan.execution_mode == "validate_only"
+    assert artifact.status == "completed"
+    assert artifact.command == ["/usr/bin/qg4DVar.x", "--validate-only", "config.yaml"]
+    assert artifact.schema_path is None
+    assert validation.passed is True
+    assert validation.status == "validated"
+
+
+@pytest.mark.asyncio
+async def test_jedi_real_run_happy_path_runs(examples_dir: Path, monkeypatch, tmp_path: Path) -> None:
+    manifest_dir = examples_dir / "manifests" / "jedi"
+    graphs_dir = examples_dir / "graphs"
+    registry = _build_registry(manifest_dir)
+    engine = ConnectionEngine(registry, GraphVersionStore())
+    snapshot = parse_graph_xml(graphs_dir / "jedi-minimal.xml")
+    candidate, report = engine.stage(
+        PendingConnectionSet(nodes=snapshot.nodes, edges=snapshot.edges)
+    )
+    version = engine.commit("jedi-real-run-happy", candidate, report)
+
+    gateway = JediGatewayComponent()
+    environment = JediEnvironmentProbeComponent()
+    compiler = JediConfigCompilerComponent()
+    executor = JediExecutorComponent()
+    validator = JediValidatorComponent()
+    await executor.activate(ComponentRuntime(storage_path=tmp_path))
+
+    background = examples_dir / "jedi-real-run-background.nc"
+    background.write_text("background")
+
+    task = gateway.issue_task(
+        task_id="real-run-demo-1",
+        execution_mode="real_run",
+        binary_name="qg4DVar.x",
+        background_path=str(background),
+    )
+
+    def fake_which(name: str) -> str | None:
+        if name == "ldd":
+            return "/usr/bin/ldd"
+        if name == "qg4DVar.x":
+            return "/usr/bin/qg4DVar.x"
+        return None
+
+    class _LddResult:
+        returncode = 0
+        stdout = ""
+
+    monkeypatch.setattr("metaharness_ext.jedi.environment.shutil.which", fake_which)
+    monkeypatch.setattr(
+        "metaharness_ext.jedi.environment.subprocess.run",
+        lambda *args, **kwargs: _LddResult(),
+    )
+    environment_report = environment.probe(task)
+    plan = compiler.build_plan(task)
+
+    monkeypatch.setattr(
+        "metaharness_ext.jedi.executor.JediExecutorComponent._resolve_binary",
+        lambda self, binary_name: f"/usr/bin/{Path(binary_name).name}",
+    )
+
+    def fake_run(command, *, cwd, text, capture_output, check, timeout):
+        (cwd / "analysis.out").write_text("analysis")
+        return type(
+            "_RealRunCompletedProcess",
+            (),
+            {"returncode": 0, "stdout": "run ok", "stderr": ""},
+        )()
+
+    monkeypatch.setattr("metaharness_ext.jedi.executor.subprocess.run", fake_run)
+
+    artifact = executor.execute_plan(plan)
+    validation = validator.validate_run(artifact)
+
+    assert report.valid is True
+    assert version == 1
+    assert environment_report.smoke_ready is True
+    assert environment_report.smoke_candidate == "variational"
+    assert plan.execution_mode == "real_run"
+    assert artifact.status == "completed"
+    assert artifact.command == ["/usr/bin/qg4DVar.x", "config.yaml"]
+    assert any(path.endswith("analysis.out") for path in artifact.output_files)
+    assert validation.passed is True
+    assert validation.status == "executed"

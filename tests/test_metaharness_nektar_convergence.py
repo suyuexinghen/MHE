@@ -410,3 +410,87 @@ async def test_convergence_study_applies_postprocess_override(tmp_path: Path) ->
     )
 
     assert executor.postprocess_plans[0] == [{"type": "fieldconvert", "output": "custom.vtu"}]
+
+
+@pytest.mark.asyncio
+async def test_convergence_absolute_rule_does_not_recommend_failed_trial(tmp_path: Path) -> None:
+    """A trial whose metric meets tolerance but validator says failed must NOT be recommended as converged."""
+    component = ConvergenceStudyComponent()
+    await component.activate(ComponentRuntime(storage_path=tmp_path))
+    executor = _FakeExecutor()
+    spec = ConvergenceStudySpec(
+        study_id="study-adversarial",
+        task_id="task-adversarial",
+        base_problem=_base_problem("task-adversarial"),
+        axis=NektarMutationAxis(kind="num_modes", values=[2, 4, 8]),
+        metric_key="l2_error_u",
+        target_tolerance=0.2,
+        min_points=3,
+    )
+
+    report = component.run_study(
+        spec,
+        executor=executor,
+        postprocessor=_FakePostprocessor(),
+        validator=_RejectingValidator(),
+    )
+
+    assert all(not trial.passed for trial in report.trials)
+    assert report.converged is False
+    assert report.recommended_value == 8
+
+
+@pytest.mark.asyncio
+async def test_convergence_relative_drop_does_not_recommend_failed_trial(tmp_path: Path) -> None:
+    component = ConvergenceStudyComponent()
+    await component.activate(ComponentRuntime(storage_path=tmp_path))
+    executor = _MetricExecutor({2: 1.0, 4: 0.15, 8: 0.05})
+    spec = ConvergenceStudySpec(
+        study_id="study-adversarial-drop",
+        task_id="task-adversarial-drop",
+        base_problem=_base_problem("task-adversarial-drop"),
+        axis=NektarMutationAxis(kind="num_modes", values=[2, 4, 8]),
+        metric_key="l2_error_u",
+        convergence_rule="relative_drop",
+        relative_drop_ratio=0.5,
+        min_points=3,
+        target_tolerance=0.2,
+    )
+
+    report = component.run_study(
+        spec,
+        executor=executor,
+        postprocessor=_FakePostprocessor(),
+        validator=_RejectingValidator(),
+    )
+
+    assert all(not trial.passed for trial in report.trials)
+    assert report.converged is False
+
+
+@pytest.mark.asyncio
+async def test_convergence_plateau_does_not_recommend_failed_trial(tmp_path: Path) -> None:
+    component = ConvergenceStudyComponent()
+    await component.activate(ComponentRuntime(storage_path=tmp_path))
+    executor = _MetricExecutor({2: 1.0, 4: 0.4, 8: 0.168})
+    spec = ConvergenceStudySpec(
+        study_id="study-adversarial-plateau",
+        task_id="task-adversarial-plateau",
+        base_problem=_base_problem("task-adversarial-plateau"),
+        axis=NektarMutationAxis(kind="num_modes", values=[2, 4, 8]),
+        metric_key="l2_error_u",
+        convergence_rule="plateau",
+        plateau_tolerance=0.03,
+        min_points=3,
+        target_tolerance=0.2,
+    )
+
+    report = component.run_study(
+        spec,
+        executor=executor,
+        postprocessor=_FakePostprocessor(),
+        validator=_RejectingValidator(),
+    )
+
+    assert all(not trial.passed for trial in report.trials)
+    assert report.converged is False

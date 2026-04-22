@@ -7,7 +7,7 @@ import pytest
 
 from metaharness.sdk.runtime import ComponentRuntime
 from metaharness_ext.jedi.config_compiler import JediConfigCompilerComponent
-from metaharness_ext.jedi.contracts import JediExecutableSpec, JediVariationalSpec
+from metaharness_ext.jedi.contracts import JediExecutableSpec, JediRunArtifact, JediVariationalSpec
 from metaharness_ext.jedi.executor import JediExecutorComponent
 from metaharness_ext.jedi.validator import JediValidatorComponent
 
@@ -143,7 +143,7 @@ async def test_jedi_executor_marks_timeout_as_runtime_failed(tmp_path: Path, mon
 
 
 @pytest.mark.asyncio
-async def test_jedi_executor_maps_nonzero_validate_only_to_validation_failed(
+async def test_jedi_executor_maps_nonzero_validate_only_to_runtime_failed(
     tmp_path: Path, monkeypatch
 ) -> None:
     spec = _build_spec(execution_mode="validate_only")
@@ -168,31 +168,7 @@ async def test_jedi_executor_maps_nonzero_validate_only_to_validation_failed(
 
     assert artifact.return_code == 2
     assert report.passed is False
-    assert report.status == "validation_failed"
-
-
-@pytest.mark.asyncio
-async def test_jedi_executor_keeps_real_run_unavailable_in_phase_zero(
-    tmp_path: Path, monkeypatch
-) -> None:
-    spec = _build_spec(execution_mode="real_run")
-    plan = JediConfigCompilerComponent().build_plan(spec)
-    executor = JediExecutorComponent()
-    validator = JediValidatorComponent()
-    await executor.activate(ComponentRuntime(storage_path=tmp_path))
-
-    monkeypatch.setattr(
-        "metaharness_ext.jedi.executor.JediExecutorComponent._resolve_binary",
-        lambda self, binary_name: f"/usr/bin/{binary_name}",
-    )
-
-    artifact = executor.execute_plan(plan)
-    report = validator.validate_run(artifact)
-
-    assert artifact.status == "unavailable"
-    assert artifact.result_summary["fallback_reason"] == "execution_mode_not_supported"
-    assert report.passed is False
-    assert report.status == "validation_failed"
+    assert report.status == "runtime_failed"
 
 
 @pytest.mark.asyncio
@@ -204,3 +180,25 @@ async def test_jedi_executor_rejects_unsafe_task_id(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="Invalid task_id"):
         executor.execute_plan(plan)
+
+
+def test_jedi_validator_rejects_completed_artifact_without_exit_code() -> None:
+    artifact = JediRunArtifact(
+        task_id="task-1",
+        run_id="run-1",
+        application_family="variational",
+        execution_mode="validate_only",
+        command=["/usr/bin/qg4DVar.x", "--validate-only", "config.yaml"],
+        return_code=None,
+        config_path="/tmp/config.yaml",
+        stdout_path="/tmp/stdout.log",
+        stderr_path="/tmp/stderr.log",
+        working_directory="/tmp/run-1",
+        status="completed",
+    )
+
+    report = JediValidatorComponent().validate_run(artifact)
+
+    assert report.passed is False
+    assert report.status == "runtime_failed"
+    assert "did not report an exit code" in report.messages[0]
