@@ -255,12 +255,18 @@ async def test_deepmd_executor_collects_test_metrics(
 
 
 @pytest.mark.asyncio
-async def test_deepmd_executor_rejects_test_mode_without_dataset_paths(tmp_path: Path) -> None:
+async def test_deepmd_executor_rejects_test_mode_without_dataset_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     spec = _build_spec(tmp_path, execution_mode="test")
     plan = DeepMDTrainConfigCompilerComponent().build_plan(spec)
     plan.dataset_paths = []
     executor = DeepMDExecutorComponent()
     await executor.activate(ComponentRuntime(storage_path=tmp_path))
+
+    monkeypatch.setattr(
+        "metaharness_ext.deepmd.executor.shutil.which", lambda binary: f"/usr/bin/{binary}"
+    )
 
     with pytest.raises(ValueError, match="test mode requires at least one dataset path"):
         executor.execute_plan(plan)

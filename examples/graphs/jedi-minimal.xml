@@ -1,0 +1,15 @@
+<Harness version="0.1.0" graphVersion="1" schemaVersion="1.1">
+  <Components>
+    <Component id="jedi_gateway.primary" type="JediGateway" impl="metaharness_ext.jedi.gateway" version="0.1.0" />
+    <Component id="jedi_environment.primary" type="JediEnvironmentProbe" impl="metaharness_ext.jedi.environment" version="0.1.0" />
+    <Component id="jedi_config_compiler.primary" type="JediConfigCompiler" impl="metaharness_ext.jedi.config_compiler" version="0.1.0" />
+    <Component id="jedi_executor.primary" type="JediExecutor" impl="metaharness_ext.jedi.executor" version="0.1.0" />
+    <Component id="jedi_validator.primary" type="JediValidator" impl="metaharness_ext.jedi.validator" version="0.1.0" protected="true" />
+  </Components>
+  <Connections>
+    <Connection id="c1" from="jedi_gateway.primary.task" to="jedi_environment.primary.task" payload="JediExperimentSpec" mode="sync" policy="required" />
+    <Connection id="c2" from="jedi_gateway.primary.task" to="jedi_config_compiler.primary.task" payload="JediExperimentSpec" mode="sync" policy="required" />
+    <Connection id="c3" from="jedi_config_compiler.primary.plan" to="jedi_executor.primary.plan" payload="JediRunPlan" mode="sync" policy="required" />
+    <Connection id="c4" from="jedi_executor.primary.run" to="jedi_validator.primary.run" payload="JediRunArtifact" mode="sync" policy="required" />
+  </Connections>
+</Harness>

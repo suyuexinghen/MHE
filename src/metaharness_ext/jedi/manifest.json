@@ -1,0 +1,43 @@
+{
+  "name": "jedi_gateway",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.jedi.gateway:JediGatewayComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "task",
+        "type": "JediExperimentSpec",
+        "mode": "sync",
+        "description": ""
+      }
+    ],
+    "events": [],
+    "provides": [
+      {
+        "name": "jedi.compile.case",
+        "description": ""
+      }
+    ],
+    "requires": [],
+    "slots": [
+      {
+        "slot": "jedi_gateway.primary",
+        "binding": "primary",
+        "required": true
+      }
+    ]
+  },
+  "safety": {
+    "protected": false,
+    "mutability": "mutable",
+    "sandbox_profile": null,
+    "hot_swap": true
+  },
+  "state_schema_version": 1,
+  "provides": [
+    "jedi.compile.case"
+  ]
+}

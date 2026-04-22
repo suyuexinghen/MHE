@@ -1,0 +1,85 @@
+from metaharness_ext.jedi.capabilities import (
+    CANONICAL_CAPABILITIES,
+    CAP_JEDI_CASE_COMPILE,
+    CAP_JEDI_ENV_PROBE,
+    CAP_JEDI_SCHEMA,
+    CAP_JEDI_VALIDATE,
+    CAP_JEDI_VALIDATE_ONLY,
+)
+from metaharness_ext.jedi.config_compiler import (
+    JediConfigCompilerComponent,
+    build_jedi_config,
+    render_jedi_yaml,
+)
+from metaharness_ext.jedi.contracts import (
+    JEDI_EXPERIMENT_SPEC_ADAPTER,
+    JediEnvironmentReport,
+    JediExecutableSpec,
+    JediExperimentSpec,
+    JediForecastSpec,
+    JediHofXSpec,
+    JediLocalEnsembleDASpec,
+    JediRunArtifact,
+    JediRunPlan,
+    JediValidationReport,
+    JediVariationalSpec,
+)
+from metaharness_ext.jedi.environment import JediEnvironmentProbeComponent
+from metaharness_ext.jedi.executor import JediExecutorComponent
+from metaharness_ext.jedi.gateway import JediGatewayComponent
+from metaharness_ext.jedi.slots import (
+    JEDI_CONFIG_COMPILER_SLOT,
+    JEDI_ENVIRONMENT_SLOT,
+    JEDI_EXECUTOR_SLOT,
+    JEDI_GATEWAY_SLOT,
+    JEDI_VALIDATOR_SLOT,
+    PROTECTED_SLOTS,
+)
+from metaharness_ext.jedi.types import (
+    JediApplicationFamily,
+    JediCostType,
+    JediExecutionMode,
+    JediLauncher,
+    JediRunStatus,
+    JediValidationStatus,
+)
+from metaharness_ext.jedi.validator import JediValidatorComponent
+
+__all__ = [
+    "CANONICAL_CAPABILITIES",
+    "CAP_JEDI_CASE_COMPILE",
+    "CAP_JEDI_ENV_PROBE",
+    "CAP_JEDI_SCHEMA",
+    "CAP_JEDI_VALIDATE",
+    "CAP_JEDI_VALIDATE_ONLY",
+    "JEDI_CONFIG_COMPILER_SLOT",
+    "JEDI_ENVIRONMENT_SLOT",
+    "JEDI_EXECUTOR_SLOT",
+    "JEDI_EXPERIMENT_SPEC_ADAPTER",
+    "JEDI_GATEWAY_SLOT",
+    "JEDI_VALIDATOR_SLOT",
+    "JediApplicationFamily",
+    "JediConfigCompilerComponent",
+    "JediCostType",
+    "JediEnvironmentProbeComponent",
+    "JediEnvironmentReport",
+    "JediExecutableSpec",
+    "JediExecutionMode",
+    "JediExecutorComponent",
+    "JediExperimentSpec",
+    "JediForecastSpec",
+    "JediGatewayComponent",
+    "JediHofXSpec",
+    "JediLauncher",
+    "JediLocalEnsembleDASpec",
+    "JediRunArtifact",
+    "JediRunPlan",
+    "JediRunStatus",
+    "JediValidationReport",
+    "JediValidationStatus",
+    "JediValidatorComponent",
+    "JediVariationalSpec",
+    "PROTECTED_SLOTS",
+    "build_jedi_config",
+    "render_jedi_yaml",
+]
