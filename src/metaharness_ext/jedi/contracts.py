@@ -147,8 +147,16 @@ class JediEnvironmentReport(BaseModel):
     launcher_available: bool
     shared_libraries_resolved: bool
     required_paths_present: bool
+    workspace_testinput_present: bool = True
+    data_paths_present: bool = True
+    data_prerequisites_ready: bool = True
     binary_path: str | None = None
     launcher_path: str | None = None
+    workspace_root: str | None = None
+    missing_required_paths: list[str] = Field(default_factory=list)
+    missing_data_paths: list[str] = Field(default_factory=list)
+    missing_prerequisites: list[str] = Field(default_factory=list)
+    environment_prerequisites: list[str] = Field(default_factory=list)
     smoke_candidate: JediApplicationFamily | None = None
     smoke_ready: bool = False
     messages: list[str] = Field(default_factory=list)

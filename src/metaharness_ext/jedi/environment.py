@@ -34,6 +34,7 @@ class JediEnvironmentProbeComponent(HarnessComponent):
 
     def probe(self, spec: JediExperimentSpec) -> JediEnvironmentReport:
         messages: list[str] = []
+        workspace_root = self._workspace_root(spec)
         binary_path = self._resolve_binary(spec.executable.binary_name)
         binary_available = binary_path is not None
         launcher_path: str | None = None
@@ -50,21 +51,42 @@ class JediEnvironmentProbeComponent(HarnessComponent):
         else:
             messages.append(f"JEDI binary not found: {spec.executable.binary_name}")
 
-        required_paths_present = True
+        missing_required_paths: list[str] = []
+        missing_data_paths: list[str] = []
         for path_str in self._required_paths(spec):
             path = Path(path_str).expanduser()
-            if not path.exists():
-                required_paths_present = False
-                messages.append(f"Missing required path: {path}")
+            if path.exists():
+                continue
+            normalized = str(path)
+            missing_required_paths.append(normalized)
+            if self._looks_like_data_path(path):
+                missing_data_paths.append(normalized)
+            messages.append(f"Missing required path: {path}")
 
-        smoke_candidate: str | None = None
-        smoke_ready = False
-        if binary_available and launcher_available and shared_libraries_resolved and required_paths_present:
-            smoke_candidate = "hofx" if isinstance(spec, JediHofXSpec) else spec.application_family
-            smoke_ready = True
+        required_paths_present = not missing_required_paths
+        data_paths_present = not missing_data_paths
+        workspace_testinput_present = self._workspace_testinput_present(workspace_root)
+
+        environment_prerequisites = self._environment_prerequisites(spec, workspace_root)
+        missing_prerequisites = [
+            prerequisite for prerequisite in environment_prerequisites if not self._prerequisite_ready(prerequisite, workspace_root)
+        ]
+        for prerequisite in missing_prerequisites:
+            messages.append(f"Missing environment prerequisite: {prerequisite}")
+        data_prerequisites_ready = not missing_prerequisites
+
+        smoke_candidate: str | None = "hofx" if isinstance(spec, JediHofXSpec) else spec.application_family
+        smoke_ready = (
+            binary_available
+            and launcher_available
+            and shared_libraries_resolved
+            and required_paths_present
+            and workspace_testinput_present
+            and data_prerequisites_ready
+        )
+        if smoke_ready:
             messages.append(f"Toy smoke candidate ready: {smoke_candidate}.")
         else:
-            smoke_candidate = "hofx" if isinstance(spec, JediHofXSpec) else spec.application_family
             messages.append(f"Toy smoke candidate not ready: {smoke_candidate}.")
 
         return JediEnvironmentReport(
@@ -72,8 +94,16 @@ class JediEnvironmentProbeComponent(HarnessComponent):
             launcher_available=launcher_available,
             shared_libraries_resolved=shared_libraries_resolved,
             required_paths_present=required_paths_present,
+            workspace_testinput_present=workspace_testinput_present,
+            data_paths_present=data_paths_present,
+            data_prerequisites_ready=data_prerequisites_ready,
             binary_path=binary_path,
             launcher_path=launcher_path,
+            workspace_root=workspace_root,
+            missing_required_paths=missing_required_paths,
+            missing_data_paths=missing_data_paths,
+            missing_prerequisites=missing_prerequisites,
+            environment_prerequisites=environment_prerequisites,
             smoke_candidate=smoke_candidate,
             smoke_ready=smoke_ready,
             messages=messages,
@@ -102,6 +132,54 @@ class JediEnvironmentProbeComponent(HarnessComponent):
             messages.extend(f"Unresolved library: {line}" for line in unresolved)
             return False
         return result.returncode == 0
+
+    def _workspace_root(self, spec: JediExperimentSpec) -> str | None:
+        candidate_paths = self._required_paths(spec)
+        for path_str in candidate_paths:
+            path = Path(path_str).expanduser()
+            for parent in (path, *path.parents):
+                testinput_dir = parent / "testinput"
+                if testinput_dir.is_dir():
+                    return str(parent)
+        working_directory = getattr(spec, "working_directory", None)
+        if working_directory:
+            path = Path(working_directory).expanduser()
+            for parent in (path, *path.parents):
+                testinput_dir = parent / "testinput"
+                if testinput_dir.is_dir():
+                    return str(parent)
+        return None
+
+    def _workspace_testinput_present(self, workspace_root: str | None) -> bool:
+        if workspace_root is None:
+            return True
+        return (Path(workspace_root) / "testinput").is_dir()
+
+    def _looks_like_data_path(self, path: Path) -> bool:
+        lowered = str(path).lower()
+        suffixes = {".nc", ".ioda", ".odb", ".h5", ".hdf5"}
+        if path.suffix.lower() in suffixes:
+            return True
+        return any(token in lowered for token in ("obs", "background", "reference", "ens."))
+
+    def _environment_prerequisites(self, spec: JediExperimentSpec, workspace_root: str | None) -> list[str]:
+        prerequisites: list[str] = []
+        if workspace_root is not None:
+            prerequisites.append("workspace testinput")
+        if spec.observation_paths if isinstance(spec, (JediVariationalSpec, JediLocalEnsembleDASpec, JediHofXSpec)) else False:
+            prerequisites.append("ctest -R get_ or equivalent observation data preparation")
+        if isinstance(spec, (JediVariationalSpec, JediLocalEnsembleDASpec)):
+            prerequisites.append("ctest -R qg_get_data or equivalent QG data preparation")
+        if isinstance(spec, JediForecastSpec):
+            prerequisites.append("model initial-condition data prepared")
+        return list(dict.fromkeys(prerequisites))
+
+    def _prerequisite_ready(self, prerequisite: str, workspace_root: str | None) -> bool:
+        if prerequisite == "workspace testinput":
+            return self._workspace_testinput_present(workspace_root)
+        if workspace_root is None:
+            return True
+        return False
 
     def _required_paths(self, spec: JediExperimentSpec) -> list[str]:
         if isinstance(spec, JediVariationalSpec):

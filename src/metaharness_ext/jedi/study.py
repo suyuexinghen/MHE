@@ -6,7 +6,9 @@ from metaharness.sdk.runtime import ComponentRuntime
 from metaharness_ext.jedi.capabilities import CAP_JEDI_STUDY
 from metaharness_ext.jedi.config_compiler import JediConfigCompilerComponent
 from metaharness_ext.jedi.contracts import (
+    JediDiagnosticSummary,
     JediLocalEnsembleDASpec,
+    JediRunArtifact,
     JediStudyReport,
     JediStudySpec,
     JediStudyTrial,
@@ -44,27 +46,60 @@ class JediStudyComponent(HarnessComponent):
         self._validate_axis(spec)
         trials: list[JediStudyTrial] = []
         for value in spec.axis.values:
-            trial_task = self._mutate_task(spec, value)
-            plan = compiler.build_plan(trial_task)
-            run = executor.execute_plan(plan)
-            diagnostic_summary = diagnostics.collect(run)
-            validation = validator.validate_run_with_diagnostics(run, diagnostic_summary)
-            metric_value = self._extract_metric(validation, spec.metric_key)
-            trials.append(
-                JediStudyTrial(
-                    trial_id=run.run_id,
-                    task_id=run.task_id,
-                    axis_kind=spec.axis.kind,
-                    axis_value=value,
-                    mutated_parameters=self._mutated_parameters(spec.axis.kind, value),
-                    run=run,
-                    diagnostics=diagnostic_summary,
-                    validation=validation,
-                    metric_value=metric_value,
-                    passed=validation.passed,
-                    messages=list(validation.messages),
+            try:
+                trial_task = self._mutate_task(spec, value)
+                plan = compiler.build_plan(trial_task)
+                run = executor.execute_plan(plan)
+                diagnostic_summary = diagnostics.collect(run)
+                validation = validator.validate_run_with_diagnostics(run, diagnostic_summary)
+                metric_value = self._extract_metric(validation, spec.metric_key)
+                trials.append(
+                    JediStudyTrial(
+                        trial_id=run.run_id,
+                        task_id=run.task_id,
+                        axis_kind=spec.axis.kind,
+                        axis_value=value,
+                        mutated_parameters=self._mutated_parameters(spec.axis.kind, value),
+                        run=run,
+                        diagnostics=diagnostic_summary,
+                        validation=validation,
+                        metric_value=metric_value,
+                        passed=validation.passed,
+                        messages=list(validation.messages),
+                    )
                 )
-            )
+            except Exception as exc:
+                trial_id = f"{spec.study_id}__trial__{spec.axis.kind}__{value}"
+                task_id = f"{spec.task_id}__study__{spec.axis.kind}__{value}"
+                run = self._failed_run_artifact(
+                    task_id=task_id,
+                    trial_id=trial_id,
+                    application_family=spec.base_task.application_family,
+                    execution_mode=spec.base_task.executable.execution_mode,
+                )
+                validation = JediValidationReport(
+                    task_id=task_id,
+                    run_id=trial_id,
+                    passed=False,
+                    status="runtime_failed",
+                    messages=[f"Study trial failed: {exc}"],
+                    evidence_files=[],
+                )
+                trials.append(
+                    JediStudyTrial(
+                        trial_id=trial_id,
+                        task_id=task_id,
+                        axis_kind=spec.axis.kind,
+                        axis_value=value,
+                        mutated_parameters=self._mutated_parameters(spec.axis.kind, value),
+                        run=run,
+                        diagnostics=JediDiagnosticSummary(),
+                        validation=validation,
+                        metric_value=None,
+                        passed=False,
+                        messages=list(validation.messages),
+                    )
+                )
 
         recommended = self._recommend_trial(trials, goal=spec.goal)
         summary_metrics: dict[str, float | str] = {"trial_count": float(len(trials))}
@@ -143,6 +178,24 @@ class JediStudyComponent(HarnessComponent):
 
     def _mutated_parameters(self, axis_kind: str, value: str | int | float) -> dict[str, int | float | str]:
         return {axis_kind: value}
+
+    def _failed_run_artifact(
+        self,
+        *,
+        task_id: str,
+        trial_id: str,
+        application_family: str,
+        execution_mode: str,
+    ) -> JediRunArtifact:
+        return JediRunArtifact(
+            task_id=task_id,
+            run_id=trial_id,
+            application_family=application_family,
+            execution_mode=execution_mode,
+            working_directory="",
+            status="failed",
+            result_summary={},
+        )
 
     def _extract_metric(self, validation: JediValidationReport, metric_key: str) -> float | None:
         value = validation.summary_metrics.get(metric_key)

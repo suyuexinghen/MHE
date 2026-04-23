@@ -184,10 +184,22 @@ class JediExecutorComponent(HarnessComponent):
         if resolved_launcher is None:
             return base_command
 
-        launcher_command = [resolved_launcher, *plan.executable.launcher_args]
-        if plan.executable.process_count is not None:
-            launcher_command.extend(["-n", str(plan.executable.process_count)])
-        return [*launcher_command, *base_command]
+        return [*self._build_launcher_command(plan, resolved_launcher), *base_command]
+
+    def _build_launcher_command(self, plan: JediRunPlan, resolved_launcher: str) -> list[str]:
+        launcher_command = [resolved_launcher]
+        process_count_flag = self._process_count_flag(plan.executable.launcher)
+        if plan.executable.process_count is not None and process_count_flag is not None:
+            launcher_command.extend([process_count_flag, str(plan.executable.process_count)])
+        launcher_command.extend(plan.executable.launcher_args)
+        return launcher_command
+
+    def _process_count_flag(self, launcher: str) -> str | None:
+        if launcher in {"mpiexec", "mpirun", "srun", "jsrun"}:
+            return "-n"
+        if launcher == "direct":
+            return None
+        raise NotImplementedError(f"Unsupported JEDI launcher: {launcher}")
 
     def _run_command(
         self,

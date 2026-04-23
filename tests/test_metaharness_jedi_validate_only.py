@@ -9,6 +9,7 @@ from metaharness.sdk.runtime import ComponentRuntime
 from metaharness_ext.jedi.config_compiler import JediConfigCompilerComponent
 from metaharness_ext.jedi.contracts import JediExecutableSpec, JediRunArtifact, JediVariationalSpec
 from metaharness_ext.jedi.executor import JediExecutorComponent
+from metaharness_ext.jedi.preprocessor import JediRunPreprocessor
 from metaharness_ext.jedi.validator import JediValidatorComponent
 
 
@@ -90,6 +91,55 @@ async def test_jedi_executor_builds_validate_only_command(tmp_path: Path, monkey
     assert artifact.command == ["/usr/bin/qg4DVar.x", "--validate-only", "config.yaml"]
     assert report.passed is True
     assert report.status == "validated"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("launcher", ["mpiexec", "mpirun", "srun", "jsrun"])
+async def test_jedi_executor_builds_launcher_specific_real_run_command(
+    tmp_path: Path,
+    monkeypatch,
+    launcher: str,
+) -> None:
+    background = tmp_path / "background.nc"
+    background.write_text("background")
+    spec = JediVariationalSpec(
+        task_id=f"jedi-{launcher}",
+        executable=JediExecutableSpec(
+            binary_name="qg4DVar.x",
+            launcher=launcher,
+            launcher_args=["--bind-to", "core"],
+            process_count=4,
+            execution_mode="real_run",
+        ),
+        background_path=str(background),
+    )
+    plan = JediConfigCompilerComponent().build_plan(spec)
+    executor = JediExecutorComponent()
+    await executor.activate(ComponentRuntime(storage_path=tmp_path))
+
+    monkeypatch.setattr(
+        "metaharness_ext.jedi.executor.JediExecutorComponent._resolve_binary",
+        lambda self, binary_name: f"/usr/bin/{Path(binary_name).name}",
+    )
+
+    def fake_run(command, *, cwd, text, capture_output, check, timeout):
+        (cwd / "analysis.out").write_text("analysis")
+        (cwd / "departures.json").write_text("{}")
+        return _FakeCompletedProcess(returncode=0, stdout="run ok", stderr="")
+
+    monkeypatch.setattr("metaharness_ext.jedi.executor.subprocess.run", fake_run)
+
+    artifact = executor.execute_plan(plan)
+
+    assert artifact.command == [
+        f"/usr/bin/{launcher}",
+        "-n",
+        "4",
+        "--bind-to",
+        "core",
+        "/usr/bin/qg4DVar.x",
+        "config.yaml",
+    ]
 
 
 @pytest.mark.asyncio
@@ -180,6 +230,27 @@ async def test_jedi_executor_rejects_unsafe_task_id(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="Invalid task_id"):
         executor.execute_plan(plan)
+
+
+def test_jedi_preprocessor_writes_preparation_manifest(tmp_path: Path) -> None:
+    background = tmp_path / "background.nc"
+    background.write_text("background")
+    plan = JediConfigCompilerComponent().build_plan(
+        JediVariationalSpec(
+            task_id="preprocessor-task",
+            executable=JediExecutableSpec(binary_name="qg4DVar.x", execution_mode="validate_only"),
+            background_path=str(background),
+        )
+    )
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+
+    prepared_inputs = JediRunPreprocessor().prepare(plan, run_dir)
+    manifest_path = run_dir / "preprocessor_manifest.json"
+
+    assert prepared_inputs == [str(background.resolve())]
+    assert manifest_path.exists()
+    assert '"prepared_inputs": [' in manifest_path.read_text()
 
 
 def test_jedi_validator_rejects_completed_artifact_without_exit_code() -> None:

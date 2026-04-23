@@ -72,6 +72,9 @@ class _FakeDiagnostics:
 
 
 class _FakeValidator:
+    def __init__(self, *, passed: bool = True) -> None:
+        self.passed = passed
+
     def validate_run_with_diagnostics(
         self,
         artifact: JediRunArtifact,
@@ -89,8 +92,8 @@ class _FakeValidator:
         return JediValidationReport(
             task_id=artifact.task_id,
             run_id=artifact.run_id,
-            passed=True,
-            status="executed",
+            passed=self.passed,
+            status="executed" if self.passed else "validation_failed",
             summary_metrics=summary_metrics,
             evidence_files=[],
         )
@@ -180,7 +183,7 @@ async def test_study_supports_variational_minimizer_axis(tmp_path: Path) -> None
 
 
 @pytest.mark.asyncio
-async def test_study_rejects_unsupported_axis(tmp_path: Path) -> None:
+async def test_study_rejects_invalid_validate_only_axis_value_type(tmp_path: Path) -> None:
     component = JediStudyComponent()
     await component.activate(ComponentRuntime(storage_path=tmp_path))
 
@@ -194,6 +197,34 @@ async def test_study_rejects_unsupported_axis(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="validate_only_mode values must be strings"):
         component._mutate_task(spec, 1)
+
+
+@pytest.mark.asyncio
+async def test_study_rejects_unknown_axis_at_runtime(tmp_path: Path) -> None:
+    component = JediStudyComponent()
+    await component.activate(ComponentRuntime(storage_path=tmp_path))
+    compiler = JediConfigCompilerComponent()
+    executor = _FakeExecutor("final_cost_function", {20: 3.0})
+    diagnostics = _FakeDiagnostics()
+    validator = _FakeValidator()
+
+    spec = JediStudySpec.model_construct(
+        study_id="study-unknown-axis",
+        task_id="jedi-study-task",
+        base_task=_build_variational_spec(),
+        axis=JediMutationAxis.model_construct(kind="unknown_axis", values=[20]),
+        metric_key="final_cost_function",
+        goal="minimize",
+    )
+
+    with pytest.raises(NotImplementedError, match="unknown_axis"):
+        component.run_study(
+            spec,
+            compiler=compiler,
+            executor=executor,
+            diagnostics=diagnostics,
+            validator=validator,
+        )
 
 
 @pytest.mark.asyncio
@@ -256,6 +287,112 @@ async def test_study_supports_ensemble_localization_radius_axis(tmp_path: Path) 
     assert executor.calls == [800.0, 1200.0, 1600.0]
     assert report.recommended_value == pytest.approx(1200.0)
     assert report.summary_metrics["best_posterior_spread"] == pytest.approx(3.0)
+
+
+@pytest.mark.asyncio
+async def test_study_supports_maximize_goal(tmp_path: Path) -> None:
+    component = JediStudyComponent()
+    await component.activate(ComponentRuntime(storage_path=tmp_path))
+    compiler = JediConfigCompilerComponent()
+    executor = _FakeExecutor("posterior_spread", {0.8: 4.0, 1.0: 2.0, 1.2: 5.0})
+    diagnostics = _FakeDiagnostics()
+    validator = _FakeValidator()
+
+    spec = JediStudySpec(
+        study_id="study-letkf-max",
+        task_id="jedi-letkf-study-task",
+        base_task=_build_local_ensemble_spec(),
+        axis=JediMutationAxis(kind="ensemble_inflation", values=[0.8, 1.0, 1.2]),
+        metric_key="posterior_spread",
+        goal="maximize",
+    )
+
+    report = component.run_study(
+        spec,
+        compiler=compiler,
+        executor=executor,
+        diagnostics=diagnostics,
+        validator=validator,
+    )
+
+    assert report.recommended_value == pytest.approx(1.2)
+    assert report.summary_metrics["best_posterior_spread"] == pytest.approx(5.0)
+
+
+@pytest.mark.asyncio
+async def test_study_returns_no_recommendation_when_all_trials_fail(tmp_path: Path) -> None:
+    component = JediStudyComponent()
+    await component.activate(ComponentRuntime(storage_path=tmp_path))
+    compiler = JediConfigCompilerComponent()
+    executor = _FakeExecutor("final_cost_function", {10: 9.0, 20: 3.0, 30: 4.0})
+    diagnostics = _FakeDiagnostics()
+    validator = _FakeValidator(passed=False)
+
+    spec = JediStudySpec(
+        study_id="study-all-fail",
+        task_id="jedi-study-task",
+        base_task=_build_variational_spec(),
+        axis=JediMutationAxis(kind="variational_iterations", values=[10, 20, 30]),
+        metric_key="final_cost_function",
+        goal="minimize",
+    )
+
+    report = component.run_study(
+        spec,
+        compiler=compiler,
+        executor=executor,
+        diagnostics=diagnostics,
+        validator=validator,
+    )
+
+    assert report.recommended_value is None
+    assert report.recommended_trial_id is None
+    assert report.messages == ["No passing trial produced the requested metric."]
+    assert "best_final_cost_function" not in report.summary_metrics
+
+
+@pytest.mark.asyncio
+async def test_study_continues_when_one_trial_raises(tmp_path: Path) -> None:
+    component = JediStudyComponent()
+    await component.activate(ComponentRuntime(storage_path=tmp_path))
+    compiler = JediConfigCompilerComponent()
+    diagnostics = _FakeDiagnostics()
+    validator = _FakeValidator()
+
+    class _ExplodingExecutor(_FakeExecutor):
+        def execute_plan(self, plan):
+            config = yaml.safe_load(plan.config_text)
+            iterations = int(config["variational"]["minimizer"]["iterations"])
+            if iterations == 20:
+                raise RuntimeError("transient launcher failure")
+            return super().execute_plan(plan)
+
+    executor = _ExplodingExecutor("final_cost_function", {10: 9.0, 30: 4.0})
+    spec = JediStudySpec(
+        study_id="study-partial-failure",
+        task_id="jedi-study-task",
+        base_task=_build_variational_spec(),
+        axis=JediMutationAxis(kind="variational_iterations", values=[10, 20, 30]),
+        metric_key="final_cost_function",
+        goal="minimize",
+    )
+
+    report = component.run_study(
+        spec,
+        compiler=compiler,
+        executor=executor,
+        diagnostics=diagnostics,
+        validator=validator,
+    )
+
+    assert [trial.axis_value for trial in report.trials] == [10, 20, 30]
+    failed_trial = report.trials[1]
+    assert failed_trial.passed is False
+    assert failed_trial.metric_value is None
+    assert failed_trial.validation.status == "runtime_failed"
+    assert failed_trial.messages == ["Study trial failed: transient launcher failure"]
+    assert report.recommended_value == 30
+    assert report.summary_metrics["best_final_cost_function"] == pytest.approx(4.0)
 
 
 def test_study_axis_requires_values() -> None:

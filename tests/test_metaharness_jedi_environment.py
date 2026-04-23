@@ -20,6 +20,7 @@ def test_jedi_environment_reports_missing_binary(tmp_path: Path) -> None:
     report = probe.probe(spec)
 
     assert report.binary_available is False
+    assert report.data_prerequisites_ready is True
     assert report.smoke_candidate == "variational"
     assert any("JEDI binary not found" in message for message in report.messages)
 
@@ -69,6 +70,7 @@ def test_jedi_environment_reports_missing_launcher(tmp_path: Path, monkeypatch) 
 
     assert report.binary_available is True
     assert report.launcher_available is False
+    assert report.launcher_path is None
     assert any("Launcher not found" in message for message in report.messages)
 
 
@@ -120,6 +122,9 @@ def test_jedi_environment_checks_family_required_paths(tmp_path: Path, monkeypat
     report = probe.probe(spec)
 
     assert report.required_paths_present is False
+    assert report.data_paths_present is False
+    assert str(missing_obs) in report.missing_required_paths
+    assert str(missing_background) in report.missing_required_paths
     assert any(str(missing_obs) in message for message in report.messages)
     assert any(str(missing_background) in message for message in report.messages)
 
@@ -147,6 +152,8 @@ def test_jedi_environment_direct_mode_does_not_require_launcher(tmp_path: Path, 
 
     assert report.launcher_available is True
     assert report.required_paths_present is True
+    assert report.data_prerequisites_ready is True
+    assert "model initial-condition data prepared" in report.environment_prerequisites
 
 
 def test_jedi_environment_checks_hofx_state_and_observations(tmp_path: Path, monkeypatch) -> None:
@@ -173,4 +180,40 @@ def test_jedi_environment_checks_hofx_state_and_observations(tmp_path: Path, mon
     report = probe.probe(spec)
 
     assert report.required_paths_present is False
+    assert report.data_paths_present is False
     assert any(str(obs) in message for message in report.messages)
+
+
+def test_jedi_environment_detects_workspace_testinput_and_prerequisites(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "jedi-workspace"
+    workspace.mkdir()
+    (workspace / "testinput").mkdir()
+    binary = workspace / "qg4DVar.x"
+    binary.write_text("binary")
+    obs = workspace / "obs.ioda"
+    obs.write_text("obs")
+    background = workspace / "background.nc"
+    background.write_text("bg")
+
+    spec = JediVariationalSpec(
+        task_id="task-workspace",
+        executable=JediExecutableSpec(binary_name=str(binary), execution_mode="real_run"),
+        background_path=str(background),
+        observation_paths=[str(obs)],
+    )
+    probe = JediEnvironmentProbeComponent()
+    monkeypatch.setattr("metaharness_ext.jedi.environment.shutil.which", lambda name: "/usr/bin/ldd")
+
+    class _Result:
+        returncode = 0
+        stdout = ""
+
+    monkeypatch.setattr("metaharness_ext.jedi.environment.subprocess.run", lambda *args, **kwargs: _Result())
+
+    report = probe.probe(spec)
+
+    assert report.workspace_root == str(workspace)
+    assert report.workspace_testinput_present is True
+    assert "workspace testinput" in report.environment_prerequisites
+    assert "ctest -R qg_get_data or equivalent QG data preparation" in report.missing_prerequisites
+    assert report.data_prerequisites_ready is False
