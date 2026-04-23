@@ -10,6 +10,7 @@ from metaharness_ext.abacus.contracts import (
     AbacusExecutableSpec,
     AbacusExperimentSpec,
     AbacusKPointSpec,
+    AbacusMdSpec,
     AbacusNscfSpec,
     AbacusRelaxSpec,
     AbacusScfSpec,
@@ -34,7 +35,7 @@ class AbacusGatewayComponent(HarnessComponent):
         self,
         *,
         task_id: str = "abacus-task-1",
-        family: Literal["scf", "nscf", "relax"] = "scf",
+        family: Literal["scf", "nscf", "relax", "md"] = "scf",
         working_directory: str | None = None,
         structure_content: str = "",
         kpoints_content: str | None = None,
@@ -66,4 +67,6 @@ class AbacusGatewayComponent(HarnessComponent):
                 **common_kwargs,
                 relax_controls=relax_controls or {},
             )
+        if family == "md":
+            return AbacusMdSpec(**common_kwargs)
         return AbacusScfSpec(**common_kwargs)

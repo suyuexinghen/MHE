@@ -6,6 +6,7 @@ from metaharness.sdk.runtime import ComponentRuntime
 from metaharness_ext.abacus.capabilities import CAP_ABACUS_CASE_COMPILE
 from metaharness_ext.abacus.contracts import (
     AbacusExperimentSpec,
+    AbacusMdSpec,
     AbacusNscfSpec,
     AbacusRelaxSpec,
     AbacusRunPlan,
@@ -28,36 +29,85 @@ class AbacusInputCompilerComponent(HarnessComponent):
         api.provide_capability(CAP_ABACUS_CASE_COMPILE)
 
     def compile(self, spec: AbacusExperimentSpec) -> AbacusRunPlan:
-        if not isinstance(spec, AbacusScfSpec):
-            raise ValueError(f"Phase 0 only supports AbacusScfSpec, got {type(spec).__name__}")
+        if isinstance(spec, AbacusNscfSpec):
+            return self._compile_nscf(spec)
+        if isinstance(spec, AbacusRelaxSpec):
+            return self._compile_relax(spec)
+        if isinstance(spec, AbacusMdSpec):
+            return self._compile_md(spec)
+        if isinstance(spec, AbacusScfSpec):
+            return self._compile_scf(spec)
+        raise ValueError(f"ABACUS family not yet supported: {type(spec).__name__}")
 
+    def _compile_scf(self, spec: AbacusScfSpec) -> AbacusRunPlan:
+        return self._build_plan(
+            spec,
+            application_family="scf",
+            expected_logs=["running_scf.log"],
+            required_runtime_paths=[],
+        )
+
+    def _compile_nscf(self, spec: AbacusNscfSpec) -> AbacusRunPlan:
+        required_runtime_paths = [
+            path for path in [spec.charge_density_path, spec.restart_file_path] if path is not None
+        ]
+        return self._build_plan(
+            spec,
+            application_family="nscf",
+            expected_logs=["running_nscf.log", "running_scf.log"],
+            required_runtime_paths=required_runtime_paths,
+        )
+
+    def _compile_relax(self, spec: AbacusRelaxSpec) -> AbacusRunPlan:
+        restart_path = spec.relax_controls.get("restart_file_path")
+        required_runtime_paths = (
+            [restart_path] if isinstance(restart_path, str) and restart_path else []
+        )
+        return self._build_plan(
+            spec,
+            application_family="relax",
+            expected_logs=["running_relax.log", "running_scf.log"],
+            required_runtime_paths=required_runtime_paths,
+        )
+
+    def _compile_md(self, spec: AbacusMdSpec) -> AbacusRunPlan:
+        return self._build_plan(
+            spec,
+            application_family="md",
+            expected_logs=["running_md.log"],
+            required_runtime_paths=[],
+        )
+
+    def _build_plan(
+        self,
+        spec: AbacusScfSpec | AbacusNscfSpec | AbacusRelaxSpec | AbacusMdSpec,
+        *,
+        application_family: str,
+        expected_logs: list[str],
+        required_runtime_paths: list[str],
+    ) -> AbacusRunPlan:
         run_id = f"run-{spec.task_id}"
         working_directory = spec.working_directory or f"./abacus_runs/{spec.task_id}/{run_id}"
-
-        input_content = self._render_input(spec)
-        structure_content = spec.structure.content
-        kpoints_content = spec.kpoints.content if spec.kpoints else None
-
-        expected_outputs = [f"OUT.{spec.suffix}/"]
-        expected_logs = ["running_scf.log"]
+        output_root = f"OUT.{spec.suffix}"
 
         return AbacusRunPlan(
             task_id=spec.task_id,
             run_id=run_id,
-            application_family="scf",
+            application_family=application_family,
             command=[],
             working_directory=working_directory,
-            input_content=input_content,
-            structure_content=structure_content,
-            kpoints_content=kpoints_content,
+            input_content=self._render_input(spec),
+            structure_content=spec.structure.content,
+            kpoints_content=spec.kpoints.content if spec.kpoints else None,
             suffix=spec.suffix,
-            expected_outputs=expected_outputs,
+            output_root=output_root,
+            expected_outputs=[f"{output_root}/"],
             expected_logs=expected_logs,
-            required_runtime_paths=[],
+            required_runtime_paths=required_runtime_paths,
             executable=spec.executable,
         )
 
-    def _render_input(self, spec: AbacusScfSpec) -> str:
+    def _render_input(self, spec: AbacusExperimentSpec) -> str:
         lines: list[str] = []
         lines.append("INPUT_PARAMETERS")
         lines.append(f"suffix {spec.suffix}")

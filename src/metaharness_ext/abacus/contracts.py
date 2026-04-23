@@ -169,10 +169,10 @@ class AbacusMdSpec(BaseModel):
             raise ValueError(f"unsupported basis_type: {self.basis_type}")
         if self.esolver_type not in {"ksdft", "dp"}:
             raise ValueError(f"unsupported esolver_type: {self.esolver_type}")
-        if self.esolver_type == "dp" and not self.pot_file:
-            raise ValueError("esolver_type=dp requires pot_file")
-        if self.basis_type == "lcao" and not self.orbital_files:
-            raise ValueError("basis_type=lcao requires orbital_files")
+        if self.esolver_type == "dp":
+            raise ValueError("esolver_type=dp is not supported in Phase 2 (MD baseline)")
+        if self.basis_type == "lcao":
+            raise ValueError("basis_type=lcao is not supported in Phase 2 (MD baseline)")
         return self
 
 

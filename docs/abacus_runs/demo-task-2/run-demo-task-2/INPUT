@@ -1,0 +1,5 @@
+INPUT_PARAMETERS
+suffix ABACUS
+calculation scf
+basis_type pw
+esolver_type ksdft
