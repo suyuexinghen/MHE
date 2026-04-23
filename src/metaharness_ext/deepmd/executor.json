@@ -53,6 +53,10 @@
         "description": ""
       },
       {
+        "name": "deepmd.dpgen.simplify",
+        "description": ""
+      },
+      {
         "name": "deepmd.dpgen.autotest",
         "description": ""
       }

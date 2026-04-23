@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from metaharness_ext.deepmd.contracts import DPGenRunSpec
+from metaharness_ext.deepmd.contracts import DPGenRunSpec, DPGenSimplifySpec
 
 
-def build_dpgen_machine_json(spec: DPGenRunSpec) -> dict[str, Any]:
+def build_dpgen_machine_json(spec: DPGenRunSpec | DPGenSimplifySpec) -> dict[str, Any]:
     machine = spec.machine
     payload: dict[str, Any] = {
         "batch_type": machine.batch_type,

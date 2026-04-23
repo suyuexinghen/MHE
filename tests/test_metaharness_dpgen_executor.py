@@ -7,6 +7,7 @@ from metaharness_ext.deepmd.contracts import (
     DeepMDExecutableSpec,
     DPGenMachineSpec,
     DPGenRunSpec,
+    DPGenSimplifySpec,
 )
 from metaharness_ext.deepmd.executor import DeepMDExecutorComponent
 from metaharness_ext.deepmd.train_config_compiler import DeepMDTrainConfigCompilerComponent
@@ -129,3 +130,58 @@ async def test_dpgen_executor_distinguishes_run_failure(
     assert artifact.status == "failed"
     assert artifact.return_code == 2
     assert report.status == "run_failed"
+
+
+@pytest.mark.asyncio
+async def test_dpgen_simplify_executor_collects_relabeling_and_convergence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source_dir = tmp_path / "simplify-inputs"
+    source_dir.mkdir()
+    (source_dir / "input.data").write_text("mock-data\n")
+    spec = DPGenSimplifySpec(
+        task_id="dpgen-simplify-task",
+        executable=DeepMDExecutableSpec(binary_name="dpgen", execution_mode="dpgen_simplify"),
+        param={"type_map": ["H", "O"], "numb_models": 4},
+        machine=DPGenMachineSpec(local_root=".", python_path="python3"),
+        training_init_model=["models/model.pb"],
+        trainable_mask=[True, False],
+        relabeling={"pick_number": 4, "freeze_level": 1},
+        workspace_files=[str(source_dir)],
+    )
+    plan = DeepMDTrainConfigCompilerComponent().build_plan(spec)
+    executor = DeepMDExecutorComponent()
+    await executor.activate(ComponentRuntime(storage_path=tmp_path))
+
+    monkeypatch.setattr(
+        "metaharness_ext.deepmd.executor.shutil.which", lambda binary: f"/usr/bin/{binary}"
+    )
+
+    def fake_run(command, *, cwd, text, capture_output, check, timeout):
+        iter_dir = cwd / "iter.000000"
+        (iter_dir / "00.train").mkdir(parents=True)
+        (iter_dir / "01.model_devi").mkdir()
+        (iter_dir / "02.fp").mkdir()
+        (cwd / "record.dpgen").write_text(
+            "candidate_count = 0\naccurate_count = 2\nfailed_count = 0\nconverged\n"
+        )
+        (iter_dir / "02.fp" / "relabel.out").write_text("relabel pick_number = 4\n")
+        return _FakeCompletedProcess(returncode=0, stdout="dpgen simplify ok\n", stderr="")
+
+    monkeypatch.setattr("metaharness_ext.deepmd.executor.subprocess.run", fake_run)
+
+    artifact = executor.execute_plan(plan)
+    report = DeepMDValidatorComponent().validate_run(artifact)
+
+    assert artifact.command == ["/usr/bin/dpgen", "simplify", "param.json", "machine.json"]
+    assert artifact.summary.dpgen_collection is not None
+    assert any(
+        "relabel" in message.lower() for message in artifact.summary.dpgen_collection.messages
+    )
+    assert any(
+        "converged" in message.lower() for message in artifact.summary.dpgen_collection.messages
+    )
+    assert report.passed is True
+    assert report.status == "converged"
+    assert report.summary_metrics["candidate_count"] == pytest.approx(0.0)
+    assert report.summary_metrics["relabeling_detected"] == "true"

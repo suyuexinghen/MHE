@@ -50,6 +50,10 @@
       {
         "name": "deepmd.dpgen.run",
         "description": ""
+      },
+      {
+        "name": "deepmd.dpgen.simplify",
+        "description": ""
       }
     ],
     "requires": [],
@@ -75,6 +79,7 @@
     "deepmd.model.compress",
     "deepmd.model.devi",
     "deepmd.dataset.neighbor_stat",
-    "deepmd.dpgen.run"
+    "deepmd.dpgen.run",
+    "deepmd.dpgen.simplify"
   ]
 }

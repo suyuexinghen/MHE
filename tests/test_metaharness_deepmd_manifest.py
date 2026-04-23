@@ -17,6 +17,7 @@ from metaharness_ext.deepmd.capabilities import (
     CAP_DEEPMD_VALIDATE,
     CAP_DPGEN_AUTOTEST,
     CAP_DPGEN_RUN,
+    CAP_DPGEN_SIMPLIFY,
 )
 from metaharness_ext.deepmd.slots import (
     DEEPMD_CONFIG_COMPILER_SLOT,
@@ -64,6 +65,7 @@ EXPECTED_MANIFESTS = {
             CAP_DEEPMD_TRAIN_RUN,
             CAP_DPGEN_AUTOTEST,
             CAP_DPGEN_RUN,
+            CAP_DPGEN_SIMPLIFY,
         ],
     },
     "validator.json": {

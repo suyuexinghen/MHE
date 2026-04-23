@@ -12,6 +12,7 @@ from metaharness_ext.deepmd.capabilities import (
     CAP_DEEPMD_VALIDATE,
     CAP_DPGEN_AUTOTEST,
     CAP_DPGEN_RUN,
+    CAP_DPGEN_SIMPLIFY,
 )
 from metaharness_ext.deepmd.collector import DPGenIterationCollector
 from metaharness_ext.deepmd.contracts import (
@@ -22,6 +23,7 @@ from metaharness_ext.deepmd.contracts import (
     DeepMDEnvironmentReport,
     DeepMDExecutableSpec,
     DeepMDExecutionMode,
+    DeepMDExperimentSpec,
     DeepMDFittingNetSpec,
     DeepMDModeInputSpec,
     DeepMDMutationAxis,
@@ -38,6 +40,7 @@ from metaharness_ext.deepmd.contracts import (
     DPGenIterationSummary,
     DPGenMachineSpec,
     DPGenRunSpec,
+    DPGenSimplifySpec,
 )
 from metaharness_ext.deepmd.dpgen_machine_compiler import build_dpgen_machine_json
 from metaharness_ext.deepmd.dpgen_param_compiler import build_dpgen_param_json
@@ -75,17 +78,20 @@ __all__ = [
     "CAP_DEEPMD_VALIDATE",
     "CAP_DPGEN_AUTOTEST",
     "CAP_DPGEN_RUN",
+    "CAP_DPGEN_SIMPLIFY",
     "DPGenAutotestSpec",
     "DPGenIterationCollection",
     "DPGenIterationCollector",
     "DPGenIterationSummary",
     "DPGenMachineSpec",
     "DPGenRunSpec",
+    "DPGenSimplifySpec",
     "DeepMDApplicationFamily",
     "DeepMDDescriptorSpec",
     "DeepMDEnvironmentProbeComponent",
     "DeepMDEnvironmentReport",
     "DeepMDExecutableSpec",
+    "DeepMDExperimentSpec",
     "DeepMDFittingNetSpec",
     "DeepMDDatasetSpec",
     "DeepMDDiagnosticSummary",

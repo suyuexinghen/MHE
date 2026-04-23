@@ -10,7 +10,13 @@ from metaharness.core.models import PendingConnectionSet
 from metaharness.sdk.loader import declare_component, load_manifest
 from metaharness.sdk.registry import ComponentRegistry
 from metaharness.sdk.runtime import ComponentRuntime
-from metaharness_ext.deepmd.contracts import DeepMDMutationAxis, DeepMDStudySpec
+from metaharness_ext.deepmd.contracts import (
+    DeepMDExecutableSpec,
+    DeepMDMutationAxis,
+    DeepMDStudySpec,
+    DPGenMachineSpec,
+    DPGenSimplifySpec,
+)
 from metaharness_ext.deepmd.environment import DeepMDEnvironmentProbeComponent
 from metaharness_ext.deepmd.executor import DeepMDExecutorComponent
 from metaharness_ext.deepmd.gateway import DeepMDGatewayComponent
@@ -79,7 +85,9 @@ async def test_deepmd_minimal_path_runs(examples_dir: Path, monkeypatch, tmp_pat
 
 
 @pytest.mark.asyncio
-async def test_deepmd_minimal_study_path_runs(examples_dir: Path, monkeypatch, tmp_path: Path) -> None:
+async def test_deepmd_minimal_study_path_runs(
+    examples_dir: Path, monkeypatch, tmp_path: Path
+) -> None:
     manifest_dir = examples_dir / "manifests" / "deepmd"
     graphs_dir = examples_dir / "graphs"
     registry = _build_registry(manifest_dir)
@@ -115,7 +123,9 @@ async def test_deepmd_minimal_study_path_runs(examples_dir: Path, monkeypatch, t
         rmse = 0.015 if rcut == 7.0 else 0.045
         (cwd / "lcurve.out").write_text(f"# step rmse_e rmse_f\n100 {rmse} 2.50e-02\n")
         (cwd / "checkpoint").write_text("checkpoint-marker")
-        return type("_FakeCompletedProcess", (), {"returncode": 0, "stdout": "training ok", "stderr": ""})()
+        return type(
+            "_FakeCompletedProcess", (), {"returncode": 0, "stdout": "training ok", "stderr": ""}
+        )()
 
     monkeypatch.setattr("metaharness_ext.deepmd.executor.subprocess.run", fake_run)
 
@@ -141,3 +151,67 @@ async def test_deepmd_minimal_study_path_runs(examples_dir: Path, monkeypatch, t
     assert study_report.recommended_value == pytest.approx(7.0)
     assert study_report.summary_metrics["best_rmse_e_trn"] == pytest.approx(0.015)
     assert all(trial.validation.status == "trained" for trial in study_report.trials)
+
+
+@pytest.mark.asyncio
+async def test_deepmd_minimal_simplify_path_runs(
+    examples_dir: Path, monkeypatch, tmp_path: Path
+) -> None:
+    manifest_dir = examples_dir / "manifests" / "deepmd"
+    graphs_dir = examples_dir / "graphs"
+    registry = _build_registry(manifest_dir)
+    engine = ConnectionEngine(registry, GraphVersionStore())
+    snapshot = parse_graph_xml(graphs_dir / "deepmd-minimal.xml")
+    candidate, report = engine.stage(
+        PendingConnectionSet(nodes=snapshot.nodes, edges=snapshot.edges)
+    )
+    version = engine.commit("deepmd-minimal-simplify", candidate, report)
+
+    compiler = DeepMDTrainConfigCompilerComponent()
+    executor = DeepMDExecutorComponent()
+    validator = DeepMDValidatorComponent()
+    await executor.activate(ComponentRuntime(storage_path=tmp_path))
+
+    simplify_inputs = examples_dir / "dpgen-simplify-inputs"
+    simplify_inputs.mkdir(exist_ok=True)
+    (simplify_inputs / "input.data").write_text("demo\n")
+
+    spec = DPGenSimplifySpec(
+        task_id="demo-simplify-1",
+        executable=DeepMDExecutableSpec(binary_name="dpgen", execution_mode="dpgen_simplify"),
+        param={"type_map": ["H", "O"], "numb_models": 4},
+        machine=DPGenMachineSpec(local_root=".", python_path="python3"),
+        training_init_model=["models/model.pb"],
+        relabeling={"pick_number": 4},
+        workspace_files=[str(simplify_inputs)],
+    )
+    plan = compiler.build_plan(spec)
+
+    monkeypatch.setattr(
+        "metaharness_ext.deepmd.executor.shutil.which", lambda binary: f"/usr/bin/{binary}"
+    )
+
+    def fake_run(command, *, cwd, text, capture_output, check, timeout):
+        iter_dir = cwd / "iter.000000"
+        (iter_dir / "00.train").mkdir(parents=True)
+        (iter_dir / "01.model_devi").mkdir()
+        (iter_dir / "02.fp").mkdir()
+        (cwd / "record.dpgen").write_text(
+            "candidate_count = 0\naccurate_count = 2\nfailed_count = 0\nconverged\n"
+        )
+        (iter_dir / "02.fp" / "relabel.out").write_text("relabel pick_number = 4\n")
+        return type(
+            "_FakeCompletedProcess", (), {"returncode": 0, "stdout": "simplify ok", "stderr": ""}
+        )()
+
+    monkeypatch.setattr("metaharness_ext.deepmd.executor.subprocess.run", fake_run)
+
+    artifact = executor.execute_plan(plan)
+    validation = validator.validate_run(artifact)
+
+    assert report.valid is True
+    assert version == 1
+    assert plan.execution_mode == "dpgen_simplify"
+    assert artifact.status == "completed"
+    assert validation.passed is True
+    assert validation.status == "converged"

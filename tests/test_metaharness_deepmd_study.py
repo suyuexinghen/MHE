@@ -207,7 +207,9 @@ async def test_study_rejects_unsupported_dpgen_axis(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_study_rcut_runs_real_train_chain(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_study_rcut_runs_real_train_chain(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     component = DeepMDStudyComponent()
     await component.activate(ComponentRuntime(storage_path=tmp_path))
     compiler = DeepMDTrainConfigCompilerComponent()
@@ -255,7 +257,9 @@ async def test_study_rcut_runs_real_train_chain(tmp_path: Path, monkeypatch: pyt
 
 
 @pytest.mark.asyncio
-async def test_study_sel_runs_real_train_chain(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_study_sel_runs_real_train_chain(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     component = DeepMDStudyComponent()
     await component.activate(ComponentRuntime(storage_path=tmp_path))
     compiler = DeepMDTrainConfigCompilerComponent()

@@ -163,9 +163,7 @@ def test_validator_fails_without_autotest_properties() -> None:
 
 def test_parse_autotest_result_json_filters_by_properties(tmp_path: Path) -> None:
     result_file = tmp_path / "result.json"
-    result_file.write_text(
-        '{"eos": {"a": 3.5}, "elastic": {"c11": 120.5}, "bulk": {"b": 2.0}}'
-    )
+    result_file.write_text('{"eos": {"a": 3.5}, "elastic": {"c11": 120.5}, "bulk": {"b": 2.0}}')
     summary = DeepMDDiagnosticSummary()
     parse_autotest_results(result_file, summary, properties=["eos"])
 
@@ -176,9 +174,7 @@ def test_parse_autotest_result_json_filters_by_properties(tmp_path: Path) -> Non
 
 def test_parse_autotest_result_json_deep_nesting(tmp_path: Path) -> None:
     result_file = tmp_path / "result.json"
-    result_file.write_text(
-        '{"eos": {"lattice": {"a": 3.5, "b": 4.2}, "energy": 1.2}}'
-    )
+    result_file.write_text('{"eos": {"lattice": {"a": 3.5, "b": 4.2}, "energy": 1.2}}')
     summary = DeepMDDiagnosticSummary()
     parse_autotest_results(result_file, summary)
 

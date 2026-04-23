@@ -4,7 +4,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-DeepMDApplicationFamily = Literal["deepmd_train", "dpgen_run", "dpgen_autotest"]
+DeepMDApplicationFamily = Literal["deepmd_train", "dpgen_run", "dpgen_simplify", "dpgen_autotest"]
 DeepMDExecutionMode = Literal[
     "train",
     "freeze",
@@ -13,6 +13,7 @@ DeepMDExecutionMode = Literal[
     "model_devi",
     "neighbor_stat",
     "dpgen_run",
+    "dpgen_simplify",
     "dpgen_autotest",
 ]
 DeepMDRunStatus = Literal["planned", "completed", "failed", "unavailable"]
@@ -117,7 +118,11 @@ class DeepMDTrainSpec(BaseModel):
         elif mode == "test":
             if not self.mode_inputs.model_path:
                 self.mode_inputs.model_path = "frozen_model.pb"
-            if not system_paths and not self.dataset.train_systems and not self.dataset.validation_systems:
+            if (
+                not system_paths
+                and not self.dataset.train_systems
+                and not self.dataset.validation_systems
+            ):
                 raise ValueError("test mode requires at least one dataset path")
         elif mode == "model_devi":
             if not self.mode_inputs.model_path:
@@ -169,6 +174,34 @@ class DPGenRunSpec(BaseModel):
         return self
 
 
+class DPGenSimplifySpec(BaseModel):
+    task_id: str
+    application_family: DeepMDApplicationFamily = "dpgen_simplify"
+    executable: DeepMDExecutableSpec = Field(
+        default_factory=lambda: DeepMDExecutableSpec(
+            binary_name="dpgen", execution_mode="dpgen_simplify"
+        )
+    )
+    param: dict[str, Any] = Field(default_factory=dict)
+    machine: DPGenMachineSpec = Field(default_factory=DPGenMachineSpec)
+    training_init_model: list[str] = Field(default_factory=list)
+    trainable_mask: list[bool] = Field(default_factory=list)
+    relabeling: dict[str, Any] = Field(default_factory=dict)
+    working_directory: str | None = None
+    workspace_files: list[str] = Field(default_factory=list)
+    workspace_inline_files: dict[str, str] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_dpgen_simplify(self) -> "DPGenSimplifySpec":
+        if self.executable.execution_mode != "dpgen_simplify":
+            raise ValueError(
+                "DPGenSimplifySpec requires executable.execution_mode='dpgen_simplify'"
+            )
+        if not self.param:
+            raise ValueError("param must not be empty")
+        return self
+
+
 class DPGenAutotestSpec(BaseModel):
     task_id: str
     application_family: DeepMDApplicationFamily = "dpgen_autotest"
@@ -195,10 +228,22 @@ class DPGenAutotestSpec(BaseModel):
         return self
 
 
+DeepMDExperimentSpec = DeepMDTrainSpec | DPGenRunSpec | DPGenSimplifySpec | DPGenAutotestSpec
+
+
 class DeepMDEnvironmentReport(BaseModel):
+    application_family: DeepMDApplicationFamily
+    execution_mode: DeepMDExecutionMode
     dp_available: bool
     python_available: bool
     required_paths_present: bool
+    workspace_ready: bool = True
+    machine_root_ready: bool = True
+    remote_root_configured: bool = True
+    scheduler_command_configured: bool = True
+    missing_required_paths: list[str] = Field(default_factory=list)
+    environment_prerequisites: list[str] = Field(default_factory=list)
+    missing_prerequisites: list[str] = Field(default_factory=list)
     messages: list[str] = Field(default_factory=list)
 
 
@@ -303,6 +348,8 @@ class DeepMDValidationReport(BaseModel):
         "model_devi_computed",
         "neighbor_stat_computed",
         "baseline_success",
+        "simplify_success",
+        "converged",
         "autotest_validated",
         "run_failed",
         "runtime_failed",

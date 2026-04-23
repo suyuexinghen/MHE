@@ -80,10 +80,14 @@ class DeepMDStudyComponent(HarnessComponent):
                 else "No passing trial produced the requested metric."
             ),
             summary_metrics=summary_metrics,
-            messages=[] if recommended is not None else ["No passing trial produced the requested metric."],
+            messages=[]
+            if recommended is not None
+            else ["No passing trial produced the requested metric."],
         )
 
-    def _mutate_task(self, spec: DeepMDStudySpec, value: int | float) -> DeepMDTrainSpec | DPGenRunSpec:
+    def _mutate_task(
+        self, spec: DeepMDStudySpec, value: int | float
+    ) -> DeepMDTrainSpec | DPGenRunSpec:
         task = spec.base_task.model_copy(deep=True)
         task.task_id = f"{spec.task_id}__study__{spec.axis.kind}__{value}"
 
@@ -95,7 +99,9 @@ class DeepMDStudyComponent(HarnessComponent):
             elif spec.axis.kind == "sel":
                 task.descriptor.sel = [int(value)]
             else:
-                raise NotImplementedError(f"Axis {spec.axis.kind} is not supported for DeepMDTrainSpec")
+                raise NotImplementedError(
+                    f"Axis {spec.axis.kind} is not supported for DeepMDTrainSpec"
+                )
             return task
 
         if spec.axis.kind == "model_devi_f_trust_lo":

@@ -71,7 +71,11 @@ class DeepMDValidatorComponent(HarnessComponent):
                 messages.append(f"DeepMD command failed: {fallback_reason}.")
             else:
                 messages.append("DeepMD command failed.")
-            status = "run_failed" if artifact.execution_mode == "dpgen_run" else "runtime_failed"
+            status = (
+                "run_failed"
+                if artifact.execution_mode in {"dpgen_run", "dpgen_simplify"}
+                else "runtime_failed"
+            )
             return DeepMDValidationReport(
                 task_id=artifact.task_id,
                 run_id=artifact.run_id,
@@ -122,7 +126,7 @@ class DeepMDValidatorComponent(HarnessComponent):
             if passed:
                 messages.append("Neighbor statistics diagnostics were produced.")
                 metrics.update(artifact.summary.neighbor_stat_metrics)
-        elif artifact.execution_mode == "dpgen_run":
+        elif artifact.execution_mode in {"dpgen_run", "dpgen_simplify"}:
             collection = artifact.summary.dpgen_collection
             passed = bool(
                 collection
@@ -133,9 +137,15 @@ class DeepMDValidatorComponent(HarnessComponent):
                     for iteration in collection.iterations
                 )
             )
-            status = "baseline_success" if passed else "validation_failed"
+            if artifact.execution_mode == "dpgen_simplify" and passed:
+                converged = any("converged" in message.lower() for message in collection.messages)
+                status = "converged" if converged else "simplify_success"
+                messages.append("DP-GEN simplify completed with iteration evidence.")
+            else:
+                status = "baseline_success" if passed else "validation_failed"
+                if passed:
+                    messages.append("DP-GEN baseline completed with iteration evidence.")
             if passed and collection is not None:
-                messages.append("DP-GEN baseline completed with iteration evidence.")
                 metrics.update(
                     {
                         "candidate_count": float(collection.candidate_count),
@@ -143,6 +153,8 @@ class DeepMDValidatorComponent(HarnessComponent):
                         "failed_count": float(collection.failed_count),
                     }
                 )
+                if any("relabel" in message.lower() for message in collection.messages):
+                    metrics["relabeling_detected"] = "true"
         elif artifact.execution_mode == "dpgen_autotest":
             passed = bool(artifact.summary.autotest_properties)
             status = "autotest_validated" if passed else "validation_failed"
