@@ -17,23 +17,24 @@ JEDI extension 不能把所有动作都抽象成单一 `run()`，因为至少存
 
 ---
 
-## 4.2 Phase 0 的最小执行链
+## 4.2 当前 Phase 0 的最小执行链
 
-Phase 0 只实现：
+Phase 0 现在实现：
 
 ```text
 request
   -> normalize to typed spec
   -> environment probe
   -> controlled YAML compile
-  -> schema or validate-only execution
+  -> explicit preprocessing
+  -> mode-aware execution
   -> validation report
 ```
 
 这个顺序不能随意打乱，原因是：
 
 - environment probe 在前，避免把环境错误误报成 YAML 错误
-- compiler 在 executor 前，避免 executor 接收未治理输入
+- compiler / preprocessor 在 executor 前，避免 executor 接收未治理输入或缺失运行物料
 - validator 在最后，作为统一判定面，而不是散落在各组件里
 
 ---
@@ -52,8 +53,9 @@ request
 
 ### real_run
 
-- 放到后续 phase
-- 首版先不把 launcher / MPI / output layout 的复杂性一次引入
+- 属于当前基础执行接口面
+- 负责 `<launcher> ... <app>.x config.yaml` 或 direct real run 的命令构造
+- smoke baseline policy、richer diagnostics interpretation 与 scientific acceptance checks 再放到后续 phase
 
 ---
 
@@ -70,21 +72,23 @@ extension 的运行面必须围绕 executable 建模，而不是错误复用 tes
 
 ## 4.5 working directory 与 artifact layout
 
-即使 Phase 0 还没有完整 preprocessor，也应尽早固定 artifact layout 思路：
+当前 Phase 0 已经有显式 preprocessor，因此需要固定 artifact layout 思路：
 
 ```text
 runtime.storage_path / jedi_runs / <task_id> / <run_id>/
   |- config.yaml
   |- stdout.log
   |- stderr.log
-  |- schema.json        (optional)
-  |- validation.json
+  |- schema.json                       (optional)
+  |- analysis.out / other outputs      (optional)
+  |- departures.json / other diagnostics (optional)
+  |- reference.json / other references (optional)
 ```
 
 这样做的好处是：
 
 - validator / CLI / agent 能消费稳定路径
-- 后续增加 outputs/diagnostics/ 时不需要推翻布局
+- 后续增加 richer diagnostics interpretation 时不需要推翻布局
 - evidence files 从第一天起就有一致归档方式
 
 ---

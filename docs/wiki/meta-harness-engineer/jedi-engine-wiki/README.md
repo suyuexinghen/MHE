@@ -38,7 +38,7 @@
 - prose 中使用 **validate-only**、**real run** 作为自然语言写法，不把 snake_case 代码字面量直接混入叙述句
 - **smoke baseline** 指轻量、低成本、优先验证执行链的 baseline；**scientific baseline** 指带最小科学证据或正式科学判据的 baseline；**toy baseline** 指刻意缩小问题规模的 baseline
 - **run artifact** 指一次执行产生的结构化运行产物集合；`evidence_files` 指 validator/report 对外暴露的关键证据文件列表
-- Phase 0 中 **diagnostics** 只作为未来 evidence surface 与 artifact layout 预留项，不要求结构化解析或 scientific 判定
+- Phase 0 中 **diagnostics** 已进入 evidence surface 与 artifact layout；首版要求 evidence-first outcome classification，但不要求 richer scientific interpretation
 
 交叉引用规则：
 
@@ -78,13 +78,14 @@
 
 - `blueprint/01-jedi-extension-blueprint.md`：正式设计蓝图
 - `blueprint/01-jedi-extension-roadmap.md`：分阶段路线图
-- `blueprint/01-jedi-extension-implementation-plan.md`：当前可执行实施计划（Phase 0）
+- `blueprint/01-jedi-extension-implementation-plan.md`：当前可执行实施计划（以当前 Phase 0 边界为准）
 - 本目录：把上述正式文档拆解成便于实现、维护和代码评审的工程设计 wiki
 
 如果 blueprint / roadmap 与当前环境事实存在未决差异，本目录的策略是：
 
-- Phase 0 只承诺 environment probe + validate-only 的最小闭环
-- Phase 1 的 smoke baseline 与 observation-path 选择，必须由 environment probe 和 data readiness 结果来 gate
+- Phase 0 承诺 `spec -> environment probe -> controlled compile -> explicit preprocessing -> mode-aware execution -> evidence-first validation` 的基础闭环
+- Phase 0 的 execution mode 包含 `schema`、`validate_only`、`real_run`
+- Phase 1 的 smoke baseline 与 observation-path 选择，是建立在现有 `real_run` 基础上的 policy / selection layer，必须由 environment probe 和 data readiness 结果来 gate
 - 不把尚未验证的外部构建/安装状态直接写死成实现前提
 
 ---

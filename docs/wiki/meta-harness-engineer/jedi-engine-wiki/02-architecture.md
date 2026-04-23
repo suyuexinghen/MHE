@@ -10,11 +10,12 @@
 JediGateway
   -> JediEnvironmentProbe
     -> JediConfigCompiler
-      -> JediExecutor
-        -> JediValidator
+      -> JediInputPreprocessor
+        -> JediExecutor
+          -> JediValidator
 ```
 
-Phase 1 之后再扩展为：
+Phase 1 再在此基础上扩展为：
 
 ```text
 JediGateway
@@ -26,7 +27,7 @@ JediGateway
             -> JediValidator
 ```
 
-首版故意不把所有能力一次放全，而是先把 **可验证、可报告、可复用** 的最小主链打稳。
+当前实现故意先把 **可验证、可报告、可复用** 的基础主链打稳，再把 smoke policy 与 richer diagnostics interpretation 作为下一层能力叠加上去。
 
 ---
 
@@ -78,13 +79,27 @@ JediGateway
 - 运行外部进程
 - 根据 stderr 反推配置逻辑
 
+### JediInputPreprocessor
+
+职责：
+
+- 在 run dir materialize `config.yaml`
+- 校验 `required_runtime_paths`
+- 记录 `prepared_inputs`
+
+不负责：
+
+- 自动下载数据
+- 修复环境缺失
+- 解释 scientific result
+
 ### JediExecutor
 
 职责：
 
 - 构造 `schema` / `validate_only` / `real_run` 命令
 - 运行 executable
-- 记录 stdout / stderr / return code / schema path
+- 记录 stdout / stderr / return code / schema path / output evidence
 - 归档 run artifact
 
 不负责：
@@ -98,7 +113,7 @@ JediGateway
 
 - 综合 environment report 与 run artifact
 - 输出稳定的 `JediValidationReport`
-- 区分 environment failure / validation failure / runtime failure
+- 区分 `environment_invalid` / `validated` / `executed` / `validation_failed` / `runtime_failed`
 
 不负责：
 
@@ -107,14 +122,15 @@ JediGateway
 
 ---
 
-## 2.3 为什么首版没有 preprocessor 和 diagnostics collector
+## 2.3 为什么当前 Phase 0 保留窄 preprocessor，并把 diagnostics interpretation 放到后续阶段
 
-这不是遗漏，而是分阶段控制复杂度：
+这是分阶段控制复杂度，而不是把 runtime 基础面拆散：
 
-- preprocessor 会引入运行目录、文件复制/软链、testinput/data materialization 的额外状态
-- diagnostics collector 会引入 IODA/HDF5/ODB 证据提取与组级解析
+- preprocessor 已作为正式组件进入当前主链，但职责刻意收敛在 materialization 与 required-path verification
+- executor / validator 已承接 `real_run` 与 runtime evidence 归档
+- 更重的 diagnostics collector 与 IODA/HDF5/ODB 组级 interpretation 仍放在后续阶段
 
-Phase 0 的目标是先建立稳定的执行前验证闭环；只有当 `spec -> env -> YAML -> validate-only -> report` 已经稳定，才值得进入更重的 runtime 层。
+因此当前 Phase 0 的目标，是先建立 `spec -> env -> YAML -> preprocess -> mode-aware execution -> evidence-first validation` 的稳定基础闭环；后续再在这个骨架上叠加 smoke policy 与 richer interpretation。
 
 ---
 

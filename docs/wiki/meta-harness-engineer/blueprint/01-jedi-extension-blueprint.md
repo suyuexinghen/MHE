@@ -29,9 +29,9 @@ YAML config + model-specific executable + launcher
 1. 用 typed contracts 表达可控的 JEDI experiment spec
 2. 将 spec 编译成稳定 YAML，而不是透传任意 YAML
 3. 以受约束的 launcher / executable 运行 JEDI
-4. 准备输入数据、收集 artifacts 与 diagnostics
-5. 生成包含工程结果与科学证据的 validator/report
-6. 为后续参数研究与 agent 决策提供稳定证据面
+4. 显式 materialize 运行输入、检查 required runtime paths，并归档 runtime evidence
+5. 生成稳定的 environment / run / validation contracts 与 evidence-first validation report
+6. 为后续 smoke policy、diagnostics interpretation 与 agent 决策提供稳定骨架
 
 ---
 
@@ -155,8 +155,7 @@ JediGateway
     -> JediConfigCompiler
       -> JediInputPreprocessor
         -> JediExecutor
-          -> JediDiagnosticsCollector
-            -> JediValidator
+          -> JediValidator
 ```
 
 ### `JediGateway`
@@ -194,12 +193,12 @@ JediGateway
 
 职责：
 
-- 准备运行目录
-- 复制/链接当前实验需要的 YAML、Data、reference/test files
-- 解析并固化输入路径
-- 为后续运行产物生成统一目录布局
+- 在 run directory 中 materialize `config.yaml`
+- 校验 `required_runtime_paths` 是否存在
+- 记录 `prepared_inputs`
+- 为后续运行产物保留统一目录布局入口
 
-> 当前 JEDI wiki 已明确指出：真实工作流并不只是“写一个 YAML 然后运行”，还需要输入文件就位。因此 preprocessor 不是可有可无的辅助脚本，而是正式组件。
+> 当前首版 preprocessor 是显式但收敛的 execution-time materialization step，不负责自动下载数据、修复环境，亦不退化为任意外部数据搬运层。
 
 ### `JediExecutor`
 
@@ -212,26 +211,6 @@ JediGateway
   3. `real_run`：`<launcher> ... <app>.x config.yaml`
 - 收集退出码、stdout、stderr、运行目录、关键输出文件
 - 提供超时与清理语义
-
-### `JediDiagnosticsCollector`
-
-职责：
-
-- 识别 analysis output、IODA/HDF5/ODB diagnostics、observer output、reference/test output 线索
-- 识别 IODA diagnostics 中的组级证据，而不只把 diagnostics 当成“某个文件存在”
-  - `MetaData`
-  - `ObsValue`
-  - `ObsError`
-  - `PreQC`
-  - `HofX`
-  - `EffectiveError`
-  - `DerivedObsValue`
-  - `DerivedMetaData`
-  - `ObsErrorData`
-  - 当 workflow 提供时还应兼容 `QCFlags` 等扩展组/变量
-- 提取工程级证据：文件存在性、文件大小、产物布局、stderr/error markers
-- 提取科学级证据：O-B / O-A / departures / cost / gradient norm reduction / inner-outer iteration 迹象
-- 生成 `JediDiagnosticSummary`
 
 ### `JediValidator`
 
@@ -359,24 +338,33 @@ Annotated[
 
 - `task_id: str`
 - `run_id: str`
-- `application_family: str`
-- `execution_mode: str`
-- `binary_name: str`
+- `application_family: JediApplicationFamily`
+- `execution_mode: JediExecutionMode`
 - `command: list[str]`
-- `yaml_path: str`
 - `working_directory: str`
-- `input_files: list[str]`
+- `config_path: str`
+- `schema_path: str | None`
 - `expected_outputs: list[str]`
+- `expected_logs: list[str]`
 - `expected_diagnostics: list[str]`
+- `expected_references: list[str]`
+- `required_runtime_paths: list[str]`
+- `scientific_check: Literal["runtime_only", "rms_improves", "ensemble_outputs_present"]`
+- `config_text: str`
+- `executable: JediExecutableSpec`
 
 ### `JediEnvironmentReport`
 
 字段：
 
-- `binary_exists: bool`
+- `binary_available: bool`
 - `launcher_available: bool`
-- `libraries_resolved: bool`
+- `shared_libraries_resolved: bool`
 - `required_paths_present: bool`
+- `binary_path: str | None`
+- `launcher_path: str | None`
+- `smoke_candidate: JediApplicationFamily | None`
+- `smoke_ready: bool`
 - `messages: list[str]`
 
 ### `JediRunArtifact`
@@ -385,26 +373,21 @@ Annotated[
 
 - `task_id: str`
 - `run_id: str`
+- `application_family: JediApplicationFamily`
+- `execution_mode: JediExecutionMode`
 - `command: list[str]`
 - `return_code: int | None`
+- `config_path: str | None`
+- `schema_path: str | None`
 - `stdout_path: str | None`
 - `stderr_path: str | None`
-- `yaml_path: str`
+- `prepared_inputs: list[str]`
 - `working_directory: str`
 - `output_files: list[str]`
 - `diagnostic_files: list[str]`
-- `schema_path: str | None = None`
-- `completed: bool`
-
-### `JediDiagnosticSummary`
-
-字段：
-
-- `departure_metrics: dict[str, float]`
-- `cost_metrics: dict[str, float]`
-- `iteration_metrics: dict[str, float | int]`
-- `output_file_sizes: dict[str, int]`
-- `messages: list[str]`
+- `reference_files: list[str]`
+- `status: JediRunStatus`
+- `result_summary: dict[str, Any]`
 
 ### `JediValidationReport`
 
@@ -416,11 +399,9 @@ Annotated[
 - `status: Literal[
     "environment_invalid",
     "validated",
-    "validation_failed",
     "executed",
+    "validation_failed",
     "runtime_failed",
-    "missing_outputs",
-    "scientific_check_failed",
 ]
 `
 - `messages: list[str]`
@@ -444,21 +425,21 @@ JEDI 的执行不应被抽象成单一“run”动作，而应显式区分：
 
 这三者的 validator 语义不同，不能共用一个“passed=true 就算完成”的简单规则。
 
-### 1.8.2 validate-only 必须先于真实执行
+### 1.8.2 validate-only 是首选前置检查，但不是对 real-run 的强制阶段门
 
-最小闭环定义为：
-
-```text
-spec -> env probe -> YAML -> validate-only -> structured validation result
-```
-
-真实执行定义为：
+Phase 0 的基础执行闭环定义为：
 
 ```text
-spec -> env probe -> preprocess -> YAML -> validate-only -> real-run -> diagnostics -> validator
+spec -> env probe -> YAML -> preprocess -> mode-aware execution -> evidence-first validation
 ```
 
-这样可以把早期失败尽量限制在便宜的配置阶段，而不是昂贵的 launcher / MPI 阶段。
+其中 execution mode 显式包含：
+
+- `schema`
+- `validate_only`
+- `real_run`
+
+`validate_only` 仍然是最便宜、最推荐的前置检查路径，但当前 execution foundation 不把“先 validate_only，后 real_run”写成唯一合法执行序列。这样既保留快速失败能力，也与当前 executor/contracts/tests 的真实行为一致。
 
 ### 1.8.3 YAML 是稳定控制面，但不是任意透传面
 
@@ -535,28 +516,21 @@ runtime.storage_path / "jedi_runs" / <task_id> / <run_id>/
 
 ### 首版最小工程证据
 
-- binary / launcher / data path 是否存在
-- validate-only 是否通过
-- return code 是否为 0
-- stdout/stderr 是否包含 fatal/error 迹象
-- 关键输出文件与 diagnostics 文件是否生成
+- binary / launcher / shared libraries / required paths 是否满足
+- `schema` / `validate_only` / `real_run` 是否按 execution mode 返回稳定结果
+- return code 是否为 0（当该 mode 需要时）
+- stdout/stderr 是否存在且可审计
+- `config.yaml`、`schema.json`（如存在）、`prepared_inputs`、`output_files`、`diagnostic_files`、`reference_files` 是否被稳定归档
 
-### 首版最小科学证据
+### 首版 validator 语义
 
-- O-B / O-A / departures 线索是否可见
-- analysis output 是否生成
-- variational 场景是否能提取 cost / iteration / gradient 线索
-- ensemble 场景是否能提取 observer / posterior output 线索
+- `environment_invalid`：环境或输入前提未满足，不应继续归因于配置逻辑
+- `validated`：`schema` / `validate_only` 路径通过当前最小判定面
+- `executed`：`real_run` 完成且存在最小 runtime evidence
+- `validation_failed`：配置或当前 mode 的最小 evidence 判定未通过
+- `runtime_failed`：运行失败、超时、缺少退出信息或未形成必要运行证据
 
-### 不应拖到后续 phase 才引入的最小科学判据
-
-当 workflow 已提供必要 diagnostics 时，validator 应尽早支持类似：
-
-- `RMS(O-A) < RMS(O-B)`
-- analysis output 存在且可解析
-- 关键 departures / diagnostics 文件存在
-
-也就是说，**科学判据不应全部推迟到“高级 diagnostics phase”才开始出现**；最小可用版本就应该有最小科学验证。
+> `executed` 表示“runtime completed with evidence”，不等于 scientific success。更高层 scientific acceptance 与 richer diagnostics interpretation 属于 Phase 1+ 的增强层。
 
 ---
 
@@ -576,6 +550,7 @@ runtime.storage_path / "jedi_runs" / <task_id> / <run_id>/
 - 若当前 workspace 依赖 CTest 数据准备目标，则应显式检查并记录 `ctest -R get_` / `ctest -R qg_get_data` / `ctest -R l95_get_data` 一类步骤是否已执行
 - 文档与实现应区分 **CTest test name** 和 **executable name**：前者可保持 `qg_4dvar_rpcg` 这类测试名，后者应使用实际二进制名如 `qg4DVar.x`
 - `environment probe` / `preprocessor` 应把“binary 存在但 testinput / obsdata / reference data 未就位”判定为环境或输入准备失败，而不是 validation failure
+- Phase 0 的 preprocessor 只 materialize config、校验 `required_runtime_paths`、记录 `prepared_inputs`，不自动触发 `ctest -R get_`、`qg_get_data`、`l95_get_data` 或等价数据准备步骤
 
 ### 首版不承担的责任
 
@@ -628,7 +603,7 @@ runtime.storage_path / "jedi_runs" / <task_id> / <run_id>/
 - controlled YAML compiler
 - explicit input preprocessor
 - mode-aware executor
-- diagnostics collector
-- science-aware validator
+- evidence-first validator
+- Phase 1+ diagnostics/scientific layers built on the same execution foundation
 
 这条路线既符合当前 10 篇 JEDI wiki 的工程事实，也符合 MHE 一贯的 contract-first、evidence-first 扩展模式。

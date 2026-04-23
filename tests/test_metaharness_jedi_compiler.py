@@ -57,7 +57,40 @@ def test_jedi_compiler_variational_yaml_is_stable() -> None:
     assert plan_one.config_text == plan_two.config_text
     assert "cost function:" in plan_one.config_text
     assert "  cost type: \"4D-Var\"" in plan_one.config_text
+    assert "variational:" in plan_one.config_text
+    assert "  minimizer:" in plan_one.config_text
+    assert "output:" in plan_one.config_text
+    assert "final:" in plan_one.config_text
+    assert "test:" in plan_one.config_text
     assert "3DFGAT" not in plan_one.config_text
+
+
+def test_jedi_compiler_variational_real_run_declares_expected_evidence() -> None:
+    compiler = JediConfigCompilerComponent()
+    spec = JediVariationalSpec(
+        task_id="var-real",
+        executable=JediExecutableSpec(
+            binary_name="qg4DVar.x",
+            execution_mode="real_run",
+            launcher="mpiexec",
+            process_count=4,
+        ),
+        background_path="/tmp/background.nc",
+        background_error_path="/tmp/background-error.nc",
+        observation_paths=["/tmp/obs.ioda"],
+        scientific_check="rms_improves",
+        expected_diagnostics=["departures.json"],
+    )
+
+    plan = compiler.build_plan(spec)
+
+    assert plan.expected_outputs == ["analysis.out"]
+    assert plan.expected_diagnostics == ["departures.json"]
+    assert plan.expected_references == ["reference.json"]
+    assert plan.scientific_check == "rms_improves"
+    assert "/tmp/background.nc" in plan.required_runtime_paths
+    assert "/tmp/background-error.nc" in plan.required_runtime_paths
+    assert "/tmp/obs.ioda" in plan.required_runtime_paths
 
 
 def test_jedi_compiler_does_not_passthrough_arbitrary_yaml() -> None:
@@ -73,3 +106,58 @@ def test_jedi_compiler_does_not_passthrough_arbitrary_yaml() -> None:
     assert "!!python/object" not in plan.config_text
     assert "solver:" in plan.config_text
     assert "iterations: 10" in plan.config_text
+
+
+def test_jedi_compiler_variational_real_run_defaults_departures_diagnostic() -> None:
+    compiler = JediConfigCompilerComponent()
+    spec = JediVariationalSpec(
+        task_id="var-default-diagnostics",
+        executable=JediExecutableSpec(binary_name="qg4DVar.x", execution_mode="real_run"),
+    )
+
+    plan = compiler.build_plan(spec)
+
+    assert plan.expected_diagnostics == ["departures.json"]
+
+
+def test_jedi_compiler_local_ensemble_real_run_declares_expected_evidence() -> None:
+    compiler = JediConfigCompilerComponent()
+    spec = JediLocalEnsembleDASpec(
+        task_id="ens-real",
+        executable=JediExecutableSpec(
+            binary_name="qgLETKF.x",
+            execution_mode="real_run",
+            launcher="mpiexec",
+            process_count=8,
+        ),
+        ensemble_paths=["/tmp/ens.000", "/tmp/ens.001"],
+        background_path="/tmp/background.nc",
+        observation_paths=["/tmp/obs.ioda"],
+        scientific_check="ensemble_outputs_present",
+        expected_diagnostics=["posterior.out", "observer.out"],
+    )
+
+    plan = compiler.build_plan(spec)
+
+    assert plan.expected_outputs == ["letkf.out"]
+    assert plan.expected_diagnostics == ["posterior.out", "observer.out"]
+    assert plan.expected_references == ["ensemble_reference.json"]
+    assert plan.scientific_check == "ensemble_outputs_present"
+    assert "/tmp/ens.000" in plan.required_runtime_paths
+    assert "/tmp/background.nc" in plan.required_runtime_paths
+    assert "/tmp/obs.ioda" in plan.required_runtime_paths
+    assert "driver:" in plan.config_text
+    assert "local ensemble DA:" in plan.config_text
+
+
+def test_jedi_compiler_local_ensemble_real_run_defaults_posterior_diagnostic() -> None:
+    compiler = JediConfigCompilerComponent()
+    spec = JediLocalEnsembleDASpec(
+        task_id="ens-default-diagnostics",
+        executable=JediExecutableSpec(binary_name="qgLETKF.x", execution_mode="real_run"),
+        ensemble_paths=["/tmp/ens.000"],
+    )
+
+    plan = compiler.build_plan(spec)
+
+    assert plan.expected_diagnostics == ["posterior.out"]

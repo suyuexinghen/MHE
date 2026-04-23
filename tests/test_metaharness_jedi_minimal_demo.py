@@ -292,6 +292,8 @@ async def test_jedi_real_run_happy_path_runs(examples_dir: Path, monkeypatch, tm
 
     def fake_run(command, *, cwd, text, capture_output, check, timeout):
         (cwd / "analysis.out").write_text("analysis")
+        (cwd / "departures.json").write_text('{"rms_observation_minus_analysis": 0.6, "rms_observation_minus_background": 1.1}')
+        (cwd / "reference.json").write_text('{"baseline": "toy-reference"}')
         return type(
             "_RealRunCompletedProcess",
             (),
@@ -311,5 +313,98 @@ async def test_jedi_real_run_happy_path_runs(examples_dir: Path, monkeypatch, tm
     assert artifact.status == "completed"
     assert artifact.command == ["/usr/bin/qg4DVar.x", "config.yaml"]
     assert any(path.endswith("analysis.out") for path in artifact.output_files)
+    assert any(path.endswith("departures.json") for path in artifact.diagnostic_files)
+    assert any(path.endswith("reference.json") for path in artifact.reference_files)
+    assert validation.passed is True
+    assert validation.status == "executed"
+
+
+@pytest.mark.asyncio
+async def test_jedi_local_ensemble_real_run_happy_path_runs(
+    examples_dir: Path, monkeypatch, tmp_path: Path
+) -> None:
+    manifest_dir = examples_dir / "manifests" / "jedi"
+    graphs_dir = examples_dir / "graphs"
+    registry = _build_registry(manifest_dir)
+    engine = ConnectionEngine(registry, GraphVersionStore())
+    snapshot = parse_graph_xml(graphs_dir / "jedi-minimal.xml")
+    candidate, report = engine.stage(
+        PendingConnectionSet(nodes=snapshot.nodes, edges=snapshot.edges)
+    )
+    version = engine.commit("jedi-letkf-happy", candidate, report)
+
+    gateway = JediGatewayComponent()
+    environment = JediEnvironmentProbeComponent()
+    compiler = JediConfigCompilerComponent()
+    executor = JediExecutorComponent()
+    validator = JediValidatorComponent()
+    await executor.activate(ComponentRuntime(storage_path=tmp_path))
+
+    ensemble_member = examples_dir / "jedi-ensemble-member.000"
+    ensemble_member.write_text("member")
+    background = examples_dir / "jedi-letkf-background.nc"
+    background.write_text("background")
+    observations = examples_dir / "jedi-letkf-obs.ioda"
+    observations.write_text("obs")
+
+    task = gateway.issue_local_ensemble_task(
+        task_id="letkf-demo-1",
+        execution_mode="real_run",
+        binary_name="qgLETKF.x",
+        ensemble_paths=[str(ensemble_member)],
+        background_path=str(background),
+        observation_paths=[str(observations)],
+        scientific_check="ensemble_outputs_present",
+    )
+
+    def fake_which(name: str) -> str | None:
+        if name == "ldd":
+            return "/usr/bin/ldd"
+        if name == "qgLETKF.x":
+            return "/usr/bin/qgLETKF.x"
+        return None
+
+    class _LddResult:
+        returncode = 0
+        stdout = ""
+
+    monkeypatch.setattr("metaharness_ext.jedi.environment.shutil.which", fake_which)
+    monkeypatch.setattr(
+        "metaharness_ext.jedi.environment.subprocess.run",
+        lambda *args, **kwargs: _LddResult(),
+    )
+    environment_report = environment.probe(task)
+    plan = compiler.build_plan(task)
+
+    monkeypatch.setattr(
+        "metaharness_ext.jedi.executor.JediExecutorComponent._resolve_binary",
+        lambda self, binary_name: f"/usr/bin/{Path(binary_name).name}",
+    )
+
+    def fake_run(command, *, cwd, text, capture_output, check, timeout):
+        (cwd / "letkf.out").write_text("ensemble output")
+        (cwd / "posterior.out").write_text("posterior")
+        (cwd / "ensemble_reference.json").write_text('{"baseline": "letkf-reference"}')
+        return type(
+            "_LetkfCompletedProcess",
+            (),
+            {"returncode": 0, "stdout": "run ok", "stderr": ""},
+        )()
+
+    monkeypatch.setattr("metaharness_ext.jedi.executor.subprocess.run", fake_run)
+
+    artifact = executor.execute_plan(plan)
+    validation = validator.validate_run(artifact)
+
+    assert report.valid is True
+    assert version == 1
+    assert environment_report.smoke_ready is True
+    assert environment_report.smoke_candidate == "local_ensemble_da"
+    assert plan.execution_mode == "real_run"
+    assert artifact.status == "completed"
+    assert artifact.command == ["/usr/bin/qgLETKF.x", "config.yaml"]
+    assert any(path.endswith("letkf.out") for path in artifact.output_files)
+    assert any(path.endswith("posterior.out") for path in artifact.diagnostic_files)
+    assert any(path.endswith("ensemble_reference.json") for path in artifact.reference_files)
     assert validation.passed is True
     assert validation.status == "executed"

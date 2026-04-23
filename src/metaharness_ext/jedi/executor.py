@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 from pathlib import Path
@@ -233,11 +234,13 @@ class JediExecutorComponent(HarnessComponent):
     ) -> JediRunArtifact:
         schema_path = run_dir / "schema.json"
         output_files = self._discover_files(run_dir, plan.expected_outputs)
-        diagnostic_files = [
-            path
-            for path in self._discover_files(run_dir, ["*.log", "*.out", "*.nc", "*.ioda"])
-            if Path(path).name not in {"stdout.log", "stderr.log"}
-        ]
+        diagnostic_files = self._discover_files(run_dir, plan.expected_diagnostics)
+        reference_files = self._discover_files(run_dir, plan.expected_references)
+        parsed_summary = self._augment_result_summary(
+            result_summary,
+            scientific_check=plan.scientific_check,
+            diagnostic_files=diagnostic_files,
+        )
         return JediRunArtifact(
             task_id=plan.task_id,
             run_id=plan.run_id,
@@ -252,10 +255,39 @@ class JediExecutorComponent(HarnessComponent):
             prepared_inputs=prepared_inputs,
             output_files=output_files,
             diagnostic_files=diagnostic_files,
+            reference_files=reference_files,
             working_directory=str(run_dir),
             status=status,
-            result_summary=result_summary,
+            result_summary=parsed_summary,
         )
+
+    def _augment_result_summary(
+        self,
+        result_summary: dict[str, object],
+        *,
+        scientific_check: str,
+        diagnostic_files: list[str],
+    ) -> dict[str, object]:
+        summary = {**result_summary, "scientific_check": scientific_check}
+        if scientific_check != "rms_improves":
+            return summary
+
+        for diagnostic_path in diagnostic_files:
+            path = Path(diagnostic_path)
+            if path.name != "departures.json":
+                continue
+            try:
+                departures = json.loads(path.read_text())
+            except (OSError, json.JSONDecodeError):
+                continue
+            observation_minus_analysis = departures.get("rms_observation_minus_analysis")
+            observation_minus_background = departures.get("rms_observation_minus_background")
+            if isinstance(observation_minus_analysis, int | float):
+                summary["rms_observation_minus_analysis"] = float(observation_minus_analysis)
+            if isinstance(observation_minus_background, int | float):
+                summary["rms_observation_minus_background"] = float(observation_minus_background)
+            break
+        return summary
 
     def _discover_files(self, run_dir: Path, patterns: list[str]) -> list[str]:
         files: list[str] = []

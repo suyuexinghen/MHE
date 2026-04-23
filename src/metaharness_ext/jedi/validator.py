@@ -36,6 +36,7 @@ class JediValidatorComponent(HarnessComponent):
                 *artifact.prepared_inputs,
                 *artifact.output_files,
                 *artifact.diagnostic_files,
+                *artifact.reference_files,
             ]
             if path is not None
         ]
@@ -120,8 +121,8 @@ class JediValidatorComponent(HarnessComponent):
                 evidence_files=evidence_files,
             )
 
-        if not artifact.output_files and not artifact.diagnostic_files:
-            messages.append("JEDI real_run finished without runtime evidence.")
+        if not artifact.output_files:
+            messages.append("JEDI real_run finished without a primary analysis output.")
             return JediValidationReport(
                 task_id=artifact.task_id,
                 run_id=artifact.run_id,
@@ -131,9 +132,46 @@ class JediValidatorComponent(HarnessComponent):
                 evidence_files=evidence_files,
             )
 
-        messages.append("JEDI real_run completed with runtime evidence.")
-        if artifact.output_files:
-            summary_metrics["primary_output"] = artifact.output_files[0]
+        if not artifact.diagnostic_files and not artifact.reference_files:
+            messages.append("JEDI real_run finished without diagnostics or reference evidence.")
+            return JediValidationReport(
+                task_id=artifact.task_id,
+                run_id=artifact.run_id,
+                passed=False,
+                status="validation_failed",
+                messages=messages,
+                evidence_files=evidence_files,
+            )
+
+        summary_metrics["primary_output"] = artifact.output_files[0]
+        summary_metrics["diagnostic_count"] = float(len(artifact.diagnostic_files))
+        summary_metrics["reference_count"] = float(len(artifact.reference_files))
+
+        scientific_check = artifact.result_summary.get("scientific_check", "runtime_only")
+        if scientific_check == "rms_improves":
+            if not self._has_rms_improvement(artifact.result_summary):
+                messages.append("JEDI real_run did not satisfy the minimum RMS improvement criterion.")
+                return JediValidationReport(
+                    task_id=artifact.task_id,
+                    run_id=artifact.run_id,
+                    passed=False,
+                    status="validation_failed",
+                    messages=messages,
+                    summary_metrics=summary_metrics,
+                    evidence_files=evidence_files,
+                )
+            summary_metrics["rms_observation_minus_analysis"] = float(
+                artifact.result_summary["rms_observation_minus_analysis"]
+            )
+            summary_metrics["rms_observation_minus_background"] = float(
+                artifact.result_summary["rms_observation_minus_background"]
+            )
+            messages.append("JEDI real_run completed with minimum scientific evidence.")
+        elif scientific_check == "ensemble_outputs_present":
+            messages.append("JEDI local_ensemble_da completed with minimum ensemble evidence.")
+        else:
+            messages.append("JEDI real_run completed with runtime and artifact evidence.")
+
         return JediValidationReport(
             task_id=artifact.task_id,
             run_id=artifact.run_id,
@@ -143,3 +181,13 @@ class JediValidatorComponent(HarnessComponent):
             summary_metrics=summary_metrics,
             evidence_files=evidence_files,
         )
+
+    def _has_rms_improvement(self, result_summary: dict[str, object]) -> bool:
+        observation_minus_analysis = result_summary.get("rms_observation_minus_analysis")
+        observation_minus_background = result_summary.get("rms_observation_minus_background")
+        if not isinstance(observation_minus_analysis, int | float):
+            return False
+        if not isinstance(observation_minus_background, int | float):
+            return False
+        return float(observation_minus_analysis) < float(observation_minus_background)
+

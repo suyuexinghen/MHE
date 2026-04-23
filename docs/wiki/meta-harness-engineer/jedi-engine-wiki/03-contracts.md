@@ -44,10 +44,10 @@ JediLauncher = Literal["direct", "mpiexec", "mpirun", "srun"]
 class JediExecutableSpec(BaseModel):
     binary_name: str
     launcher: JediLauncher = "direct"
-    np: int | None = None
     execution_mode: JediExecutionMode = "validate_only"
     timeout_seconds: int | None = None
-    schema_output_path: str | None = None
+    process_count: int | None = None
+    launcher_args: list[str] = Field(default_factory=list)
 ```
 
 这样做的原因：
@@ -107,9 +107,11 @@ class JediExecutableSpec(BaseModel):
 
 - 当前 run 的 task/run identity
 - command
-- yaml path
+- config path / config text
 - working directory
-- expected outputs / diagnostics
+- expected outputs / diagnostics / references
+- required runtime paths
+- executable spec
 
 ### JediRunArtifact
 
@@ -118,8 +120,9 @@ class JediExecutableSpec(BaseModel):
 - return code
 - stdout/stderr path
 - schema path
-- output / diagnostics files
-- run 是否完成
+- prepared inputs
+- output / diagnostics / reference files
+- run status
 
 ### JediValidationReport
 
@@ -129,6 +132,14 @@ class JediExecutableSpec(BaseModel):
 - status taxonomy
 - summary metrics
 - evidence files
+
+当前 taxonomy 至少包括：
+
+- `environment_invalid`
+- `validated`
+- `executed`
+- `validation_failed`
+- `runtime_failed`
 
 ---
 
@@ -196,7 +207,7 @@ config.yaml
 
 ## 3.8 面向后续 phase 的可扩展性
 
-好的 contract 设计应允许后续 phase 在不打破首版调用方式的前提下增加：
+好的 contract 设计应允许后续 phase 在不打破当前调用方式的前提下增加：
 
 - preprocessor input contracts
 - diagnostics summary contracts

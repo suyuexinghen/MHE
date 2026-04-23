@@ -64,6 +64,7 @@ async def test_jedi_real_run_succeeds_with_runtime_evidence(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     spec = _build_spec(tmp_path)
+    spec.expected_diagnostics = ["smoke.log"]
     plan = JediConfigCompilerComponent().build_plan(spec)
     executor = JediExecutorComponent()
     validator = JediValidatorComponent()

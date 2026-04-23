@@ -29,29 +29,30 @@
 - environment probe
 - family-aware contracts
 - controlled YAML compiler
-- schema / validate-only executor
-- validation report
+- explicit preprocessor
+- schema / validate-only / real-run executor
+- evidence-first validation report
 
 验收重点：
 
-- 稳定区分 environment failure 与 validation failure
+- 稳定区分 environment failure、validation failure 与 runtime failure
 - 能生成稳定 YAML
-- 能构造正确 executable 命令
+- 能构造正确 execution-mode-aware 命令
+- `executed` 只表示 runtime completed with evidence，不等于 scientific success
 
 ### Phase 1
 
 目标：
 
-- preprocessor
-- real run
 - toy smoke baseline
-- 最小 diagnostics 线索
+- richer diagnostics interpretation
+- scientific acceptance checks
 
 验收重点：
 
-- 至少一个 toy executable 能稳定跑通
-- artifact 布局稳定
-- validator 可区分 runtime success / failure
+- 至少一个 toy executable 的 smoke policy 能稳定落地
+- artifact/evidence interpretation 稳定
+- validator/report 可区分 executed 与更高层 scientific conclusion
 
 需要额外强调的是：Phase 1 的 smoke baseline 不能预先硬编码为“必然是 `hofx`”。更稳妥的设计约束应是：
 
@@ -75,14 +76,14 @@
 
 ## 6.3 为什么先做 Phase 0
 
-Phase 0 的收益最高，因为它最早把以下边界固定下来：
+当前 Phase 0 的收益最高，因为它最早把以下边界固定下来：
 
 - 输入 contract 边界
 - environment failure 边界
 - executable invocation 边界
-- report / evidence 边界
+- report / evidence / preprocessing 边界
 
-这些边界一旦稳定，后续 phase 只是在同一骨架上增加 preprocessor、diagnostics、study，而不是反复重写基础接口。
+这些边界一旦稳定，后续 phase 只是在同一骨架上增加 smoke policy、richer diagnostics interpretation、study，而不是反复重写基础接口。
 
 ---
 

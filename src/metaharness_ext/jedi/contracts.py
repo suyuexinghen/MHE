@@ -70,6 +70,9 @@ class JediVariationalSpec(BaseModel):
     final: dict[str, Any] = Field(default_factory=dict)
     test: dict[str, Any] = Field(default_factory=dict)
     required_paths: list[str] = Field(default_factory=list)
+    reference_paths: list[str] = Field(default_factory=list)
+    expected_diagnostics: list[str] = Field(default_factory=list)
+    scientific_check: Literal["runtime_only", "rms_improves"] = "runtime_only"
     working_directory: str | None = None
 
 
@@ -82,11 +85,17 @@ class JediLocalEnsembleDASpec(BaseModel):
     geometry: dict[str, Any] = Field(default_factory=lambda: {"resolution": "toy"})
     ensemble_paths: list[str] = Field(default_factory=list)
     observation_paths: list[str] = Field(default_factory=list)
+    background_path: str | None = None
+    background: dict[str, Any] = Field(default_factory=dict)
+    driver: dict[str, Any] = Field(default_factory=dict)
     ensemble: dict[str, Any] = Field(default_factory=dict)
     output: dict[str, Any] = Field(default_factory=dict)
     final: dict[str, Any] = Field(default_factory=dict)
     test: dict[str, Any] = Field(default_factory=dict)
     required_paths: list[str] = Field(default_factory=list)
+    reference_paths: list[str] = Field(default_factory=list)
+    expected_diagnostics: list[str] = Field(default_factory=list)
+    scientific_check: Literal["runtime_only", "ensemble_outputs_present"] = "runtime_only"
     working_directory: str | None = None
 
     @model_validator(mode="after")
@@ -156,7 +165,10 @@ class JediRunPlan(BaseModel):
     schema_path: str | None = None
     expected_outputs: list[str] = Field(default_factory=list)
     expected_logs: list[str] = Field(default_factory=list)
+    expected_diagnostics: list[str] = Field(default_factory=list)
+    expected_references: list[str] = Field(default_factory=list)
     required_runtime_paths: list[str] = Field(default_factory=list)
+    scientific_check: Literal["runtime_only", "rms_improves", "ensemble_outputs_present"] = "runtime_only"
     config_text: str
     executable: JediExecutableSpec
 
@@ -175,6 +187,7 @@ class JediRunArtifact(BaseModel):
     prepared_inputs: list[str] = Field(default_factory=list)
     output_files: list[str] = Field(default_factory=list)
     diagnostic_files: list[str] = Field(default_factory=list)
+    reference_files: list[str] = Field(default_factory=list)
     working_directory: str
     status: JediRunStatus = "planned"
     result_summary: dict[str, Any] = Field(default_factory=dict)

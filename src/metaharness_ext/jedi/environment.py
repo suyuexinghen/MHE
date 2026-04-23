@@ -64,7 +64,7 @@ class JediEnvironmentProbeComponent(HarnessComponent):
             smoke_ready = True
             messages.append(f"Toy smoke candidate ready: {smoke_candidate}.")
         else:
-            smoke_candidate = "hofx" if isinstance(spec, JediHofXSpec) else "variational"
+            smoke_candidate = "hofx" if isinstance(spec, JediHofXSpec) else spec.application_family
             messages.append(f"Toy smoke candidate not ready: {smoke_candidate}.")
 
         return JediEnvironmentReport(
@@ -112,7 +112,13 @@ class JediEnvironmentProbeComponent(HarnessComponent):
                 *spec.required_paths,
             ]
         if isinstance(spec, JediLocalEnsembleDASpec):
-            return [*spec.ensemble_paths, *spec.observation_paths, *spec.required_paths]
+            return [
+                *spec.ensemble_paths,
+                *([spec.background_path] if spec.background_path else []),
+                *spec.observation_paths,
+                *spec.reference_paths,
+                *spec.required_paths,
+            ]
         if isinstance(spec, JediHofXSpec):
             return [
                 *([spec.state_path] if spec.state_path else []),

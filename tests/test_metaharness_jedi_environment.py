@@ -20,7 +20,22 @@ def test_jedi_environment_reports_missing_binary(tmp_path: Path) -> None:
     report = probe.probe(spec)
 
     assert report.binary_available is False
+    assert report.smoke_candidate == "variational"
     assert any("JEDI binary not found" in message for message in report.messages)
+
+
+def test_jedi_environment_local_ensemble_missing_binary_keeps_family_candidate(tmp_path: Path) -> None:
+    spec = JediLocalEnsembleDASpec(
+        task_id="task-letkf-missing",
+        executable=JediExecutableSpec(binary_name="qgLETKF.x", execution_mode="real_run"),
+        ensemble_paths=[str(tmp_path / "ens.000")],
+    )
+    probe = JediEnvironmentProbeComponent()
+
+    report = probe.probe(spec)
+
+    assert report.binary_available is False
+    assert report.smoke_candidate == "local_ensemble_da"
 
 
 def test_jedi_environment_reports_missing_launcher(tmp_path: Path, monkeypatch) -> None:
@@ -85,10 +100,12 @@ def test_jedi_environment_checks_family_required_paths(tmp_path: Path, monkeypat
     ensemble_member = tmp_path / "ens.000"
     ensemble_member.write_text("member")
     missing_obs = tmp_path / "obs.odb"
+    missing_background = tmp_path / "background.nc"
     spec = JediLocalEnsembleDASpec(
         task_id="task-ens",
         executable=JediExecutableSpec(binary_name=str(binary), execution_mode="validate_only"),
         ensemble_paths=[str(ensemble_member)],
+        background_path=str(missing_background),
         observation_paths=[str(missing_obs)],
     )
     probe = JediEnvironmentProbeComponent()
@@ -104,6 +121,7 @@ def test_jedi_environment_checks_family_required_paths(tmp_path: Path, monkeypat
 
     assert report.required_paths_present is False
     assert any(str(missing_obs) in message for message in report.messages)
+    assert any(str(missing_background) in message for message in report.messages)
 
 
 def test_jedi_environment_direct_mode_does_not_require_launcher(tmp_path: Path, monkeypatch) -> None:

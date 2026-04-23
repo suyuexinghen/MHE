@@ -1,6 +1,6 @@
 # 01. JEDI Extension Implementation Plan
 
-> 状态：proposed | 对 `01-jedi-extension-roadmap.md` 第一轮首阶段（Phase 0: Environment Probe + Validate-Only Foundation）的可执行实施计划
+> 状态：updated | 对当前 `01-jedi-extension-roadmap.md` Phase 0（Environment Probe + Execution Foundation）的边界统一实施计划
 
 ## Technical Alignment Notes
 
@@ -15,21 +15,22 @@
 
 ## 1.1 目标
 
-完成 `MHE/src/metaharness_ext/jedi/` 的 **Phase 0: Environment Probe + Validate-Only Foundation**，使其具备以下最小可用能力：
+以当前实现为基线，统一 `MHE/src/metaharness_ext/jedi/` 的 **Phase 0: Environment Probe + Execution Foundation** 语义，使其具备以下最小可用能力：
 
 - 接收 family-aware typed spec
 - 编译受控 YAML
+- 显式 materialize 运行输入
 - 探测 binary / launcher / library / data-path 环境状态
-- 运行 `schema` 与 `validate-only`
+- 运行 `schema`、`validate_only` 与 `real_run`
 - 返回稳定的结构化 `JediValidationReport`
 
-本阶段只交付 **配置编译与执行前验证闭环**，不进入真实 DA 运行、不引入长期 MPI baseline、不做复杂 diagnostics 解析。
+本阶段交付 **基础执行闭环**：显式 preprocessor、mode-aware execution、runtime evidence 归档与 evidence-first validation；但不进入 smoke policy 固化、不引入 richer diagnostics interpretation 或更高层 scientific acceptance checks。
 
 本阶段完成后，系统应具备以下基础能力：
 
-- `spec -> env probe -> YAML -> validate-only -> validation report`
-- 明确区分 environment failure 与 validation failure
-- 为下一阶段 smoke baseline 直接复用 contracts / compiler / executor / validator 骨架
+- `spec -> env probe -> YAML -> preprocess -> mode-aware execution -> validation report`
+- 明确区分 environment failure、validation failure 与 runtime failure
+- 为下一阶段 smoke policy 直接复用 contracts / compiler / preprocessor / executor / validator 骨架
 
 ---
 
@@ -54,10 +55,10 @@
 
 ### 1.2.2 不在范围内
 
-- 真实 `real_run` 执行
-- `preprocessor.py` 与运行目录物料准备
 - `diagnostics.py` / `analyzers.py` 的结构化诊断提取
-- 最小科学判据（如 `RMS(O-A) < RMS(O-B)`）
+- environment-gated smoke baseline policy
+- richer diagnostics interpretation
+- 更高层科学判据（如 `RMS(O-A) < RMS(O-B)`）
 - `study` / `mutation` 层
 - `EnsembleApplication` 顶层 `files:` 多 YAML 模式
 - 新的 model interface / obs operator / covariance C++ 扩展
@@ -114,22 +115,26 @@
 - 不同 family 的 compiler 生成逻辑不同
 - validate-only 错误语义也不同
 
-### 1.4.3 executor 首版只支持 `schema` 与 `validate_only`
+### 1.4.3 executor 当前支持三种 execution mode
 
-`executor.py` 本阶段只实现两种 execution mode：
+`executor.py` 当前阶段实现三种 execution mode：
 
 1. `schema`
    - `<app>.x --output-json-schema=...`
 2. `validate_only`
    - `<app>.x --validate-only config.yaml`
+3. `real_run`
+   - `<launcher> ... <app>.x config.yaml`
 
-不实现 `real_run`。这样可以把 Phase 0 的失败尽量收敛在：
+这样可以把当前 Phase 0 的失败尽量收敛在：
 
 - executable 不存在
 - launcher 不存在
 - shared library 缺失
 - testinput / data path 未就位
 - YAML 结构非法
+
+smoke baseline policy、环境选择策略与更高层 scientific acceptance 仍留到 Phase 1+。
 
 ### 1.4.4 environment probe 要先于 compiler / executor
 
@@ -164,10 +169,11 @@
 
 - `environment_invalid`
 - `validated`
+- `executed`
 - `validation_failed`
 - `runtime_failed`
 
-Phase 0 不引入科学判据，不引入 diagnostics 组级解析。
+当前 Phase 0 不引入更高层科学判据，也不引入 richer diagnostics 组级 interpretation；但 `executed` 已经表示“runtime completed with evidence”，不等于 scientific success。
 
 ---
 
@@ -183,6 +189,7 @@ Phase 0 不引入科学判据，不引入 diagnostics 组级解析。
 - `MHE/src/metaharness_ext/jedi/gateway.py`
 - `MHE/src/metaharness_ext/jedi/environment.py`
 - `MHE/src/metaharness_ext/jedi/config_compiler.py`
+- `MHE/src/metaharness_ext/jedi/preprocessor.py`
 - `MHE/src/metaharness_ext/jedi/executor.py`
 - `MHE/src/metaharness_ext/jedi/validator.py`
 
@@ -222,10 +229,10 @@ Phase 0 不引入科学判据，不引入 diagnostics 组级解析。
 class JediExecutableSpec(BaseModel):
     binary_name: str
     launcher: JediLauncher = "direct"
-    np: int | None = None
     execution_mode: JediExecutionMode = "validate_only"
     timeout_seconds: int | None = None
-    schema_output_path: str | None = None
+    process_count: int | None = None
+    launcher_args: list[str] = Field(default_factory=list)
 ```
 
 ### 1.6.3 family-aware specs
@@ -253,10 +260,14 @@ Phase 0 至少定义：
 
 ```python
 class JediEnvironmentReport(BaseModel):
-    binary_exists: bool
+    binary_available: bool
     launcher_available: bool
-    libraries_resolved: bool
+    shared_libraries_resolved: bool
     required_paths_present: bool
+    binary_path: str | None = None
+    launcher_path: str | None = None
+    smoke_candidate: JediApplicationFamily | None = None
+    smoke_ready: bool = False
     messages: list[str] = Field(default_factory=list)
 ```
 
@@ -264,31 +275,41 @@ class JediEnvironmentReport(BaseModel):
 class JediRunPlan(BaseModel):
     task_id: str
     run_id: str
-    application_family: str
-    execution_mode: str
-    binary_name: str
+    application_family: JediApplicationFamily
+    execution_mode: JediExecutionMode
     command: list[str]
-    yaml_path: str
     working_directory: str
-    input_files: list[str] = Field(default_factory=list)
+    config_path: str
+    schema_path: str | None = None
     expected_outputs: list[str] = Field(default_factory=list)
+    expected_logs: list[str] = Field(default_factory=list)
     expected_diagnostics: list[str] = Field(default_factory=list)
+    expected_references: list[str] = Field(default_factory=list)
+    required_runtime_paths: list[str] = Field(default_factory=list)
+    scientific_check: Literal["runtime_only", "rms_improves"] = "runtime_only"
+    config_text: str
+    executable: JediExecutableSpec
 ```
 
 ```python
 class JediRunArtifact(BaseModel):
     task_id: str
     run_id: str
+    application_family: JediApplicationFamily
+    execution_mode: JediExecutionMode
     command: list[str]
     return_code: int | None
-    stdout_path: str | None
-    stderr_path: str | None
-    yaml_path: str
+    config_path: str | None = None
+    schema_path: str | None = None
+    stdout_path: str | None = None
+    stderr_path: str | None = None
+    prepared_inputs: list[str] = Field(default_factory=list)
     working_directory: str
     output_files: list[str] = Field(default_factory=list)
     diagnostic_files: list[str] = Field(default_factory=list)
-    schema_path: str | None = None
-    completed: bool
+    reference_files: list[str] = Field(default_factory=list)
+    status: JediRunStatus = "planned"
+    result_summary: dict[str, Any] = Field(default_factory=dict)
 ```
 
 ```python
@@ -299,6 +320,7 @@ class JediValidationReport(BaseModel):
     status: Literal[
         "environment_invalid",
         "validated",
+        "executed",
         "validation_failed",
         "runtime_failed",
     ]
@@ -426,7 +448,7 @@ class JediValidationReport(BaseModel):
 - 根据 `execution_mode` 构造命令
 - `schema` 模式：`<app>.x --output-json-schema=...`
 - `validate_only` 模式：`<app>.x --validate-only config.yaml`
-- 记录 command、stdout、stderr、return code、yaml path
+- 记录 command、stdout、stderr、return code、config path 与 runtime evidence
 - 生成 `JediRunArtifact`
 
 完成标志：
@@ -434,7 +456,7 @@ class JediValidationReport(BaseModel):
 - 能构造正确命令
 - 能记录 stdout/stderr 路径
 - 能区分 CTest 测试名与实际 executable 名
-- Phase 0 不实现 `real_run`
+- Phase 0 已支持 `real_run`，但不把 smoke policy 与 scientific acceptance 混入 executor
 
 ## Step 7：实现 validator
 
@@ -495,6 +517,7 @@ class JediValidationReport(BaseModel):
 - `MHE/src/metaharness_ext/jedi/gateway.py`
 - `MHE/src/metaharness_ext/jedi/environment.py`
 - `MHE/src/metaharness_ext/jedi/config_compiler.py`
+- `MHE/src/metaharness_ext/jedi/preprocessor.py`
 - `MHE/src/metaharness_ext/jedi/executor.py`
 - `MHE/src/metaharness_ext/jedi/validator.py`
 
@@ -529,14 +552,16 @@ class JediValidationReport(BaseModel):
 3. `pytest MHE/tests/test_metaharness_jedi_environment.py`
 4. `pytest MHE/tests/test_metaharness_jedi_compiler.py`
 5. `pytest MHE/tests/test_metaharness_jedi_validate_only.py`
-6. `ruff check MHE/src/metaharness_ext/jedi MHE/tests/test_metaharness_jedi_*.py`
+6. `pytest MHE/tests/test_metaharness_jedi_minimal_demo.py`
+7. `pytest MHE/tests/test_metaharness_jedi_smoke.py`
+8. `ruff check MHE/src/metaharness_ext/jedi MHE/tests/test_metaharness_jedi_*.py`
 
 验证重点：
 
 - family-aware contracts 是否稳定
 - `variational` 的 `cost_type` 集合是否准确
 - `environment.py` 是否能稳定区分环境失败与配置失败
-- `executor.py` 是否只构造 `schema` / `validate-only` 命令而不越权进入 `real_run`
+- `executor.py` 是否正确构造 `schema` / `validate-only` / `real_run` 命令，而不越权进入 smoke policy
 - 是否正确使用实际 executable 名（如 `qg4DVar.x`）
 - 是否不会把 `qg_4dvar_rpcg` 这类 CTest 测试名误当成 executable
 - 不把 JEDI 数据准备与 `ENABLE_TESTS=ON` 强耦合
@@ -552,7 +577,8 @@ Phase 0 PR 合并前，必须满足：
 - 能显式报告 binary / launcher / shared libs / data path 缺失
 - 能构造 `<app>.x --validate-only config.yaml`
 - 能构造 `<app>.x --output-json-schema=...`
-- validate-only 失败返回稳定 `JediValidationReport`
+- 能构造 real-run 命令并归档 runtime evidence
+- validate-only 与 real-run 都返回稳定 `JediValidationReport`
 - 环境失败不会被误报为 YAML 逻辑错误
 - 相关 `pytest` 与 `ruff check` 零回归
 
@@ -560,12 +586,11 @@ Phase 0 PR 合并前，必须满足：
 
 ## 1.11 Phase 1 入口
 
-本实施计划完成后，下一份直接衔接的实施计划应覆盖 **Phase 1: Toy Smoke Baseline**，重点增加：
+本实施计划完成后，下一份直接衔接的实施计划应覆盖 **Phase 1: Toy Smoke Policy + Evidence Strengthening**，重点增加：
 
-- `preprocessor.py`
-- `real_run`
 - `hofx` smoke baseline
-- 最小 IODA 组级 diagnostics 线索
+- environment-gated baseline selection policy
+- richer IODA 组级 diagnostics interpretation
 - `MHE/tests/test_metaharness_jedi_smoke.py`
 
 也就是说，Phase 0 的实现结果必须天然可复用于下一阶段，而不是做一次性脚手架。

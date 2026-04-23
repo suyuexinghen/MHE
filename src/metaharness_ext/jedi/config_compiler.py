@@ -74,7 +74,10 @@ class JediConfigCompilerComponent(HarnessComponent):
             schema_path=schema_path,
             expected_outputs=expected_outputs,
             expected_logs=["stdout.log", "stderr.log"],
+            expected_diagnostics=_expected_diagnostics(spec),
+            expected_references=_expected_references(spec),
             required_runtime_paths=_required_runtime_paths(spec),
+            scientific_check=_scientific_check(spec),
             config_text=config_text,
             executable=spec.executable,
         )
@@ -82,6 +85,13 @@ class JediConfigCompilerComponent(HarnessComponent):
 
 def _build_variational_config(spec: JediVariationalSpec) -> dict[str, Any]:
     observations = [*spec.observations, *[{"path": path} for path in spec.observation_paths]]
+    variational = {
+        "minimizer": {"algorithm": "RPCG", "iterations": 20},
+        **spec.variational,
+    }
+    output = {"filename": "analysis.out", **spec.output}
+    final = {"diagnostics": {"filename": "departures.json"}, **spec.final}
+    test = {"reference": {"filename": "reference.json"}, **spec.test}
     return {
         "cost function": {
             "cost type": spec.cost_type,
@@ -95,25 +105,28 @@ def _build_variational_config(spec: JediVariationalSpec) -> dict[str, Any]:
             },
             "observations": observations,
         },
-        "variational": spec.variational,
-        "output": spec.output,
-        "final": spec.final,
-        "test": spec.test,
+        "variational": variational,
+        "output": output,
+        "final": final,
+        "test": test,
     }
 
 
 def _build_local_ensemble_da_config(spec: JediLocalEnsembleDASpec) -> dict[str, Any]:
+    output = {"filename": "letkf.out", **spec.output}
+    final = {"diagnostics": {"filename": "posterior.out"}, **spec.final}
+    test = {"reference": {"filename": "ensemble_reference.json"}, **spec.test}
     return {
-        "local ensemble da": {
-            "window begin": spec.window_begin,
-            "window length": spec.window_length,
-            "geometry": spec.geometry,
-            "ensemble": {**spec.ensemble, "members": spec.ensemble_paths},
-            "observations": [{"path": path} for path in spec.observation_paths],
-        },
-        "output": spec.output,
-        "final": spec.final,
-        "test": spec.test,
+        "window begin": spec.window_begin,
+        "window length": spec.window_length,
+        "geometry": spec.geometry,
+        "background": {**spec.background, **({"path": spec.background_path} if spec.background_path else {})},
+        "observations": [{"path": path} for path in spec.observation_paths],
+        "driver": {"task": "local_ensemble_da", **spec.driver},
+        "local ensemble DA": {**spec.ensemble, "members": spec.ensemble_paths},
+        "output": output,
+        "final": final,
+        "test": test,
     }
 
 
@@ -147,10 +160,17 @@ def _required_runtime_paths(spec: JediExperimentSpec) -> list[str]:
             *([spec.background_path] if spec.background_path else []),
             *([spec.background_error_path] if spec.background_error_path else []),
             *spec.observation_paths,
+            *spec.reference_paths,
             *spec.required_paths,
         ]
     if isinstance(spec, JediLocalEnsembleDASpec):
-        return [*spec.ensemble_paths, *spec.observation_paths, *spec.required_paths]
+        return [
+            *spec.ensemble_paths,
+            *([spec.background_path] if spec.background_path else []),
+            *spec.observation_paths,
+            *spec.reference_paths,
+            *spec.required_paths,
+        ]
     if isinstance(spec, JediHofXSpec):
         return [*([spec.state_path] if spec.state_path else []), *spec.observation_paths, *spec.required_paths]
     return [*([spec.initial_condition_path] if spec.initial_condition_path else []), *spec.required_paths]
@@ -167,6 +187,62 @@ def _expected_outputs(spec: JediExperimentSpec) -> list[str]:
         "forecast": "forecast.out",
     }
     return [defaults[spec.application_family]] if spec.executable.execution_mode == "real_run" else []
+
+
+def _expected_diagnostics(spec: JediExperimentSpec) -> list[str]:
+    if isinstance(spec, JediVariationalSpec):
+        diagnostics = list(spec.expected_diagnostics)
+        final_diagnostics = spec.final.get("diagnostics")
+        if isinstance(final_diagnostics, dict):
+            filename = final_diagnostics.get("filename")
+            if isinstance(filename, str) and filename.strip():
+                diagnostics.append(filename)
+        elif spec.executable.execution_mode == "real_run":
+            diagnostics.append("departures.json")
+        return list(dict.fromkeys(diagnostics))
+    if isinstance(spec, JediLocalEnsembleDASpec):
+        diagnostics = list(spec.expected_diagnostics)
+        final_diagnostics = spec.final.get("diagnostics")
+        if isinstance(final_diagnostics, dict):
+            filename = final_diagnostics.get("filename")
+            if isinstance(filename, str) and filename.strip():
+                diagnostics.append(filename)
+        elif spec.executable.execution_mode == "real_run":
+            diagnostics.append("posterior.out")
+        return list(dict.fromkeys(diagnostics))
+    return []
+
+
+
+def _expected_references(spec: JediExperimentSpec) -> list[str]:
+    if isinstance(spec, JediVariationalSpec):
+        reference_files = list(spec.reference_paths)
+        reference = spec.test.get("reference")
+        if isinstance(reference, dict):
+            filename = reference.get("filename")
+            if isinstance(filename, str) and filename.strip():
+                reference_files.append(filename)
+        elif spec.executable.execution_mode == "real_run":
+            reference_files.append("reference.json")
+        return list(dict.fromkeys(reference_files))
+    if isinstance(spec, JediLocalEnsembleDASpec):
+        reference_files = list(spec.reference_paths)
+        reference = spec.test.get("reference")
+        if isinstance(reference, dict):
+            filename = reference.get("filename")
+            if isinstance(filename, str) and filename.strip():
+                reference_files.append(filename)
+        elif spec.executable.execution_mode == "real_run":
+            reference_files.append("ensemble_reference.json")
+        return list(dict.fromkeys(reference_files))
+    return []
+
+
+
+def _scientific_check(spec: JediExperimentSpec) -> str:
+    if isinstance(spec, JediVariationalSpec | JediLocalEnsembleDASpec):
+        return spec.scientific_check
+    return "runtime_only"
 
 
 def _render_yaml_lines(value: Any, indent: int) -> list[str]:
