@@ -14,6 +14,8 @@
   - `metaharness_ext.jedi` 的扩展设计 wiki：架构、contracts、执行链与实施路径
 - [deepmd-engine-wiki/](deepmd-engine-wiki/README.md)
   - `metaharness_ext.deepmd` 的 JSON/workspace 执行模型、contracts、blueprint 与 roadmap
+- [abacus-engine-wiki/](abacus-engine-wiki/README.md)
+  - `metaharness_ext.abacus` 的 file-driven / launcher-aware 扩展设计、blueprint 与 roadmap
 
 ## 推荐阅读路径
 
@@ -43,3 +45,10 @@
 - [deepmd-engine-wiki/README.md](deepmd-engine-wiki/README.md)
 - [blueprint/04-deepmd-extension-blueprint.md](blueprint/04-deepmd-extension-blueprint.md)
 - [blueprint/04-deepmd-roadmap.md](blueprint/04-deepmd-roadmap.md)
+
+### 如果你正在规划或实现 ABACUS 扩展
+
+先看：
+- [abacus-engine-wiki/README.md](abacus-engine-wiki/README.md)
+- [blueprint/05-abacus-extension-blueprint.md](blueprint/05-abacus-extension-blueprint.md)
+- [blueprint/05-abacus-roadmap.md](blueprint/05-abacus-roadmap.md)
