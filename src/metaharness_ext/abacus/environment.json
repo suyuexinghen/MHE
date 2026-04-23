@@ -1,0 +1,50 @@
+{
+  "name": "abacus_environment",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.abacus.environment:AbacusEnvironmentProbeComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [
+      {
+        "name": "task",
+        "type": "AbacusExperimentSpec",
+        "required": true,
+        "description": ""
+      }
+    ],
+    "outputs": [
+      {
+        "name": "environment",
+        "type": "AbacusEnvironmentReport",
+        "mode": "sync",
+        "description": ""
+      }
+    ],
+    "events": [],
+    "provides": [
+      {
+        "name": "abacus.environment.probe",
+        "description": ""
+      }
+    ],
+    "requires": [],
+    "slots": [
+      {
+        "slot": "abacus_environment.primary",
+        "binding": "primary",
+        "required": true
+      }
+    ]
+  },
+  "safety": {
+    "protected": false,
+    "mutability": "mutable",
+    "sandbox_profile": null,
+    "hot_swap": true
+  },
+  "state_schema_version": 1,
+  "provides": [
+    "abacus.environment.probe"
+  ]
+}

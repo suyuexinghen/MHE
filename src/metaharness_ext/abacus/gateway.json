@@ -1,0 +1,43 @@
+{
+  "name": "abacus_gateway",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.abacus.gateway:AbacusGatewayComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "task",
+        "type": "AbacusScfSpec",
+        "mode": "sync",
+        "description": ""
+      }
+    ],
+    "events": [],
+    "provides": [
+      {
+        "name": "abacus.compile.case",
+        "description": ""
+      }
+    ],
+    "requires": [],
+    "slots": [
+      {
+        "slot": "abacus_gateway.primary",
+        "binding": "primary",
+        "required": true
+      }
+    ]
+  },
+  "safety": {
+    "protected": false,
+    "mutability": "mutable",
+    "sandbox_profile": null,
+    "hot_swap": true
+  },
+  "state_schema_version": 1,
+  "provides": [
+    "abacus.compile.case"
+  ]
+}

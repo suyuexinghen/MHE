@@ -1,0 +1,50 @@
+{
+  "name": "abacus_input_compiler",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.abacus.input_compiler:AbacusInputCompilerComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [
+      {
+        "name": "task",
+        "type": "AbacusExperimentSpec",
+        "required": true,
+        "description": ""
+      }
+    ],
+    "outputs": [
+      {
+        "name": "plan",
+        "type": "AbacusRunPlan",
+        "mode": "sync",
+        "description": ""
+      }
+    ],
+    "events": [],
+    "provides": [
+      {
+        "name": "abacus.compile.case",
+        "description": ""
+      }
+    ],
+    "requires": [],
+    "slots": [
+      {
+        "slot": "abacus_input_compiler.primary",
+        "binding": "primary",
+        "required": true
+      }
+    ]
+  },
+  "safety": {
+    "protected": false,
+    "mutability": "mutable",
+    "sandbox_profile": null,
+    "hot_swap": true
+  },
+  "state_schema_version": 1,
+  "provides": [
+    "abacus.compile.case"
+  ]
+}

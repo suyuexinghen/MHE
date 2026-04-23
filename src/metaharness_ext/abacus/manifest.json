@@ -1,0 +1,30 @@
+{
+  "name": "abacus",
+  "version": "0.1.0",
+  "kind": "custom",
+  "entry": "metaharness_ext.abacus",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [],
+    "outputs": [],
+    "events": [],
+    "provides": [
+      {"name": "abacus.environment.probe", "description": ""},
+      {"name": "abacus.compile.case", "description": ""},
+      {"name": "abacus.scf.run", "description": ""},
+      {"name": "abacus.nscf.run", "description": ""},
+      {"name": "abacus.relax.run", "description": ""},
+      {"name": "abacus.md.run", "description": ""},
+      {"name": "abacus.validation.check", "description": ""}
+    ],
+    "requires": [],
+    "slots": []
+  },
+  "safety": {
+    "protected": false,
+    "mutability": "mutable",
+    "sandbox_profile": null,
+    "hot_swap": true
+  },
+  "state_schema_version": 1
+}
