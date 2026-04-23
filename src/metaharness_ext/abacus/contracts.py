@@ -86,7 +86,7 @@ class AbacusNscfSpec(BaseModel):
     application_family: Literal["nscf"] = "nscf"
     executable: AbacusExecutableSpec = Field(default_factory=AbacusExecutableSpec)
     structure: AbacusStructureSpec = Field(default_factory=AbacusStructureSpec)
-    kpoints: AbacusKPointSpec | None = None
+    kpoints: AbacusKPointSpec
     basis_type: AbacusBasisType = "pw"
     esolver_type: AbacusESolverType = "ksdft"
     calculation: Literal["nscf"] = "nscf"
@@ -95,6 +95,8 @@ class AbacusNscfSpec(BaseModel):
     pseudo_files: list[str] = Field(default_factory=list)
     orbital_files: list[str] = Field(default_factory=list)
     pot_file: str | None = None
+    charge_density_path: str | None = None
+    restart_file_path: str | None = None
     required_paths: list[str] = Field(default_factory=list)
     working_directory: str | None = None
 
@@ -105,9 +107,11 @@ class AbacusNscfSpec(BaseModel):
         if self.esolver_type not in {"ksdft", "dp"}:
             raise ValueError(f"unsupported esolver_type: {self.esolver_type}")
         if self.esolver_type == "dp":
-            raise ValueError("esolver_type=dp is not supported in Phase 0 (NSCF baseline)")
+            raise ValueError("esolver_type=dp is not supported in Phase 1 (NSCF baseline)")
         if self.basis_type == "lcao" and not self.orbital_files:
             raise ValueError("basis_type=lcao requires orbital_files")
+        if self.charge_density_path is None and self.restart_file_path is None:
+            raise ValueError("nscf requires charge_density_path or restart_file_path")
         return self
 
 
@@ -125,6 +129,7 @@ class AbacusRelaxSpec(BaseModel):
     pseudo_files: list[str] = Field(default_factory=list)
     orbital_files: list[str] = Field(default_factory=list)
     pot_file: str | None = None
+    relax_controls: dict[str, Any] = Field(default_factory=dict)
     required_paths: list[str] = Field(default_factory=list)
     working_directory: str | None = None
 
@@ -135,7 +140,7 @@ class AbacusRelaxSpec(BaseModel):
         if self.esolver_type not in {"ksdft", "dp"}:
             raise ValueError(f"unsupported esolver_type: {self.esolver_type}")
         if self.esolver_type == "dp":
-            raise ValueError("esolver_type=dp is not supported in Phase 0 (relax baseline)")
+            raise ValueError("esolver_type=dp is not supported in Phase 1 (relax baseline)")
         if self.basis_type == "lcao" and not self.orbital_files:
             raise ValueError("basis_type=lcao requires orbital_files")
         return self
@@ -205,6 +210,7 @@ class AbacusRunPlan(BaseModel):
     structure_content: str = ""
     kpoints_content: str | None = None
     suffix: str = "ABACUS"
+    output_root: str | None = None
     expected_outputs: list[str] = Field(default_factory=list)
     expected_logs: list[str] = Field(default_factory=list)
     required_runtime_paths: list[str] = Field(default_factory=list)
@@ -220,8 +226,10 @@ class AbacusRunArtifact(BaseModel):
     stdout_path: str | None = None
     stderr_path: str | None = None
     prepared_inputs: list[str] = Field(default_factory=list)
+    output_root: str | None = None
     output_files: list[str] = Field(default_factory=list)
     diagnostic_files: list[str] = Field(default_factory=list)
+    structure_files: list[str] = Field(default_factory=list)
     working_directory: str
     status: Literal["planned", "completed", "failed", "unavailable"] = "planned"
     result_summary: dict[str, Any] = Field(default_factory=dict)

@@ -12,6 +12,8 @@ from metaharness_ext.abacus.contracts import (
     AbacusEnvironmentReport,
     AbacusExperimentSpec,
     AbacusMdSpec,
+    AbacusNscfSpec,
+    AbacusRelaxSpec,
 )
 from metaharness_ext.abacus.slots import ABACUS_ENVIRONMENT_SLOT
 
@@ -183,4 +185,13 @@ class AbacusEnvironmentProbeComponent(HarnessComponent):
         paths.extend(spec.orbital_files)
         if spec.pot_file:
             paths.append(spec.pot_file)
+        if isinstance(spec, AbacusNscfSpec):
+            if spec.charge_density_path:
+                paths.append(spec.charge_density_path)
+            if spec.restart_file_path:
+                paths.append(spec.restart_file_path)
+        if isinstance(spec, AbacusRelaxSpec):
+            restart_path = spec.relax_controls.get("restart_file_path")
+            if isinstance(restart_path, str) and restart_path:
+                paths.append(restart_path)
         return paths

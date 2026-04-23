@@ -6,6 +6,8 @@ from metaharness.sdk.runtime import ComponentRuntime
 from metaharness_ext.abacus.capabilities import CAP_ABACUS_CASE_COMPILE
 from metaharness_ext.abacus.contracts import (
     AbacusExperimentSpec,
+    AbacusNscfSpec,
+    AbacusRelaxSpec,
     AbacusRunPlan,
     AbacusScfSpec,
 )
@@ -65,6 +67,16 @@ class AbacusInputCompilerComponent(HarnessComponent):
 
         for key, value in spec.params.items():
             lines.append(f"{key} {value}")
+
+        if isinstance(spec, AbacusNscfSpec):
+            if spec.charge_density_path:
+                lines.append(f"charge_density_path {spec.charge_density_path}")
+            if spec.restart_file_path:
+                lines.append(f"restart_file_path {spec.restart_file_path}")
+
+        if isinstance(spec, AbacusRelaxSpec):
+            for key, value in spec.relax_controls.items():
+                lines.append(f"{key} {value}")
 
         if spec.pot_file:
             lines.append(f"pot_file {spec.pot_file}")

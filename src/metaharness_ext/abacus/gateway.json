@@ -9,7 +9,7 @@
     "outputs": [
       {
         "name": "task",
-        "type": "AbacusScfSpec",
+        "type": "AbacusExperimentSpec",
         "mode": "sync",
         "description": ""
       }

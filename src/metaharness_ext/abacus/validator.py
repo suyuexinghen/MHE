@@ -33,9 +33,11 @@ class AbacusValidatorComponent(HarnessComponent):
             for path in [
                 artifact.stdout_path,
                 artifact.stderr_path,
+                artifact.output_root,
                 *artifact.prepared_inputs,
                 *artifact.output_files,
                 *artifact.diagnostic_files,
+                *artifact.structure_files,
             ]
             if path is not None
         ]
@@ -116,7 +118,11 @@ class AbacusValidatorComponent(HarnessComponent):
         missing: list[str] = []
         family = artifact.application_family
 
-        out_dirs = [p for p in artifact.output_files if Path(p).name.startswith("OUT.")]
+        out_dirs = [
+            p
+            for p in [artifact.output_root, *artifact.output_files]
+            if p is not None and Path(p).name.startswith("OUT.")
+        ]
         if not out_dirs:
             missing.append("OUT.<suffix>/ directory")
 
@@ -130,11 +136,18 @@ class AbacusValidatorComponent(HarnessComponent):
                 missing.append("SCF log evidence (running_scf.log)")
 
         elif family == "nscf":
-            if not out_dirs:
-                missing.append("NSCF output directory")
+            nscf_log_evidence = any(
+                Path(p).name in {"running_nscf.log", "running_scf.log"}
+                for p in artifact.diagnostic_files
+            )
+            if not nscf_log_evidence:
+                missing.append("NSCF log evidence (running_nscf.log or running_scf.log)")
 
         elif family == "relax":
-            structure_evidence = any(Path(p).name.startswith("STRU") for p in artifact.output_files)
+            structure_evidence = any(
+                Path(p).name.startswith("STRU") or Path(p).suffix == ".cif"
+                for p in [*artifact.output_files, *artifact.structure_files]
+            )
             if not structure_evidence and out_dirs:
                 out_path = Path(out_dirs[0])
                 if out_path.exists() and any(out_path.rglob("STRU*")):

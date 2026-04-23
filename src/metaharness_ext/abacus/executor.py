@@ -113,8 +113,10 @@ class AbacusExecutorComponent(HarnessComponent):
         )
         status = "completed" if result.returncode == 0 else "failed"
 
+        output_root = run_dir / (plan.output_root or f"OUT.{plan.suffix}")
         output_files = self._discover_outputs(run_dir, plan)
         diagnostic_files = self._discover_diagnostics(run_dir, plan)
+        structure_files = self._discover_structure_files(run_dir, output_root)
 
         return self._build_artifact(
             plan,
@@ -125,8 +127,10 @@ class AbacusExecutorComponent(HarnessComponent):
             return_code=result.returncode,
             status=status,
             prepared_inputs=prepared_inputs,
+            output_root=str(output_root) if output_root.exists() else None,
             output_files=output_files,
             diagnostic_files=diagnostic_files,
+            structure_files=structure_files,
             result_summary={"fallback_reason": None, "exit_code": result.returncode},
         )
 
@@ -216,7 +220,7 @@ class AbacusExecutorComponent(HarnessComponent):
 
     def _discover_outputs(self, run_dir: Path, plan: AbacusRunPlan) -> list[str]:
         outputs: list[str] = []
-        out_dir = run_dir / f"OUT.{plan.suffix}"
+        out_dir = run_dir / (plan.output_root or f"OUT.{plan.suffix}")
         if out_dir.exists():
             outputs.append(str(out_dir))
             for path in out_dir.rglob("*"):
@@ -232,6 +236,17 @@ class AbacusExecutorComponent(HarnessComponent):
                     diagnostics.append(str(path))
         return diagnostics
 
+    def _discover_structure_files(self, run_dir: Path, output_root: Path) -> list[str]:
+        structure_files: list[str] = []
+        for root in (run_dir, output_root):
+            if not root.exists():
+                continue
+            for pattern in ("STRU*", "*.cif"):
+                for path in root.rglob(pattern):
+                    if path.is_file() and str(path) not in structure_files:
+                        structure_files.append(str(path))
+        return structure_files
+
     def _build_artifact(
         self,
         plan: AbacusRunPlan,
@@ -243,8 +258,10 @@ class AbacusExecutorComponent(HarnessComponent):
         return_code: int | None,
         status: str,
         prepared_inputs: list[str],
+        output_root: str | None = None,
         output_files: list[str] | None = None,
         diagnostic_files: list[str] | None = None,
+        structure_files: list[str] | None = None,
         result_summary: dict[str, object],
     ) -> AbacusRunArtifact:
         return AbacusRunArtifact(
@@ -256,8 +273,10 @@ class AbacusExecutorComponent(HarnessComponent):
             stdout_path=stdout_path,
             stderr_path=stderr_path,
             prepared_inputs=prepared_inputs,
+            output_root=output_root,
             output_files=output_files or [],
             diagnostic_files=diagnostic_files or [],
+            structure_files=structure_files or [],
             working_directory=str(run_dir),
             status=status,  # type: ignore[arg-type]
             result_summary=result_summary,
