@@ -6,17 +6,23 @@ from metaharness.sdk.loader import declare_component
 from metaharness.sdk.manifest import ComponentManifest
 from metaharness_ext.jedi.capabilities import (
     CAP_JEDI_CASE_COMPILE,
+    CAP_JEDI_DIAGNOSTICS,
     CAP_JEDI_ENV_PROBE,
     CAP_JEDI_REAL_RUN,
     CAP_JEDI_SCHEMA,
+    CAP_JEDI_SMOKE_POLICY,
+    CAP_JEDI_STUDY,
     CAP_JEDI_VALIDATE,
     CAP_JEDI_VALIDATE_ONLY,
 )
 from metaharness_ext.jedi.slots import (
     JEDI_CONFIG_COMPILER_SLOT,
+    JEDI_DIAGNOSTICS_SLOT,
     JEDI_ENVIRONMENT_SLOT,
     JEDI_EXECUTOR_SLOT,
     JEDI_GATEWAY_SLOT,
+    JEDI_SMOKE_POLICY_SLOT,
+    JEDI_STUDY_SLOT,
     JEDI_VALIDATOR_SLOT,
 )
 
@@ -57,6 +63,27 @@ EXPECTED_MANIFESTS = {
         "output": "validation",
         "capabilities": [CAP_JEDI_VALIDATE],
     },
+    "smoke_policy.json": {
+        "name": "jedi_smoke_policy",
+        "entry": "metaharness_ext.jedi.smoke_policy:JediSmokePolicyComponent",
+        "slot": JEDI_SMOKE_POLICY_SLOT,
+        "output": "policy",
+        "capabilities": [CAP_JEDI_SMOKE_POLICY],
+    },
+    "diagnostics.json": {
+        "name": "jedi_diagnostics",
+        "entry": "metaharness_ext.jedi.diagnostics:JediDiagnosticsCollectorComponent",
+        "slot": JEDI_DIAGNOSTICS_SLOT,
+        "output": "diagnostics",
+        "capabilities": [CAP_JEDI_DIAGNOSTICS],
+    },
+    "study.json": {
+        "name": "jedi_study",
+        "entry": "metaharness_ext.jedi.study:JediStudyComponent",
+        "slot": JEDI_STUDY_SLOT,
+        "output": "report",
+        "capabilities": [CAP_JEDI_STUDY],
+    },
 }
 
 
@@ -83,6 +110,9 @@ def test_metaharness_jedi_manifest_entries_are_importable() -> None:
         "metaharness_ext.jedi.config_compiler": "JediConfigCompilerComponent",
         "metaharness_ext.jedi.executor": "JediExecutorComponent",
         "metaharness_ext.jedi.validator": "JediValidatorComponent",
+        "metaharness_ext.jedi.smoke_policy": "JediSmokePolicyComponent",
+        "metaharness_ext.jedi.diagnostics": "JediDiagnosticsCollectorComponent",
+        "metaharness_ext.jedi.study": "JediStudyComponent",
     }
     for module_name, class_name in modules.items():
         module = import_module(module_name)

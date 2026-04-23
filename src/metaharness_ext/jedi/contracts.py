@@ -193,6 +193,30 @@ class JediRunArtifact(BaseModel):
     result_summary: dict[str, Any] = Field(default_factory=dict)
 
 
+class JediSmokePolicyReport(BaseModel):
+    ready: bool
+    recommended_family: str | None
+    recommended_binary: str | None
+    reason: str
+
+
+class JediDiagnosticSummary(BaseModel):
+    ioda_groups_found: list[str] = Field(default_factory=list)
+    ioda_groups_missing: list[str] = Field(default_factory=list)
+    files_scanned: list[str] = Field(default_factory=list)
+    messages: list[str] = Field(default_factory=list)
+    minimizer_iterations: int | None = None
+    outer_iterations: int | None = None
+    inner_iterations: int | None = None
+    initial_cost_function: float | None = None
+    final_cost_function: float | None = None
+    initial_gradient_norm: float | None = None
+    final_gradient_norm: float | None = None
+    gradient_norm_reduction: float | None = None
+    posterior_output_detected: bool = False
+    observer_output_detected: bool = False
+
+
 class JediValidationReport(BaseModel):
     task_id: str
     run_id: str
@@ -201,3 +225,57 @@ class JediValidationReport(BaseModel):
     messages: list[str] = Field(default_factory=list)
     summary_metrics: dict[str, float | str] = Field(default_factory=dict)
     evidence_files: list[str] = Field(default_factory=list)
+
+
+class JediMutationAxis(BaseModel):
+    kind: Literal[
+        "variational_minimizer",
+        "variational_iterations",
+        "validate_only_mode",
+        "ensemble_inflation",
+        "ensemble_localization_radius",
+    ]
+    values: list[str | int | float] = Field(default_factory=list)
+    label: str | None = None
+
+    @model_validator(mode="after")
+    def validate_values(self) -> "JediMutationAxis":
+        if not self.values:
+            raise ValueError("axis.values must not be empty")
+        return self
+
+
+class JediStudySpec(BaseModel):
+    study_id: str
+    task_id: str
+    base_task: JediVariationalSpec | JediLocalEnsembleDASpec
+    axis: JediMutationAxis
+    metric_key: str
+    goal: Literal["minimize", "maximize"] = "minimize"
+
+
+class JediStudyTrial(BaseModel):
+    trial_id: str
+    task_id: str
+    axis_kind: str
+    axis_value: str | int | float
+    mutated_parameters: dict[str, int | float | str] = Field(default_factory=dict)
+    run: JediRunArtifact
+    diagnostics: JediDiagnosticSummary
+    validation: JediValidationReport
+    metric_value: float | None = None
+    passed: bool = False
+    messages: list[str] = Field(default_factory=list)
+
+
+class JediStudyReport(BaseModel):
+    study_id: str
+    task_id: str
+    axis_kind: str
+    metric_key: str
+    trials: list[JediStudyTrial] = Field(default_factory=list)
+    recommended_value: str | int | float | None = None
+    recommended_trial_id: str | None = None
+    recommended_reason: str | None = None
+    summary_metrics: dict[str, float | str] = Field(default_factory=dict)
+    messages: list[str] = Field(default_factory=list)

@@ -4,7 +4,11 @@ from metaharness.sdk.api import HarnessAPI
 from metaharness.sdk.base import HarnessComponent
 from metaharness.sdk.runtime import ComponentRuntime
 from metaharness_ext.jedi.capabilities import CAP_JEDI_VALIDATE
-from metaharness_ext.jedi.contracts import JediRunArtifact, JediValidationReport
+from metaharness_ext.jedi.contracts import (
+    JediDiagnosticSummary,
+    JediRunArtifact,
+    JediValidationReport,
+)
 from metaharness_ext.jedi.slots import JEDI_VALIDATOR_SLOT
 
 
@@ -180,6 +184,79 @@ class JediValidatorComponent(HarnessComponent):
             messages=messages,
             summary_metrics=summary_metrics,
             evidence_files=evidence_files,
+        )
+
+    def validate_run_with_diagnostics(
+        self,
+        artifact: JediRunArtifact,
+        diagnostic_summary: JediDiagnosticSummary | None = None,
+    ) -> JediValidationReport:
+        """Validate a run with optional Phase 1 diagnostics enrichment.
+
+        Falls back to `validate_run` when no diagnostic summary is provided.
+        When diagnostics are present, the report includes IODA group-level
+        evidence and distinguishes runtime completion from scientific acceptance.
+        """
+        report = self.validate_run(artifact)
+        if diagnostic_summary is None:
+            return report
+
+        # Enrich the existing report with diagnostics metadata
+        enriched_metrics = dict(report.summary_metrics)
+        enriched_messages = list(report.messages)
+        enriched_files = list(report.evidence_files)
+
+        enriched_metrics["ioda_groups_found"] = len(diagnostic_summary.ioda_groups_found)
+        enriched_metrics["ioda_groups_missing"] = len(diagnostic_summary.ioda_groups_missing)
+        enriched_metrics["diagnostic_files_scanned"] = len(diagnostic_summary.files_scanned)
+
+        if diagnostic_summary.minimizer_iterations is not None:
+            enriched_metrics["minimizer_iterations"] = float(diagnostic_summary.minimizer_iterations)
+        if diagnostic_summary.outer_iterations is not None:
+            enriched_metrics["outer_iterations"] = float(diagnostic_summary.outer_iterations)
+        if diagnostic_summary.inner_iterations is not None:
+            enriched_metrics["inner_iterations"] = float(diagnostic_summary.inner_iterations)
+        if diagnostic_summary.initial_cost_function is not None:
+            enriched_metrics["initial_cost_function"] = diagnostic_summary.initial_cost_function
+        if diagnostic_summary.final_cost_function is not None:
+            enriched_metrics["final_cost_function"] = diagnostic_summary.final_cost_function
+        if diagnostic_summary.initial_gradient_norm is not None:
+            enriched_metrics["initial_gradient_norm"] = diagnostic_summary.initial_gradient_norm
+        if diagnostic_summary.final_gradient_norm is not None:
+            enriched_metrics["final_gradient_norm"] = diagnostic_summary.final_gradient_norm
+        if diagnostic_summary.gradient_norm_reduction is not None:
+            enriched_metrics["gradient_norm_reduction"] = diagnostic_summary.gradient_norm_reduction
+        enriched_metrics["posterior_output_detected"] = str(diagnostic_summary.posterior_output_detected)
+        enriched_metrics["observer_output_detected"] = str(diagnostic_summary.observer_output_detected)
+
+        if diagnostic_summary.ioda_groups_found:
+            enriched_messages.append(
+                f"IODA groups detected: {', '.join(diagnostic_summary.ioda_groups_found)}."
+            )
+        if diagnostic_summary.ioda_groups_missing:
+            enriched_messages.append(
+                f"Missing IODA groups: {', '.join(diagnostic_summary.ioda_groups_missing)}."
+            )
+        if diagnostic_summary.gradient_norm_reduction is not None:
+            enriched_messages.append(
+                f"Gradient norm reduction: {diagnostic_summary.gradient_norm_reduction:.6f}."
+            )
+        if diagnostic_summary.posterior_output_detected:
+            enriched_messages.append("Posterior output evidence detected.")
+        if diagnostic_summary.observer_output_detected:
+            enriched_messages.append("Observer output evidence detected.")
+
+        enriched_files.extend(diagnostic_summary.files_scanned)
+        deduped_files = list(dict.fromkeys(enriched_files))
+
+        return JediValidationReport(
+            task_id=report.task_id,
+            run_id=report.run_id,
+            passed=report.passed,
+            status=report.status,
+            messages=enriched_messages,
+            summary_metrics=enriched_metrics,
+            evidence_files=deduped_files,
         )
 
     def _has_rms_improvement(self, result_summary: dict[str, object]) -> bool:

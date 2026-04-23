@@ -6,6 +6,7 @@ from metaharness_ext.jedi import (
     CAP_JEDI_ENV_PROBE,
     CAP_JEDI_REAL_RUN,
     CAP_JEDI_SCHEMA,
+    CAP_JEDI_STUDY,
     CAP_JEDI_VALIDATE,
     CAP_JEDI_VALIDATE_ONLY,
     JEDI_EXPERIMENT_SPEC_ADAPTER,
@@ -13,9 +14,12 @@ from metaharness_ext.jedi import (
     JediForecastSpec,
     JediHofXSpec,
     JediLocalEnsembleDASpec,
+    JediMutationAxis,
     JediRunArtifact,
     JediRunPlan,
     JediRunPreprocessor,
+    JediStudyReport,
+    JediStudySpec,
     JediValidationReport,
     JediVariationalSpec,
     build_jedi_config,
@@ -59,6 +63,14 @@ def test_metaharness_jedi_contracts_round_trip() -> None:
         working_directory="run-1",
     )
     validation = JediValidationReport(task_id="task-1", run_id="run-1", passed=True, status="validated")
+    study = JediStudySpec(
+        study_id="study-1",
+        task_id="task-1",
+        base_task=variational,
+        axis=JediMutationAxis(kind="variational_iterations", values=[10, 20]),
+        metric_key="final_cost_function",
+    )
+    study_report = JediStudyReport(study_id="study-1", task_id="task-1", axis_kind="variational_iterations", metric_key="final_cost_function")
 
     assert JEDI_EXPERIMENT_SPEC_ADAPTER.validate_python(variational.model_dump()) == variational
     assert JEDI_EXPERIMENT_SPEC_ADAPTER.validate_python(forecast.model_dump()) == forecast
@@ -67,6 +79,8 @@ def test_metaharness_jedi_contracts_round_trip() -> None:
     assert JediRunPlan.model_validate(plan.model_dump()) == plan
     assert JediRunArtifact.model_validate(artifact.model_dump()) == artifact
     assert JediValidationReport.model_validate(validation.model_dump()) == validation
+    assert JediStudySpec.model_validate(study.model_dump()) == study
+    assert JediStudyReport.model_validate(study_report.model_dump()) == study_report
 
 
 def test_metaharness_jedi_exports_exist() -> None:
@@ -75,6 +89,7 @@ def test_metaharness_jedi_exports_exist() -> None:
     assert CAP_JEDI_SCHEMA in CANONICAL_CAPABILITIES
     assert CAP_JEDI_VALIDATE_ONLY in CANONICAL_CAPABILITIES
     assert CAP_JEDI_REAL_RUN in CANONICAL_CAPABILITIES
+    assert CAP_JEDI_STUDY in CANONICAL_CAPABILITIES
     assert CAP_JEDI_VALIDATE in CANONICAL_CAPABILITIES
     assert callable(build_jedi_config)
     assert callable(render_jedi_yaml)

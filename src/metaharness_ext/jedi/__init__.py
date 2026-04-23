@@ -1,9 +1,12 @@
 from metaharness_ext.jedi.capabilities import (
     CANONICAL_CAPABILITIES,
     CAP_JEDI_CASE_COMPILE,
+    CAP_JEDI_DIAGNOSTICS,
     CAP_JEDI_ENV_PROBE,
     CAP_JEDI_REAL_RUN,
     CAP_JEDI_SCHEMA,
+    CAP_JEDI_SMOKE_POLICY,
+    CAP_JEDI_STUDY,
     CAP_JEDI_VALIDATE,
     CAP_JEDI_VALIDATE_ONLY,
 )
@@ -14,29 +17,40 @@ from metaharness_ext.jedi.config_compiler import (
 )
 from metaharness_ext.jedi.contracts import (
     JEDI_EXPERIMENT_SPEC_ADAPTER,
+    JediDiagnosticSummary,
     JediEnvironmentReport,
     JediExecutableSpec,
     JediExperimentSpec,
     JediForecastSpec,
     JediHofXSpec,
     JediLocalEnsembleDASpec,
+    JediMutationAxis,
     JediRunArtifact,
     JediRunPlan,
+    JediStudyReport,
+    JediStudySpec,
+    JediStudyTrial,
     JediValidationReport,
     JediVariationalSpec,
 )
+from metaharness_ext.jedi.diagnostics import JediDiagnosticsCollectorComponent
 from metaharness_ext.jedi.environment import JediEnvironmentProbeComponent
 from metaharness_ext.jedi.executor import JediExecutorComponent
 from metaharness_ext.jedi.gateway import JediGatewayComponent
 from metaharness_ext.jedi.preprocessor import JediRunPreprocessor
 from metaharness_ext.jedi.slots import (
     JEDI_CONFIG_COMPILER_SLOT,
+    JEDI_DIAGNOSTICS_SLOT,
     JEDI_ENVIRONMENT_SLOT,
     JEDI_EXECUTOR_SLOT,
     JEDI_GATEWAY_SLOT,
+    JEDI_SMOKE_POLICY_SLOT,
+    JEDI_STUDY_SLOT,
     JEDI_VALIDATOR_SLOT,
     PROTECTED_SLOTS,
 )
+from metaharness_ext.jedi.smoke_policy import JediSmokePolicyComponent, JediSmokePolicyReport
+from metaharness_ext.jedi.study import JediStudyComponent
 from metaharness_ext.jedi.types import (
     JediApplicationFamily,
     JediCostType,
@@ -50,20 +64,28 @@ from metaharness_ext.jedi.validator import JediValidatorComponent
 __all__ = [
     "CANONICAL_CAPABILITIES",
     "CAP_JEDI_CASE_COMPILE",
+    "CAP_JEDI_DIAGNOSTICS",
     "CAP_JEDI_ENV_PROBE",
     "CAP_JEDI_REAL_RUN",
     "CAP_JEDI_SCHEMA",
+    "CAP_JEDI_SMOKE_POLICY",
+    "CAP_JEDI_STUDY",
     "CAP_JEDI_VALIDATE",
     "CAP_JEDI_VALIDATE_ONLY",
     "JEDI_CONFIG_COMPILER_SLOT",
+    "JEDI_DIAGNOSTICS_SLOT",
     "JEDI_ENVIRONMENT_SLOT",
     "JEDI_EXECUTOR_SLOT",
     "JEDI_EXPERIMENT_SPEC_ADAPTER",
     "JEDI_GATEWAY_SLOT",
+    "JEDI_SMOKE_POLICY_SLOT",
+    "JEDI_STUDY_SLOT",
     "JEDI_VALIDATOR_SLOT",
     "JediApplicationFamily",
     "JediConfigCompilerComponent",
     "JediCostType",
+    "JediDiagnosticSummary",
+    "JediDiagnosticsCollectorComponent",
     "JediEnvironmentProbeComponent",
     "JediEnvironmentReport",
     "JediExecutableSpec",
@@ -75,10 +97,17 @@ __all__ = [
     "JediHofXSpec",
     "JediLauncher",
     "JediLocalEnsembleDASpec",
+    "JediMutationAxis",
     "JediRunArtifact",
     "JediRunPlan",
     "JediRunPreprocessor",
     "JediRunStatus",
+    "JediSmokePolicyComponent",
+    "JediSmokePolicyReport",
+    "JediStudyComponent",
+    "JediStudyReport",
+    "JediStudySpec",
+    "JediStudyTrial",
     "JediValidationReport",
     "JediValidationStatus",
     "JediValidatorComponent",
