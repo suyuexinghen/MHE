@@ -15,6 +15,7 @@ from metaharness_ext.deepmd.capabilities import (
     CAP_DEEPMD_MODEL_TEST,
     CAP_DEEPMD_NEIGHBOR_STAT,
     CAP_DEEPMD_TRAIN_RUN,
+    CAP_DPGEN_AUTOTEST,
     CAP_DPGEN_RUN,
 )
 from metaharness_ext.deepmd.collector import DPGenIterationCollector
@@ -44,6 +45,7 @@ class DeepMDExecutorComponent(HarnessComponent):
         api.provide_capability(CAP_DEEPMD_MODEL_DEVI)
         api.provide_capability(CAP_DEEPMD_NEIGHBOR_STAT)
         api.provide_capability(CAP_DPGEN_RUN)
+        api.provide_capability(CAP_DPGEN_AUTOTEST)
 
     def execute_plan(self, plan: DeepMDRunPlan) -> DeepMDRunArtifact:
         run_dir = self._resolve_run_dir(plan)
@@ -166,6 +168,8 @@ class DeepMDExecutorComponent(HarnessComponent):
     def _build_command(self, plan: DeepMDRunPlan, resolved_binary: str) -> list[str]:
         if plan.execution_mode == "dpgen_run":
             return [resolved_binary, "run", "param.json", "machine.json"]
+        if plan.execution_mode == "dpgen_autotest":
+            return [resolved_binary, "autotest", "param.json", "machine.json"]
 
         command = [resolved_binary, plan.execution_mode]
         if plan.execution_mode == "train":

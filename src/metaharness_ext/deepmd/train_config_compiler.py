@@ -8,7 +8,12 @@ from metaharness.sdk.api import HarnessAPI
 from metaharness.sdk.base import HarnessComponent
 from metaharness.sdk.runtime import ComponentRuntime
 from metaharness_ext.deepmd.capabilities import CAP_DEEPMD_CASE_COMPILE
-from metaharness_ext.deepmd.contracts import DeepMDRunPlan, DeepMDTrainSpec, DPGenRunSpec
+from metaharness_ext.deepmd.contracts import (
+    DeepMDRunPlan,
+    DeepMDTrainSpec,
+    DPGenAutotestSpec,
+    DPGenRunSpec,
+)
 from metaharness_ext.deepmd.dpgen_machine_compiler import build_dpgen_machine_json
 from metaharness_ext.deepmd.dpgen_param_compiler import build_dpgen_param_json
 from metaharness_ext.deepmd.slots import DEEPMD_CONFIG_COMPILER_SLOT
@@ -59,12 +64,32 @@ class DeepMDTrainConfigCompilerComponent(HarnessComponent):
         api.declare_output("plan", "DeepMDRunPlan", mode="sync")
         api.provide_capability(CAP_DEEPMD_CASE_COMPILE)
 
-    def build_plan(self, spec: DeepMDTrainSpec | DPGenRunSpec) -> DeepMDRunPlan:
+    def build_plan(self, spec: DeepMDTrainSpec | DPGenRunSpec | DPGenAutotestSpec) -> DeepMDRunPlan:
         run_id = f"{spec.task_id}-{uuid.uuid4().hex[:8]}"
         if spec.working_directory is not None:
             working_directory = str(Path(spec.working_directory).expanduser())
         else:
             working_directory = run_id
+
+        if isinstance(spec, DPGenAutotestSpec):
+            return DeepMDRunPlan(
+                task_id=spec.task_id,
+                run_id=run_id,
+                application_family=spec.application_family,
+                execution_mode=spec.executable.execution_mode,
+                command=[spec.executable.binary_name, "autotest", "param.json", "machine.json"],
+                working_directory=working_directory,
+                param_json_path=str(Path(working_directory) / "param.json"),
+                machine_json_path=str(Path(working_directory) / "machine.json"),
+                expected_outputs=["result.out", "result.json"],
+                expected_diagnostics=["result.out", "result.json"],
+                expected_logs=["stdout.log", "stderr.log"],
+                param_json=build_dpgen_param_json(spec),
+                machine_json=build_dpgen_machine_json(spec),
+                workspace_sources=list(spec.workspace_files),
+                workspace_inline_files=dict(spec.workspace_inline_files),
+                executable=spec.executable,
+            )
 
         if isinstance(spec, DPGenRunSpec):
             return DeepMDRunPlan(

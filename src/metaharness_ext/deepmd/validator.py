@@ -143,6 +143,14 @@ class DeepMDValidatorComponent(HarnessComponent):
                         "failed_count": float(collection.failed_count),
                     }
                 )
+        elif artifact.execution_mode == "dpgen_autotest":
+            passed = bool(artifact.summary.autotest_properties)
+            status = "autotest_validated" if passed else "validation_failed"
+            if passed:
+                messages.append("Autotest produced structured property results.")
+                for prop_name, prop_metrics in artifact.summary.autotest_properties.items():
+                    for key, value in prop_metrics.items():
+                        metrics[f"{prop_name}_{key}"] = value
 
         if artifact.summary.last_step is not None:
             metrics["last_step"] = float(artifact.summary.last_step)

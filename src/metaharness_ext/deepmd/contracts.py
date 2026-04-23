@@ -4,7 +4,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-DeepMDApplicationFamily = Literal["deepmd_train", "dpgen_run"]
+DeepMDApplicationFamily = Literal["deepmd_train", "dpgen_run", "dpgen_autotest"]
 DeepMDExecutionMode = Literal[
     "train",
     "freeze",
@@ -13,6 +13,7 @@ DeepMDExecutionMode = Literal[
     "model_devi",
     "neighbor_stat",
     "dpgen_run",
+    "dpgen_autotest",
 ]
 DeepMDRunStatus = Literal["planned", "completed", "failed", "unavailable"]
 DPGenStageName = Literal["00.train", "01.model_devi", "02.fp"]
@@ -168,6 +169,32 @@ class DPGenRunSpec(BaseModel):
         return self
 
 
+class DPGenAutotestSpec(BaseModel):
+    task_id: str
+    application_family: DeepMDApplicationFamily = "dpgen_autotest"
+    executable: DeepMDExecutableSpec = Field(
+        default_factory=lambda: DeepMDExecutableSpec(
+            binary_name="dpgen", execution_mode="dpgen_autotest"
+        )
+    )
+    param: dict[str, Any] = Field(default_factory=dict)
+    machine: DPGenMachineSpec = Field(default_factory=DPGenMachineSpec)
+    properties: list[str] = Field(default_factory=list)
+    working_directory: str | None = None
+    workspace_files: list[str] = Field(default_factory=list)
+    workspace_inline_files: dict[str, str] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_dpgen_autotest(self) -> "DPGenAutotestSpec":
+        if self.executable.execution_mode != "dpgen_autotest":
+            raise ValueError(
+                "DPGenAutotestSpec requires executable.execution_mode='dpgen_autotest'"
+            )
+        if not self.param:
+            raise ValueError("param must not be empty")
+        return self
+
+
 class DeepMDEnvironmentReport(BaseModel):
     dp_available: bool
     python_available: bool
@@ -191,6 +218,7 @@ class DeepMDRunPlan(BaseModel):
     param_json_path: str | None = None
     machine_json_path: str | None = None
     expected_outputs: list[str] = Field(default_factory=list)
+    expected_diagnostics: list[str] = Field(default_factory=list)
     expected_logs: list[str] = Field(default_factory=list)
     dataset_paths: list[str] = Field(default_factory=list)
     input_json: dict[str, Any] = Field(default_factory=dict)
@@ -237,6 +265,7 @@ class DeepMDDiagnosticSummary(BaseModel):
     neighbor_stat_metrics: dict[str, float] = Field(default_factory=dict)
     log_clues: dict[str, str] = Field(default_factory=dict)
     dpgen_collection: DPGenIterationCollection | None = None
+    autotest_properties: dict[str, dict[str, float]] = Field(default_factory=dict)
     messages: list[str] = Field(default_factory=list)
 
 
@@ -273,6 +302,7 @@ class DeepMDValidationReport(BaseModel):
         "model_devi_computed",
         "neighbor_stat_computed",
         "baseline_success",
+        "autotest_validated",
         "run_failed",
         "runtime_failed",
         "validation_failed",

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -49,6 +50,8 @@ def build_diagnostic_summary(
             parse_test_metrics(text, summary)
         elif diagnostic_path.name == "train.log":
             parse_train_log_clues(text, summary)
+        elif diagnostic_path.name in ("result.out", "result.json"):
+            parse_autotest_results(diagnostic_path, summary)
     return summary
 
 
@@ -157,6 +160,45 @@ def parse_train_log_clues(text: str, summary: DeepMDDiagnosticSummary) -> None:
         match = re.search(pattern, text, re.IGNORECASE)
         if match:
             summary.log_clues[key] = match.group(1).strip()
+
+
+def parse_autotest_results(path: Path, summary: DeepMDDiagnosticSummary) -> None:
+    if path.name == "result.json":
+        try:
+            data = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError):
+            return
+        if isinstance(data, dict):
+            for key, value in data.items():
+                if isinstance(value, dict):
+                    metrics = {
+                        k: float(v)
+                        for k, v in value.items()
+                        if isinstance(v, int | float)
+                    }
+                    if metrics:
+                        summary.autotest_properties[key] = metrics
+                elif isinstance(value, int | float):
+                    summary.autotest_properties.setdefault("summary", {})[key] = float(value)
+        return
+
+    if path.name == "result.out":
+        text = path.read_text()
+        current_property: str | None = None
+        for raw_line in text.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            if line.startswith("#"):
+                current_property = line.lstrip("#").strip().split()[0]
+                continue
+            parts = line.split()
+            if len(parts) >= 2 and current_property is not None:
+                key = parts[0]
+                try:
+                    summary.autotest_properties.setdefault(current_property, {})[key] = float(parts[1])
+                except ValueError:
+                    pass
 
 
 def _map_named_columns(header: list[str], values: list[str]) -> dict[str, float]:

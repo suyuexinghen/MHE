@@ -9,6 +9,7 @@ CAP_DEEPMD_MODEL_COMPRESS = "deepmd.model.compress"
 CAP_DEEPMD_MODEL_DEVI = "deepmd.model.devi"
 CAP_DEEPMD_NEIGHBOR_STAT = "deepmd.dataset.neighbor_stat"
 CAP_DPGEN_RUN = "deepmd.dpgen.run"
+CAP_DPGEN_AUTOTEST = "deepmd.dpgen.autotest"
 CAP_DEEPMD_VALIDATE = "deepmd.validation.check"
 
 CANONICAL_CAPABILITIES = frozenset(
@@ -22,6 +23,7 @@ CANONICAL_CAPABILITIES = frozenset(
         CAP_DEEPMD_MODEL_DEVI,
         CAP_DEEPMD_NEIGHBOR_STAT,
         CAP_DPGEN_RUN,
+        CAP_DPGEN_AUTOTEST,
         CAP_DEEPMD_VALIDATE,
     }
 )

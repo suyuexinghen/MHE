@@ -9,6 +9,7 @@ from metaharness_ext.deepmd.capabilities import (
     CAP_DEEPMD_NEIGHBOR_STAT,
     CAP_DEEPMD_TRAIN_RUN,
     CAP_DEEPMD_VALIDATE,
+    CAP_DPGEN_AUTOTEST,
     CAP_DPGEN_RUN,
 )
 from metaharness_ext.deepmd.collector import DPGenIterationCollector
@@ -27,6 +28,7 @@ from metaharness_ext.deepmd.contracts import (
     DeepMDRunStatus,
     DeepMDTrainSpec,
     DeepMDValidationReport,
+    DPGenAutotestSpec,
     DPGenIterationCollection,
     DPGenIterationSummary,
     DPGenMachineSpec,
@@ -63,7 +65,9 @@ __all__ = [
     "CAP_DEEPMD_NEIGHBOR_STAT",
     "CAP_DEEPMD_TRAIN_RUN",
     "CAP_DEEPMD_VALIDATE",
+    "CAP_DPGEN_AUTOTEST",
     "CAP_DPGEN_RUN",
+    "DPGenAutotestSpec",
     "DPGenIterationCollection",
     "DPGenIterationCollector",
     "DPGenIterationSummary",
