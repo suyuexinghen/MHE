@@ -1103,3 +1103,13 @@ discover candidate
 | P1 | 引入冷热分层存储 |
 | P1 | 为关键事件建立 Merkle audit log |
 | P2 | 实现 replay 与 counter-factual diagnosis 接口 |
+
+## 7.15 更长期的事件驱动观测方向
+
+在当前 evidence / PROV / Merkle / replay 路线之上，CMA-inspired 方向提示另一层基础设施化目标：把 `SessionEvent` 进一步视为状态、观测与审计的共同基底。
+
+- **追加型状态 + 观测统一**：`SessionStore` / `SessionEvent` 不仅服务恢复，也可成为 trace、治理事件、checkpoint 与 cutover 事实的统一载体
+- **事件先于视图**：dashboard、query、replay 与审计对象更多从结构化事件流派生，而不是由多个独立子系统各自维护事实
+- **事件驱动可观测性**：event bus、版本事件和治理信号更明确进入统一事件模型后，Observability 会更像控制面的可计算日志，而不只是被动埋点系统
+
+这与当前强化工作互补：前者把证据体系做扎实，后者则说明长期可如何把证据体系进一步变成统一事件基础设施。

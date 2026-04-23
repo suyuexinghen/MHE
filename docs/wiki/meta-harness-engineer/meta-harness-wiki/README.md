@@ -73,3 +73,15 @@
 - 依赖：Pydantic v2、PyTorch Geometric（可选，用于 GIN 编码器）
 - 配置格式：XML + XSD
 - 清单格式：JSON（`harness.component.json`）
+
+---
+
+## 架构方向说明
+
+为避免把不同层次的工作混在一起，阅读本 Wiki 时可区分三类内容：
+
+- **当前 MHE**：仓库中已实现或已有骨架支撑的能力
+- **强化路线图**：当前正在推进的工程补强，用于把现有图模型、治理、证据与热切换能力做稳
+- **更长期的 CMA-inspired 基础设施方向**：在上述工作之外，未来可能继续演进的控制面/执行面解耦方向
+
+后者主要包括：以 `SessionStore` / `SessionEvent` 为追加型状态与观测基底、逐步推动 `HarnessRuntime` 无状态化与 `wake(session_id)` 恢复、以惰性沙箱形成更强执行边界、以 `Credential Vault` 提供强于当前 `InMemoryIdentityBoundary` 的凭证隔离，以及把 `BrainProvider` 抽象和事件驱动可观测性纳入统一基础设施视角。这些方向用于帮助理解 MHE 的长期演进，不等同于当前版本已全部实现。

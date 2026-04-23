@@ -1092,3 +1092,13 @@ class MemoryV1ToV2Adapter(StateMigrationAdapter):
 | P1 | 增加 circuit breaker / dead-end path 机制 |
 | P2 | 建立 migration adapter registry |
 | P2 | 对多组件联动切换引入 Saga rollback |
+
+## 8.16 更长期的运行时方向
+
+当前章节聚焦于图切换、状态迁移与回滚协议；更长期的 CMA-inspired 方向则是进一步弱化“单个运行时进程持有全部活状态”的假设。
+
+- **渐进式无状态 `HarnessRuntime`**：热切换协议长期可与 `wake(session_id)` 恢复语义衔接，使运行时更像可替换的编排器，而不是会话唯一宿主
+- **checkpoint 面向会话恢复**：checkpoint 不只服务本地 rollback，也可逐步服务跨进程恢复和长时程任务续跑
+- **热切换与会话日志对齐**：如果 cutover、resume、rollback 都落入统一 `SessionEvent` 序列，热重载将更容易与故障恢复、审计和 replay 对齐
+
+也就是说，当前热重载强调“如何安全切换”，长期基础设施方向则进一步强调“切换后的状态如何脱离单进程宿主”。
