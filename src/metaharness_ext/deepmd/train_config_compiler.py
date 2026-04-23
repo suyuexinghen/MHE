@@ -89,6 +89,7 @@ class DeepMDTrainConfigCompilerComponent(HarnessComponent):
                 workspace_sources=list(spec.workspace_files),
                 workspace_inline_files=dict(spec.workspace_inline_files),
                 executable=spec.executable,
+                properties=list(spec.properties),
             )
 
         if isinstance(spec, DPGenRunSpec):

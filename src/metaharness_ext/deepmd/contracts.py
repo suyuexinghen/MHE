@@ -228,6 +228,7 @@ class DeepMDRunPlan(BaseModel):
     workspace_inline_files: dict[str, str] = Field(default_factory=dict)
     executable: DeepMDExecutableSpec
     mode_inputs: DeepMDModeInputSpec = Field(default_factory=DeepMDModeInputSpec)
+    properties: list[str] = Field(default_factory=list)
 
 
 class DPGenIterationSummary(BaseModel):

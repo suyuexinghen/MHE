@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from typing import Any
 
 from metaharness_ext.deepmd.contracts import DeepMDDiagnosticSummary
 
@@ -11,6 +12,7 @@ def build_diagnostic_summary(
     run_dir: Path,
     diagnostic_files: list[str],
     stdout_path: str,
+    properties: list[str] | None = None,
 ) -> DeepMDDiagnosticSummary:
     summary = DeepMDDiagnosticSummary()
     lcurve_path = run_dir / "lcurve.out"
@@ -51,7 +53,7 @@ def build_diagnostic_summary(
         elif diagnostic_path.name == "train.log":
             parse_train_log_clues(text, summary)
         elif diagnostic_path.name in ("result.out", "result.json"):
-            parse_autotest_results(diagnostic_path, summary)
+            parse_autotest_results(diagnostic_path, summary, properties=properties)
     return summary
 
 
@@ -162,7 +164,25 @@ def parse_train_log_clues(text: str, summary: DeepMDDiagnosticSummary) -> None:
             summary.log_clues[key] = match.group(1).strip()
 
 
-def parse_autotest_results(path: Path, summary: DeepMDDiagnosticSummary) -> None:
+def parse_autotest_results(
+    path: Path, summary: DeepMDDiagnosticSummary, *, properties: list[str] | None = None
+) -> None:
+    allowed = set(properties) if properties else None
+
+    def _should_include(key: str) -> bool:
+        return allowed is None or key in allowed
+
+    def _collect_json(prefix: str, data: dict[str, Any]) -> dict[str, float]:
+        metrics: dict[str, float] = {}
+        for k, v in data.items():
+            full_key = f"{prefix}_{k}" if prefix else k
+            if isinstance(v, dict):
+                nested = _collect_json(full_key, v)
+                metrics.update(nested)
+            elif isinstance(v, int | float):
+                metrics[full_key] = float(v)
+        return metrics
+
     if path.name == "result.json":
         try:
             data = json.loads(path.read_text())
@@ -170,14 +190,12 @@ def parse_autotest_results(path: Path, summary: DeepMDDiagnosticSummary) -> None
             return
         if isinstance(data, dict):
             for key, value in data.items():
+                if not _should_include(key):
+                    continue
                 if isinstance(value, dict):
-                    metrics = {
-                        k: float(v)
-                        for k, v in value.items()
-                        if isinstance(v, int | float)
-                    }
-                    if metrics:
-                        summary.autotest_properties[key] = metrics
+                    collected = _collect_json("", value)
+                    if collected:
+                        summary.autotest_properties[key] = collected
                 elif isinstance(value, int | float):
                     summary.autotest_properties.setdefault("summary", {})[key] = float(value)
         return
@@ -193,10 +211,13 @@ def parse_autotest_results(path: Path, summary: DeepMDDiagnosticSummary) -> None
                 current_property = line.lstrip("#").strip().split()[0]
                 continue
             parts = line.split()
-            if len(parts) >= 2 and current_property is not None:
+            if len(parts) >= 2:
+                prop = current_property if current_property is not None else "summary"
+                if not _should_include(prop):
+                    continue
                 key = parts[0]
                 try:
-                    summary.autotest_properties.setdefault(current_property, {})[key] = float(parts[1])
+                    summary.autotest_properties.setdefault(prop, {})[key] = float(parts[1])
                 except ValueError:
                     pass
 

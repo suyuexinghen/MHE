@@ -161,6 +161,44 @@ def test_validator_fails_without_autotest_properties() -> None:
     assert report.status == "validation_failed"
 
 
+def test_parse_autotest_result_json_filters_by_properties(tmp_path: Path) -> None:
+    result_file = tmp_path / "result.json"
+    result_file.write_text(
+        '{"eos": {"a": 3.5}, "elastic": {"c11": 120.5}, "bulk": {"b": 2.0}}'
+    )
+    summary = DeepMDDiagnosticSummary()
+    parse_autotest_results(result_file, summary, properties=["eos"])
+
+    assert "eos" in summary.autotest_properties
+    assert "elastic" not in summary.autotest_properties
+    assert "bulk" not in summary.autotest_properties
+
+
+def test_parse_autotest_result_json_deep_nesting(tmp_path: Path) -> None:
+    result_file = tmp_path / "result.json"
+    result_file.write_text(
+        '{"eos": {"lattice": {"a": 3.5, "b": 4.2}, "energy": 1.2}}'
+    )
+    summary = DeepMDDiagnosticSummary()
+    parse_autotest_results(result_file, summary)
+
+    assert "eos" in summary.autotest_properties
+    assert summary.autotest_properties["eos"]["lattice_a"] == pytest.approx(3.5)
+    assert summary.autotest_properties["eos"]["lattice_b"] == pytest.approx(4.2)
+    assert summary.autotest_properties["eos"]["energy"] == pytest.approx(1.2)
+
+
+def test_parse_autotest_result_out_presummary_lines(tmp_path: Path) -> None:
+    result_file = tmp_path / "result.out"
+    result_file.write_text("overall  99.5\n# eos\na  3.5\n")
+    summary = DeepMDDiagnosticSummary()
+    parse_autotest_results(result_file, summary)
+
+    assert "summary" in summary.autotest_properties
+    assert summary.autotest_properties["summary"]["overall"] == pytest.approx(99.5)
+    assert summary.autotest_properties["eos"]["a"] == pytest.approx(3.5)
+
+
 def test_validation_report_status_literal_includes_autotest() -> None:
     report = DeepMDValidationReport(
         task_id="t",

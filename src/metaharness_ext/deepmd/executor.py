@@ -275,7 +275,9 @@ class DeepMDExecutorComponent(HarnessComponent):
                 "record.dpgen",
             ],
         )
-        summary = build_diagnostic_summary(run_dir, diagnostic_files, stdout_path)
+        summary = build_diagnostic_summary(
+            run_dir, diagnostic_files, stdout_path, properties=plan.properties
+        )
         if plan.execution_mode == "dpgen_run":
             summary.dpgen_collection = self._dpgen_collector.collect(run_dir)
             for message in summary.dpgen_collection.messages:
