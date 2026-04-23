@@ -12,6 +12,7 @@ from metaharness_ext.deepmd.capabilities import (
     CAP_DEEPMD_MODEL_FREEZE,
     CAP_DEEPMD_MODEL_TEST,
     CAP_DEEPMD_NEIGHBOR_STAT,
+    CAP_DEEPMD_STUDY,
     CAP_DEEPMD_TRAIN_RUN,
     CAP_DEEPMD_VALIDATE,
     CAP_DPGEN_AUTOTEST,
@@ -22,6 +23,7 @@ from metaharness_ext.deepmd.slots import (
     DEEPMD_ENVIRONMENT_SLOT,
     DEEPMD_EXECUTOR_SLOT,
     DEEPMD_GATEWAY_SLOT,
+    DEEPMD_STUDY_SLOT,
     DEEPMD_VALIDATOR_SLOT,
 )
 
@@ -71,6 +73,13 @@ EXPECTED_MANIFESTS = {
         "output": "validation",
         "capabilities": [CAP_DEEPMD_VALIDATE],
     },
+    "study.json": {
+        "name": "deepmd_study",
+        "entry": "metaharness_ext.deepmd.study:DeepMDStudyComponent",
+        "slot": DEEPMD_STUDY_SLOT,
+        "output": "report",
+        "capabilities": [CAP_DEEPMD_STUDY],
+    },
 }
 
 
@@ -99,6 +108,7 @@ def test_metaharness_deepmd_manifest_entries_are_importable() -> None:
         "metaharness_ext.deepmd.train_config_compiler": "DeepMDTrainConfigCompilerComponent",
         "metaharness_ext.deepmd.executor": "DeepMDExecutorComponent",
         "metaharness_ext.deepmd.validator": "DeepMDValidatorComponent",
+        "metaharness_ext.deepmd.study": "DeepMDStudyComponent",
     }
     for module_name, class_name in modules.items():
         module = import_module(module_name)

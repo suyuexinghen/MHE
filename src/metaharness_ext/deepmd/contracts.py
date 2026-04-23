@@ -311,3 +311,50 @@ class DeepMDValidationReport(BaseModel):
     messages: list[str] = Field(default_factory=list)
     summary_metrics: dict[str, float | str] = Field(default_factory=dict)
     evidence_files: list[str] = Field(default_factory=list)
+
+
+class DeepMDMutationAxis(BaseModel):
+    kind: Literal["numb_steps", "rcut", "sel", "model_devi_f_trust_lo", "model_devi_f_trust_hi"]
+    values: list[int | float] = Field(default_factory=list)
+    label: str | None = None
+
+    @model_validator(mode="after")
+    def validate_values(self) -> "DeepMDMutationAxis":
+        if not self.values:
+            raise ValueError("axis.values must not be empty")
+        return self
+
+
+class DeepMDStudySpec(BaseModel):
+    study_id: str
+    task_id: str
+    base_task: DeepMDTrainSpec | DPGenRunSpec
+    axis: DeepMDMutationAxis
+    metric_key: str
+    goal: Literal["minimize", "maximize"] = "minimize"
+
+
+class DeepMDStudyTrial(BaseModel):
+    trial_id: str
+    task_id: str
+    axis_kind: str
+    axis_value: int | float
+    mutated_parameters: dict[str, int | float | str] = Field(default_factory=dict)
+    run: DeepMDRunArtifact
+    validation: DeepMDValidationReport
+    metric_value: float | None = None
+    passed: bool = False
+    messages: list[str] = Field(default_factory=list)
+
+
+class DeepMDStudyReport(BaseModel):
+    study_id: str
+    task_id: str
+    axis_kind: str
+    metric_key: str
+    trials: list[DeepMDStudyTrial] = Field(default_factory=list)
+    recommended_value: int | float | None = None
+    recommended_trial_id: str | None = None
+    recommended_reason: str | None = None
+    summary_metrics: dict[str, float | str] = Field(default_factory=dict)
+    messages: list[str] = Field(default_factory=list)
