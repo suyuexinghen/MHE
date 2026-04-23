@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -16,18 +15,20 @@ from metaharness_ext.deepmd.capabilities import (
     CAP_DEEPMD_MODEL_TEST,
     CAP_DEEPMD_NEIGHBOR_STAT,
     CAP_DEEPMD_TRAIN_RUN,
+    CAP_DPGEN_RUN,
 )
-from metaharness_ext.deepmd.contracts import (
-    DeepMDDiagnosticSummary,
-    DeepMDRunArtifact,
-    DeepMDRunPlan,
-)
+from metaharness_ext.deepmd.collector import DPGenIterationCollector
+from metaharness_ext.deepmd.contracts import DeepMDRunArtifact, DeepMDRunPlan
+from metaharness_ext.deepmd.diagnostics import build_diagnostic_summary
 from metaharness_ext.deepmd.slots import DEEPMD_EXECUTOR_SLOT
+from metaharness_ext.deepmd.workspace import DeepMDWorkspacePreparer, WorkspacePreparationError
 
 
 class DeepMDExecutorComponent(HarnessComponent):
     async def activate(self, runtime: ComponentRuntime) -> None:
         self._runtime = runtime
+        self._workspace_preparer = DeepMDWorkspacePreparer()
+        self._dpgen_collector = DPGenIterationCollector()
 
     async def deactivate(self) -> None:
         self._runtime = None
@@ -42,12 +43,40 @@ class DeepMDExecutorComponent(HarnessComponent):
         api.provide_capability(CAP_DEEPMD_MODEL_COMPRESS)
         api.provide_capability(CAP_DEEPMD_MODEL_DEVI)
         api.provide_capability(CAP_DEEPMD_NEIGHBOR_STAT)
+        api.provide_capability(CAP_DPGEN_RUN)
 
     def execute_plan(self, plan: DeepMDRunPlan) -> DeepMDRunArtifact:
         run_dir = self._resolve_run_dir(plan)
+        try:
+            workspace_files = self._prepare_workspace(plan, run_dir)
+        except WorkspacePreparationError as error:
+            stdout_path, stderr_path = self._write_logs(
+                run_dir, stdout_text="", stderr_text=str(error)
+            )
+            return self._build_artifact(
+                plan,
+                command=[plan.executable.binary_name, plan.execution_mode],
+                run_dir=run_dir,
+                workspace_files=[],
+                stdout_path=stdout_path,
+                stderr_path=stderr_path,
+                return_code=None,
+                status="failed",
+                result_summary={"fallback_reason": "workspace_prepare_failed", "exit_code": None},
+            )
+
         if plan.input_json_path is not None:
-            input_json_path = run_dir / "input.json"
-            input_json_path.write_text(json.dumps(plan.input_json, indent=2, sort_keys=True) + "\n")
+            (run_dir / "input.json").write_text(
+                json.dumps(plan.input_json, indent=2, sort_keys=True) + "\n"
+            )
+        if plan.param_json_path is not None:
+            (run_dir / "param.json").write_text(
+                json.dumps(plan.param_json, indent=2, sort_keys=True) + "\n"
+            )
+        if plan.machine_json_path is not None:
+            (run_dir / "machine.json").write_text(
+                json.dumps(plan.machine_json, indent=2, sort_keys=True) + "\n"
+            )
 
         resolved_binary = self._resolve_binary(plan)
         if resolved_binary is None:
@@ -60,6 +89,7 @@ class DeepMDExecutorComponent(HarnessComponent):
                 plan,
                 command=[plan.executable.binary_name, plan.execution_mode],
                 run_dir=run_dir,
+                workspace_files=workspace_files,
                 stdout_path=stdout_path,
                 stderr_path=stderr_path,
                 return_code=None,
@@ -86,6 +116,7 @@ class DeepMDExecutorComponent(HarnessComponent):
                 plan,
                 command=command,
                 run_dir=run_dir,
+                workspace_files=workspace_files,
                 stdout_path=stdout_path,
                 stderr_path=stderr_path,
                 return_code=None,
@@ -102,6 +133,7 @@ class DeepMDExecutorComponent(HarnessComponent):
             plan,
             command=command,
             run_dir=run_dir,
+            workspace_files=workspace_files,
             stdout_path=stdout_path,
             stderr_path=stderr_path,
             return_code=result.returncode,
@@ -118,6 +150,9 @@ class DeepMDExecutorComponent(HarnessComponent):
         run_dir.mkdir(parents=True, exist_ok=True)
         return run_dir
 
+    def _prepare_workspace(self, plan: DeepMDRunPlan, run_dir: Path) -> list[str]:
+        return self._workspace_preparer.prepare(plan, run_dir)
+
     def _validate_task_id(self, task_id: str) -> None:
         if not task_id or ".." in task_id or "/" in task_id or "\\" in task_id:
             raise ValueError(f"Invalid task_id: {task_id!r}")
@@ -129,6 +164,9 @@ class DeepMDExecutorComponent(HarnessComponent):
         return shutil.which(plan.executable.binary_name)
 
     def _build_command(self, plan: DeepMDRunPlan, resolved_binary: str) -> list[str]:
+        if plan.execution_mode == "dpgen_run":
+            return [resolved_binary, "run", "param.json", "machine.json"]
+
         command = [resolved_binary, plan.execution_mode]
         if plan.execution_mode == "train":
             command.append("input.json")
@@ -209,6 +247,7 @@ class DeepMDExecutorComponent(HarnessComponent):
         *,
         command: list[str],
         run_dir: Path,
+        workspace_files: list[str],
         stdout_path: str,
         stderr_path: str,
         return_code: int | None,
@@ -217,30 +256,38 @@ class DeepMDExecutorComponent(HarnessComponent):
     ) -> DeepMDRunArtifact:
         checkpoint_files = self._discover_files(run_dir, ["checkpoint", "model.ckpt*"])
         model_files = self._discover_files(
-            run_dir,
-            ["*.pb", "graph.pb", "frozen_model.pb", "compressed_model.pb"],
+            run_dir, ["*.pb", "graph.pb", "frozen_model.pb", "compressed_model.pb"]
         )
         diagnostic_files = self._discover_files(
             run_dir,
             [
                 "lcurve.out",
+                "train.log",
                 "test.*",
                 "results.*",
                 "*.out",
                 "model_devi*",
                 "neighbor_stat*",
+                "record.dpgen",
             ],
         )
-        summary = self._build_summary(run_dir, diagnostic_files, stdout_path)
+        summary = build_diagnostic_summary(run_dir, diagnostic_files, stdout_path)
+        if plan.execution_mode == "dpgen_run":
+            summary.dpgen_collection = self._dpgen_collector.collect(run_dir)
+            for message in summary.dpgen_collection.messages:
+                if message not in summary.messages:
+                    summary.messages.append(message)
         return DeepMDRunArtifact(
             task_id=plan.task_id,
             run_id=plan.run_id,
+            application_family=plan.application_family,
             execution_mode=plan.execution_mode,
             command=command,
             return_code=return_code,
             stdout_path=stdout_path,
             stderr_path=stderr_path,
             working_directory=str(run_dir),
+            workspace_files=workspace_files,
             checkpoint_files=checkpoint_files,
             model_files=model_files,
             diagnostic_files=diagnostic_files,
@@ -253,7 +300,7 @@ class DeepMDExecutorComponent(HarnessComponent):
         files: list[str] = []
         seen: set[str] = set()
         for pattern in patterns:
-            for path in sorted(run_dir.glob(pattern)):
+            for path in sorted(run_dir.rglob(pattern)):
                 if not path.is_file():
                     continue
                 path_str = str(path)
@@ -262,114 +309,3 @@ class DeepMDExecutorComponent(HarnessComponent):
                 seen.add(path_str)
                 files.append(path_str)
         return files
-
-    def _build_summary(
-        self,
-        run_dir: Path,
-        diagnostic_files: list[str],
-        stdout_path: str,
-    ) -> DeepMDDiagnosticSummary:
-        summary = DeepMDDiagnosticSummary()
-        lcurve_path = run_dir / "lcurve.out"
-        if lcurve_path.exists():
-            summary.learning_curve_path = str(lcurve_path)
-            self._parse_lcurve(lcurve_path, summary)
-
-        compressed_model = run_dir / "compressed_model.pb"
-        if compressed_model.exists():
-            summary.compressed_model_path = str(compressed_model)
-
-        stdout_file = Path(stdout_path)
-        stdout_text = stdout_file.read_text() if stdout_file.exists() else ""
-        if stdout_text:
-            self._parse_test_metrics(stdout_text, summary)
-            self._parse_compress_output(stdout_text, summary)
-            self._parse_model_devi_output(stdout_text, summary)
-            self._parse_neighbor_stat_output(stdout_text, summary)
-
-        for diagnostic in diagnostic_files:
-            diagnostic_path = Path(diagnostic)
-            message = f"Discovered diagnostic: {diagnostic_path.name}"
-            if message not in summary.messages:
-                summary.messages.append(message)
-            if diagnostic_path.name.startswith("model_devi"):
-                self._parse_model_devi_output(diagnostic_path.read_text(), summary)
-            if diagnostic_path.name.startswith("neighbor_stat"):
-                self._parse_neighbor_stat_output(diagnostic_path.read_text(), summary)
-        return summary
-
-    def _parse_lcurve(self, path: Path, summary: DeepMDDiagnosticSummary) -> None:
-        lines = [
-            line.strip()
-            for line in path.read_text().splitlines()
-            if line.strip() and not line.startswith("#")
-        ]
-        if not lines:
-            return
-        last = lines[-1].split()
-        if last:
-            try:
-                summary.last_step = int(float(last[0]))
-            except ValueError:
-                pass
-        if len(last) >= 3:
-            try:
-                summary.rmse_e_trn = float(last[1])
-                summary.rmse_f_trn = float(last[2])
-            except ValueError:
-                return
-
-    def _parse_test_metrics(self, text: str, summary: DeepMDDiagnosticSummary) -> None:
-        patterns = {
-            "rmse_e": r"rmse[_ ]e(?:nergy)?\s*[=:]\s*([0-9.eE+-]+)",
-            "rmse_f": r"rmse[_ ]f(?:orce)?\s*[=:]\s*([0-9.eE+-]+)",
-        }
-        for key, pattern in patterns.items():
-            match = re.search(pattern, text, re.IGNORECASE)
-            if match:
-                summary.test_metrics[key] = float(match.group(1))
-
-    def _parse_compress_output(self, text: str, summary: DeepMDDiagnosticSummary) -> None:
-        compressed_match = re.search(
-            r"(?:saved|written|output)\s+(?:to\s+)?([^\s]+(?:graph-compress|compressed_model|compressed)[^\s]*\.pb)",
-            text,
-            re.IGNORECASE,
-        )
-        if compressed_match:
-            summary.compressed_model_path = compressed_match.group(1)
-        elif (
-            "compress" in text.lower()
-            and "pb" in text.lower()
-            and not summary.compressed_model_path
-        ):
-            summary.messages.append("Compress stdout mentions PB output.")
-
-    def _parse_model_devi_output(self, text: str, summary: DeepMDDiagnosticSummary) -> None:
-        patterns = {
-            "max_devi_f": r"max[_ ]devi[_ ]f\s*[=:]\s*([0-9.eE+-]+)",
-            "avg_devi_f": r"avg[_ ]devi[_ ]f\s*[=:]\s*([0-9.eE+-]+)",
-            "min_devi_f": r"min[_ ]devi[_ ]f\s*[=:]\s*([0-9.eE+-]+)",
-        }
-        for key, pattern in patterns.items():
-            match = re.search(pattern, text, re.IGNORECASE)
-            if match:
-                summary.model_devi_metrics[key] = float(match.group(1))
-        lowered = text.lower()
-        for marker in ("candidate", "accurate", "failed"):
-            if marker in lowered:
-                message = f"Model deviation output mentions {marker}."
-                if message not in summary.messages:
-                    summary.messages.append(message)
-
-    def _parse_neighbor_stat_output(self, text: str, summary: DeepMDDiagnosticSummary) -> None:
-        patterns = {
-            "min_nbor_dist": r"min[_ ]n(?:eig)?h?b?or[_ ]dist\s*[=:]\s*([0-9.eE+-]+)",
-            "max_nbor_size": r"max[_ ]n(?:eig)?h?b?or[_ ]size\s*[=:]\s*([0-9.eE+-]+)",
-        }
-        for key, pattern in patterns.items():
-            match = re.search(pattern, text, re.IGNORECASE)
-            if match:
-                summary.neighbor_stat_metrics[key] = float(match.group(1))
-        sel_match = re.search(r"sel\s*[=:]\s*\[([^\]]+)\]", text, re.IGNORECASE)
-        if sel_match:
-            summary.messages.append(f"Neighbor stat suggested sel [{sel_match.group(1).strip()}].")

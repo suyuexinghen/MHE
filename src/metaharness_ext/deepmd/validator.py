@@ -10,10 +10,6 @@ from metaharness_ext.deepmd.contracts import DeepMDRunArtifact, DeepMDValidation
 from metaharness_ext.deepmd.slots import DEEPMD_VALIDATOR_SLOT
 
 
-def _is_success_exit_code(value: object) -> bool:
-    return value in {0, 0.0, "0"}
-
-
 def _has_named_artifact(paths: Iterable[str], suffix: str) -> bool:
     return any(path.endswith(suffix) for path in paths)
 
@@ -37,6 +33,13 @@ class DeepMDValidatorComponent(HarnessComponent):
         messages: list[str] = []
         metrics: dict[str, float | str] = {}
         fallback_reason = artifact.result_summary.get("fallback_reason")
+        evidence_files = [
+            *artifact.workspace_files,
+            *artifact.checkpoint_files,
+            *artifact.model_files,
+            *artifact.diagnostic_files,
+        ]
+
         if artifact.status == "unavailable" and fallback_reason:
             messages.append(f"DeepMD run unavailable: {fallback_reason}.")
             return DeepMDValidationReport(
@@ -46,11 +49,19 @@ class DeepMDValidatorComponent(HarnessComponent):
                 status="environment_invalid",
                 messages=messages,
                 summary_metrics=metrics,
-                evidence_files=[
-                    *artifact.checkpoint_files,
-                    *artifact.model_files,
-                    *artifact.diagnostic_files,
-                ],
+                evidence_files=evidence_files,
+            )
+
+        if fallback_reason == "workspace_prepare_failed":
+            messages.append("Workspace preparation failed.")
+            return DeepMDValidationReport(
+                task_id=artifact.task_id,
+                run_id=artifact.run_id,
+                passed=False,
+                status="workspace_failed",
+                messages=messages,
+                summary_metrics=metrics,
+                evidence_files=evidence_files,
             )
 
         if artifact.return_code not in {0, None} or artifact.status == "failed":
@@ -60,18 +71,15 @@ class DeepMDValidatorComponent(HarnessComponent):
                 messages.append(f"DeepMD command failed: {fallback_reason}.")
             else:
                 messages.append("DeepMD command failed.")
+            status = "run_failed" if artifact.execution_mode == "dpgen_run" else "runtime_failed"
             return DeepMDValidationReport(
                 task_id=artifact.task_id,
                 run_id=artifact.run_id,
                 passed=False,
-                status="runtime_failed",
+                status=status,
                 messages=messages,
                 summary_metrics=metrics,
-                evidence_files=[
-                    *artifact.checkpoint_files,
-                    *artifact.model_files,
-                    *artifact.diagnostic_files,
-                ],
+                evidence_files=evidence_files,
             )
 
         passed = False
@@ -103,23 +111,38 @@ class DeepMDValidatorComponent(HarnessComponent):
                 if compressed_model_path is not None:
                     metrics["compressed_model_path"] = compressed_model_path
         elif artifact.execution_mode == "model_devi":
-            passed = bool(
-                artifact.diagnostic_files
-                or (artifact.stdout_path and _is_success_exit_code(artifact.result_summary.get("exit_code")))
-            )
+            passed = bool(artifact.summary.model_devi_metrics)
             status = "model_devi_computed" if passed else "validation_failed"
             if passed:
                 messages.append("Model deviation diagnostics were produced.")
                 metrics.update(artifact.summary.model_devi_metrics)
         elif artifact.execution_mode == "neighbor_stat":
-            passed = bool(
-                artifact.diagnostic_files
-                or (artifact.stdout_path and _is_success_exit_code(artifact.result_summary.get("exit_code")))
-            )
+            passed = bool(artifact.summary.neighbor_stat_metrics)
             status = "neighbor_stat_computed" if passed else "validation_failed"
             if passed:
                 messages.append("Neighbor statistics diagnostics were produced.")
                 metrics.update(artifact.summary.neighbor_stat_metrics)
+        elif artifact.execution_mode == "dpgen_run":
+            collection = artifact.summary.dpgen_collection
+            passed = bool(
+                collection
+                and collection.record_path
+                and collection.iterations
+                and all(
+                    iteration.train_path and iteration.model_devi_path and iteration.fp_path
+                    for iteration in collection.iterations
+                )
+            )
+            status = "baseline_success" if passed else "validation_failed"
+            if passed and collection is not None:
+                messages.append("DP-GEN baseline completed with iteration evidence.")
+                metrics.update(
+                    {
+                        "candidate_count": float(collection.candidate_count),
+                        "accurate_count": float(collection.accurate_count),
+                        "failed_count": float(collection.failed_count),
+                    }
+                )
 
         if artifact.summary.last_step is not None:
             metrics["last_step"] = float(artifact.summary.last_step)
@@ -127,6 +150,10 @@ class DeepMDValidatorComponent(HarnessComponent):
             metrics["rmse_e_trn"] = artifact.summary.rmse_e_trn
         if artifact.summary.rmse_f_trn is not None:
             metrics["rmse_f_trn"] = artifact.summary.rmse_f_trn
+        if artifact.summary.rmse_e_val is not None:
+            metrics["rmse_e_val"] = artifact.summary.rmse_e_val
+        if artifact.summary.rmse_f_val is not None:
+            metrics["rmse_f_val"] = artifact.summary.rmse_f_val
 
         return DeepMDValidationReport(
             task_id=artifact.task_id,
@@ -135,9 +162,5 @@ class DeepMDValidatorComponent(HarnessComponent):
             status=status,
             messages=messages,
             summary_metrics=metrics,
-            evidence_files=[
-                *artifact.checkpoint_files,
-                *artifact.model_files,
-                *artifact.diagnostic_files,
-            ],
+            evidence_files=evidence_files,
         )

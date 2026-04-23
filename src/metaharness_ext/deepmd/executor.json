@@ -10,7 +10,8 @@
         "name": "plan",
         "type": "DeepMDRunPlan",
         "required": true,
-        "description": ""
+        "description": "",
+        "cardinality": "one"
       }
     ],
     "outputs": [
@@ -46,6 +47,10 @@
       {
         "name": "deepmd.dataset.neighbor_stat",
         "description": ""
+      },
+      {
+        "name": "deepmd.dpgen.run",
+        "description": ""
       }
     ],
     "requires": [],
@@ -63,13 +68,5 @@
     "sandbox_profile": null,
     "hot_swap": true
   },
-  "state_schema_version": 1,
-  "provides": [
-    "deepmd.train.run",
-    "deepmd.model.freeze",
-    "deepmd.model.test",
-    "deepmd.model.compress",
-    "deepmd.model.devi",
-    "deepmd.dataset.neighbor_stat"
-  ]
+  "state_schema_version": 1
 }

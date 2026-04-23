@@ -64,7 +64,7 @@ async def test_jedi_real_run_succeeds_with_runtime_evidence(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     spec = _build_spec(tmp_path)
-    spec.expected_diagnostics = ["smoke.log"]
+    spec.expected_diagnostics = ["runtime-foundation.log"]
     plan = JediConfigCompilerComponent().build_plan(spec)
     executor = JediExecutorComponent()
     validator = JediValidatorComponent()
@@ -77,7 +77,7 @@ async def test_jedi_real_run_succeeds_with_runtime_evidence(
 
     def fake_run(command, *, cwd, text, capture_output, check, timeout):
         (cwd / "analysis.out").write_text("analysis")
-        (cwd / "smoke.log").write_text("completed")
+        (cwd / "runtime-foundation.log").write_text("completed")
         return _FakeCompletedProcess(returncode=0, stdout="run ok", stderr="")
 
     monkeypatch.setattr("metaharness_ext.jedi.executor.subprocess.run", fake_run)
@@ -87,7 +87,7 @@ async def test_jedi_real_run_succeeds_with_runtime_evidence(
 
     assert artifact.command == ["/usr/bin/qg4DVar.x", "config.yaml"]
     assert any(path.endswith("analysis.out") for path in artifact.output_files)
-    assert any(path.endswith("smoke.log") for path in artifact.diagnostic_files)
+    assert any(path.endswith("runtime-foundation.log") for path in artifact.diagnostic_files)
     assert report.passed is True
     assert report.status == "executed"
     assert report.summary_metrics["primary_output"].endswith("analysis.out")

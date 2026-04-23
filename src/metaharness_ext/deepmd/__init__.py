@@ -9,7 +9,9 @@ from metaharness_ext.deepmd.capabilities import (
     CAP_DEEPMD_NEIGHBOR_STAT,
     CAP_DEEPMD_TRAIN_RUN,
     CAP_DEEPMD_VALIDATE,
+    CAP_DPGEN_RUN,
 )
+from metaharness_ext.deepmd.collector import DPGenIterationCollector
 from metaharness_ext.deepmd.contracts import (
     DeepMDApplicationFamily,
     DeepMDDatasetSpec,
@@ -25,7 +27,13 @@ from metaharness_ext.deepmd.contracts import (
     DeepMDRunStatus,
     DeepMDTrainSpec,
     DeepMDValidationReport,
+    DPGenIterationCollection,
+    DPGenIterationSummary,
+    DPGenMachineSpec,
+    DPGenRunSpec,
 )
+from metaharness_ext.deepmd.dpgen_machine_compiler import build_dpgen_machine_json
+from metaharness_ext.deepmd.dpgen_param_compiler import build_dpgen_param_json
 from metaharness_ext.deepmd.environment import DeepMDEnvironmentProbeComponent
 from metaharness_ext.deepmd.executor import DeepMDExecutorComponent
 from metaharness_ext.deepmd.gateway import DeepMDGatewayComponent
@@ -42,6 +50,7 @@ from metaharness_ext.deepmd.train_config_compiler import (
     build_train_input_json,
 )
 from metaharness_ext.deepmd.validator import DeepMDValidatorComponent
+from metaharness_ext.deepmd.workspace import DeepMDWorkspacePreparer, WorkspacePreparationError
 
 __all__ = [
     "CANONICAL_CAPABILITIES",
@@ -54,6 +63,12 @@ __all__ = [
     "CAP_DEEPMD_NEIGHBOR_STAT",
     "CAP_DEEPMD_TRAIN_RUN",
     "CAP_DEEPMD_VALIDATE",
+    "CAP_DPGEN_RUN",
+    "DPGenIterationCollection",
+    "DPGenIterationCollector",
+    "DPGenIterationSummary",
+    "DPGenMachineSpec",
+    "DPGenRunSpec",
     "DeepMDApplicationFamily",
     "DeepMDDescriptorSpec",
     "DeepMDEnvironmentProbeComponent",
@@ -73,11 +88,15 @@ __all__ = [
     "DeepMDTrainSpec",
     "DeepMDValidationReport",
     "DeepMDValidatorComponent",
+    "DeepMDWorkspacePreparer",
+    "WorkspacePreparationError",
     "DEEPMD_CONFIG_COMPILER_SLOT",
     "DEEPMD_ENVIRONMENT_SLOT",
     "DEEPMD_EXECUTOR_SLOT",
     "DEEPMD_GATEWAY_SLOT",
     "DEEPMD_VALIDATOR_SLOT",
     "PROTECTED_SLOTS",
+    "build_dpgen_machine_json",
+    "build_dpgen_param_json",
     "build_train_input_json",
 ]

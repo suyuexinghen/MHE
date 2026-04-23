@@ -34,7 +34,9 @@ def _build_registry(manifest_dir: Path) -> ComponentRegistry:
 
 
 @pytest.mark.asyncio
-async def test_jedi_minimal_path_runs(examples_dir: Path, monkeypatch, tmp_path: Path) -> None:
+async def test_jedi_minimal_graph_wiring_surfaces_environment_invalid(
+    examples_dir: Path, monkeypatch, tmp_path: Path
+) -> None:
     manifest_dir = examples_dir / "manifests" / "jedi"
     graphs_dir = examples_dir / "graphs"
     registry = _build_registry(manifest_dir)
@@ -43,7 +45,7 @@ async def test_jedi_minimal_path_runs(examples_dir: Path, monkeypatch, tmp_path:
     candidate, report = engine.stage(
         PendingConnectionSet(nodes=snapshot.nodes, edges=snapshot.edges)
     )
-    version = engine.commit("jedi-minimal", candidate, report)
+    version = engine.commit("jedi-minimal-foundation", candidate, report)
 
     gateway = JediGatewayComponent()
     environment = JediEnvironmentProbeComponent()

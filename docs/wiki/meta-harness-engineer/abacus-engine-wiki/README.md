@@ -20,6 +20,7 @@
 | [03-Contracts 与产物](03-contracts-and-artifacts.md) | typed specs、run plan、run artifact、validation report 与证据边界 | 核心开发 / 配置工程师 |
 | [04-扩展蓝图](04-extension-blueprint.md) | `metaharness_ext.abacus` 的正式实现蓝图与首版范围边界 | 架构师 / 扩展开发 |
 | [05-路线图](05-roadmap.md) | 按 phase 拆解的正式执行路线与验收标准 | 项目负责人 / 实施工程师 |
+| [06-实现前补严清单](06-implementation-hardening-checklist.md) | 把设计陈述压缩成实现前必须机械化的 rules checklist | 架构师 / 扩展开发 / 测试工程师 |
 
 ---
 
@@ -85,6 +86,10 @@
 ### 如果你想做正式实施拆解
 
 先看：[05-路线图](05-roadmap.md)
+
+### 如果你想在写代码前先把规则补严
+
+先看：[06-实现前补严清单](06-implementation-hardening-checklist.md)
 
 ---
 

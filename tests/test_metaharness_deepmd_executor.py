@@ -498,7 +498,7 @@ def test_deepmd_validator_does_not_treat_frozen_model_as_compress_success() -> N
     assert report.status == "validation_failed"
 
 
-def test_deepmd_validator_accepts_string_exit_code_for_phase_two_diagnostics() -> None:
+def test_deepmd_validator_requires_parsed_phase_two_diagnostics() -> None:
     artifact = DeepMDRunArtifact(
         task_id="deepmd-task",
         run_id="run-2",
