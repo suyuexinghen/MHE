@@ -2,3 +2,5 @@
 docs/wiki/meta-harness-book/main.*
 !docs/wiki/meta-harness-book/main.tex
 !docs/wiki/meta-harness-book/main.pdf
+MHE_CMA_Improvement_Analysis.*
+!MHE_CMA_Improvement_Analysis.tex
