@@ -144,6 +144,7 @@ Phase 0: Environment Probe + SCF Minimal Baseline      [已完成]
 4. 引入 canonical `evidence_refs` 与 `ScoredEvidence`
 5. 让 blueprint / roadmap / checklist 与代码现实保持一致
 6. 明确“promotion-ready validation semantics”不等于直接 graph promotion
+7. 持续把 docs 描述统一到当前 lifecycle object model：control files、runtime assets、workspace layout、artifact groups、lifecycle state
 
 ### 5.6.4 当前验收标准
 
@@ -171,6 +172,7 @@ Phase 0: Environment Probe + SCF Minimal Baseline      [已完成]
 5. 为 ABACUS manifests 显式声明 `policy.credentials` / `policy.sandbox`
 6. 增加 governance-oriented regression tests
 7. 同步 `abacus-engine-wiki` 与 merged blueprint/roadmap
+8. 保持 blueprint、roadmap、handoff 文档对 nested lifecycle object model 的表述一致
 
 ### 5.7.3 验收标准
 

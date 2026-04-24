@@ -167,6 +167,65 @@ def test_abacus_md_dp_requires_pot_file() -> None:
         )
 
 
+def test_abacus_compiler_groups_required_runtime_assets() -> None:
+    spec = AbacusNscfSpec(
+        task_id="task-nscf-assets",
+        executable=AbacusExecutableSpec(binary_name="abacus"),
+        structure=AbacusStructureSpec(content="ATOMIC_SPECIES\nSi 28.0 Si.upf\n"),
+        kpoints=AbacusKPointSpec(content="K_POINTS\n1\n0.0 0.0 0.0 1\n"),
+        charge_density_path="/tmp/charge-density.cube",
+        restart_file_path="/tmp/restart.stru",
+        required_paths=["/tmp/shared.dat", "/tmp/shared.dat"],
+        pseudo_files=["/tmp/Si.upf"],
+        orbital_files=["/tmp/Si.orb"],
+    )
+
+    plan = AbacusInputCompilerComponent().compile(spec)
+
+    assert plan.runtime_assets.explicit_required_paths == ["/tmp/shared.dat", "/tmp/shared.dat"]
+    assert plan.runtime_assets.pseudo_files == ["/tmp/Si.upf"]
+    assert plan.runtime_assets.orbital_files == ["/tmp/Si.orb"]
+    assert plan.runtime_assets.restart_inputs == ["/tmp/restart.stru"]
+    assert plan.runtime_assets.charge_density_path == "/tmp/charge-density.cube"
+    assert plan.required_runtime_paths == [
+        "/tmp/shared.dat",
+        "/tmp/Si.upf",
+        "/tmp/Si.orb",
+        "/tmp/restart.stru",
+        "/tmp/charge-density.cube",
+    ]
+
+
+def test_abacus_compiler_preserves_explicit_working_directory() -> None:
+    spec = AbacusScfSpec(
+        task_id="task-custom-workdir",
+        executable=AbacusExecutableSpec(binary_name="abacus"),
+        structure=AbacusStructureSpec(content="ATOMIC_SPECIES\nSi 28.0 Si.upf\n"),
+        working_directory="~/abacus-runs/custom-task",
+    )
+
+    plan = AbacusInputCompilerComponent().compile(spec)
+
+    assert plan.working_directory == "~/abacus-runs/custom-task"
+    assert plan.workspace_layout.working_directory == "~/abacus-runs/custom-task"
+
+
+def test_abacus_compiler_uses_default_working_directory_when_missing() -> None:
+    spec = AbacusScfSpec(
+        task_id="task-default-workdir",
+        executable=AbacusExecutableSpec(binary_name="abacus"),
+        structure=AbacusStructureSpec(content="ATOMIC_SPECIES\nSi 28.0 Si.upf\n"),
+    )
+
+    plan = AbacusInputCompilerComponent().compile(spec)
+
+    assert plan.working_directory == "./abacus_runs/task-default-workdir/run-task-default-workdir"
+    assert (
+        plan.workspace_layout.working_directory
+        == "./abacus_runs/task-default-workdir/run-task-default-workdir"
+    )
+
+
 def test_abacus_md_rejects_lcao_baseline() -> None:
     with pytest.raises(ValueError, match="basis_type=lcao is not supported for MD"):
         AbacusMdSpec(

@@ -2,7 +2,7 @@
 
 > 目的：给新的 Claude Code 对话窗口提供一份可直接接力开发的工作指导文档。
 > 范围：`MHE/src/metaharness_ext/abacus/` 与对应测试 / wiki。
-> 状态基线：Phase 0 已完成，Phase 1（NSCF / relax baseline）已完成并通过定向测试；Phase 2（MD baseline）与 Phase 3（`md + dp` typed baseline）已完成并通过 ABACUS 定向测试，下一步进入 Phase 4。
+> 状态基线：Phase 0–4 的 family / mode baseline 已落地；当前真值重点是把 ABACUS 文档、manifest、validator 与 evidence surface 持续对齐到 lifecycle object model 与治理语义。
 
 ---
 
@@ -19,10 +19,14 @@
 
 - **Phase 0**：Environment Probe + SCF Minimal Baseline
 - **Phase 1**：NSCF / Relax Baseline
+- **Phase 2**：MD Baseline
+- **Phase 3**：ABACUS+DeePMD Mode
+- **Phase 4**：Examples / Study / Governance Hardening（已完成首批交付）
 
-下一阶段应进入：
+当前阶段不再是进入新的 family phase，而是继续做：
 
-- **Phase 4**：Examples / Study / Governance Hardening
+- **Current Hardening**：Governance Alignment + Blueprint/Wiki Truthfulness
+- **Current Modeling Truth**：以 lifecycle object model 统一描述 control files、runtime assets、workspace layout、artifact groups、lifecycle state
 
 ---
 
@@ -105,6 +109,14 @@ ABACUS extension 已存在完整包骨架：
 - `AbacusRunPlan`
 - `AbacusRunArtifact`
 - `AbacusValidationReport`
+
+这些边界当前更适合被理解为 nested lifecycle object model，而不是一组扁平字段列表：
+
+- control-file objects：`INPUT` / `STRU` / `KPT`
+- runtime-asset objects：pseudo、orbital、`pot_file`、restart / charge density 等前置资产
+- workspace-layout objects：`working_directory`、prepared inputs、`OUT.<suffix>/`
+- artifact-group objects：logs、diagnostics、structure / restart / family-specific outputs
+- lifecycle-state objects：environment、run、validation 及对应 evidence handoff
 
 关键离散维度：
 
@@ -284,77 +296,67 @@ pytest MHE/tests/test_metaharness_abacus_*.py
 
 ## 6. 下一步工作建议
 
-### 6.1 主线建议：进入 Phase 3（MD + DP / typed hardening）
+### 6.1 主线建议：继续 Governance Alignment 与文档真值同步
 
 根据路线图：
 
-- `MHE/docs/wiki/meta-harness-engineer/abacus-engine-wiki/05-roadmap.md`
+- `MHE/docs/wiki/meta-harness-engineer/blueprint/05-abacus-roadmap.md`
 
-Phase 2（MD baseline）已完成，本轮已补齐：
+Phase 0–4 的 family / mode baseline 已完成，当前不再建议把主线写成“进入 Phase 3”。
 
-1. `AbacusMdSpec` 的 end-to-end workflow 接线
-2. compiler 对 MD family 的 dispatch 与 baseline 渲染
-3. validator 对 MD success evidence 的 family-specific 判断
-4. MD 定向测试、minimal demo，以及 gateway 直测
-5. 完整 ABACUS 套件回归验证（`33 passed`）
+当前建议的主线目标：
 
-下一个正式 phase 应进入：
-
-- **Phase 3: MD + DP / typed hardening**
-
-建议的 Phase 3 目标：
-
-1. 支持 `md + esolver_type=dp` 的受控 typed 接口
-2. 明确 `pot_file`、runtime prerequisites 与 environment probe 的联动
-3. 收紧/类型化 MD 关键控制项，减少隐式 `params` 语义
-4. 继续补强 validator 与 artifact 语义，避免只停留在文件存在性层面
-5. 保持 Phase 0/1/2 全量零回归
+1. 持续把 blueprint / roadmap / handoff / wiki 统一到 lifecycle object model
+2. 明确 control files、runtime assets、workspace layout、artifact groups、lifecycle state 的对象分层
+3. 继续补强 manifest policy、validator issues / `blocks_promotion`、`ScoredEvidence` 与 canonical `evidence_refs`
+4. 明确 promotion-ready validation semantics 不等于直接 graph promotion
+5. 保持已落地 family / mode 与 ABACUS 定向测试叙述零回归
 
 ### 6.2 建议的实施顺序
 
-#### Step 1: 定义 Phase 3 范围
+#### Step 1: 先校正文档真值
 
-先明确本轮只做：
+先明确本轮优先做：
 
-- `md + dp` 的最小 typed 闭环
-- 与 `pot_file` / DeepMD 支持检测相关的必要环境约束
+- blueprint / roadmap / handoff-facing 文档与当前代码现实对齐
+- 明确 ABACUS 当前采用 lifecycle object model 组织 contracts 与 evidence
 
 暂时不要做：
 
-- 更大范围的任意 `INPUT` passthrough
-- 过早引入复杂 HPC policy
-- 超出当前 typed contract 边界的大规模重构
+- 把已落地能力继续写成未来 phase
+- 在 docs 中退回到扁平字段心智模型
+- 超出 ABACUS 范围改动其它扩展文档
 
-#### Step 2: 扩展 contracts / environment
+#### Step 2: 按对象层次核对 contracts / runtime surface
 
 目标文件：
 
 - `MHE/src/metaharness_ext/abacus/contracts.py`
 - `MHE/src/metaharness_ext/abacus/environment.py`
-
-需要加入：
-
-- `md + dp` 的组合校验
-- `pot_file` / 相关运行时前置条件的显式约束
-- 与 DeepMD 支持检测一致的环境验证规则
-
-#### Step 3: 扩展 compiler / executor / validator
-
-目标文件：
-
 - `MHE/src/metaharness_ext/abacus/input_compiler.py`
 - `MHE/src/metaharness_ext/abacus/executor.py`
 - `MHE/src/metaharness_ext/abacus/validator.py`
 
-需要加入：
+核对重点：
 
-- `md + dp` 的受控编译路径
-- Phase 3 所需 runtime prerequisites 的显式纳入
-- 更细化的 MD 成功证据与失败诊断语义
+- control-file objects
+- runtime-asset objects
+- workspace-layout objects
+- artifact-group objects
+- lifecycle-state objects
 
-#### Step 4: 扩展 tests / docs
+#### Step 3: 继续治理面对齐
 
-建议新增或扩展：
+建议后续优先推进：
+
+- manifest `policy.credentials` / `policy.sandbox`
+- validator `issues` / `blocks_promotion`
+- `ScoredEvidence` 与 canonical `evidence_refs`
+- promotion-ready validation semantics 与 graph promotion authority 的边界
+
+#### Step 4: 保持 tests / docs 同步
+
+建议持续核对或扩展：
 
 - `MHE/tests/test_metaharness_abacus_environment.py`
 - `MHE/tests/test_metaharness_abacus_compiler.py`
@@ -428,12 +430,12 @@ Phase 2（MD baseline）已完成，本轮已补齐：
 
 建议在新对话中采用下面的计划：
 
-1. 阅读 ABACUS roadmap 与 hardening checklist
-2. 审查当前 `contracts / environment / compiler / validator` 中 Phase 3 相关空缺
-3. 仅实现 `md + dp` 的最小 typed baseline
-4. 明确 `pot_file`、环境探测、runtime prerequisites 的联动
-5. 补齐 Phase 3 定向测试与回归验证
-6. 运行 `ruff + pytest` 做 ABACUS 定向验证
+1. 阅读 ABACUS roadmap、blueprint 与 lifecycle / object-model 页面
+2. 审查当前 `contracts / environment / compiler / executor / validator` 与 docs 的对象模型是否一致
+3. 以 control files、runtime assets、workspace layout、artifact groups、lifecycle state 五层校对文档真值
+4. 明确 manifest policy、validator blocker、`ScoredEvidence`、canonical `evidence_refs` 的当前缺口
+5. 只在 ABACUS 范围内补齐必要文档或治理面对齐代码
+6. 运行定向验证，确保 docs 与实现叙述不回退
 
 ---
 
@@ -442,55 +444,53 @@ Phase 2（MD baseline）已完成，本轮已补齐：
 下面这段可以直接复制到新的 Claude Code 对话窗口：
 
 ```markdown
-请继续开发 `MHE` 中的 `ABACUS extension`，当前目标是从已完成的 Phase 2 继续推进到 **Phase 3: MD + DP / typed hardening**。
+请继续对齐 `MHE` 中 `ABACUS extension` 的治理语义与文档真值，不要把当前主线继续写成“进入新 phase”。
 
 先阅读并遵循这些文件：
 - `MHE/docs/ABACUS_EXTENSION_HANDOFF_REPORT.md`
-- `MHE/docs/wiki/meta-harness-engineer/abacus-engine-wiki/README.md`
-- `MHE/docs/wiki/meta-harness-engineer/abacus-engine-wiki/05-roadmap.md`
-- `MHE/docs/wiki/meta-harness-engineer/abacus-engine-wiki/06-implementation-hardening-checklist.md`
+- `MHE/docs/wiki/meta-harness-engineer/blueprint/05-abacus-extension-blueprint.md`
+- `MHE/docs/wiki/meta-harness-engineer/blueprint/05-abacus-roadmap.md`
+- `MHE/docs/wiki/meta-harness-engineer/abacus-engine-wiki/08-runtime-lifecycle.md`
+- `MHE/docs/wiki/meta-harness-engineer/abacus-engine-wiki/09-core-objects-and-io-model.md`
 
 当前已知状态：
-- Phase 0（SCF baseline）已完成
-- Phase 1（NSCF / relax baseline）已完成
-- Phase 2（MD baseline）已完成
+- Phase 0–4 的 family / mode baseline 已完成
 - ABACUS package 已存在于 `MHE/src/metaharness_ext/abacus/`
 - 定向测试已存在于 `MHE/tests/test_metaharness_abacus_*.py`
-- 最近一次 ABACUS 定向测试结果是 `33 passed`
+- docs 当前应以 lifecycle object model 描述当前实现
 
 请只在 ABACUS 范围内工作，避免碰其他未提交改动。主要工作目录：
 - `MHE/src/metaharness_ext/abacus/`
 - `MHE/tests/test_metaharness_abacus_*.py`
 - `MHE/docs/wiki/meta-harness-engineer/abacus-engine-wiki/`
+- `MHE/docs/wiki/meta-harness-engineer/blueprint/`
+- `MHE/docs/ABACUS_EXTENSION_HANDOFF_REPORT.md`
 
 本轮实施目标：
-1. 为 `md + esolver_type=dp` 建立最小 typed 闭环
-2. 在 `contracts.py` / `environment.py` 中补强 `pot_file` 与环境约束
-3. 在 `input_compiler.py` / `executor.py` / `validator.py` 中支持 Phase 3 所需路径与证据语义
-4. 新增或扩展 Phase 3 定向测试
-5. 最后运行：
-   - `ruff check --fix MHE/src/metaharness_ext/abacus/ MHE/tests/test_metaharness_abacus_*.py`
-   - `ruff format MHE/src/metaharness_ext/abacus/ MHE/tests/test_metaharness_abacus_*.py`
-   - `pytest MHE/tests/test_metaharness_abacus_*.py`
+1. 校对 docs 与当前 lifecycle object model 是否一致
+2. 明确 control files、runtime assets、workspace layout、artifact groups、lifecycle state 五层对象
+3. 继续补齐 manifest policy、validator blocker、`ScoredEvidence`、canonical `evidence_refs` 的治理叙述或实现
+4. 保持 promotion-ready validation semantics 与 graph promotion authority 的边界清晰
+5. 最后运行必要的定向验证
 
 实施约束：
-- 先只做 `md + dp` 的最小 typed 范围
+- 不要把已落地 family / mode 写回 future plan
 - 不要引入任意 `INPUT` passthrough
 - 继续坚持 evidence-first validator，不要只看 return code
 - 如需参考现有模式，可借鉴 `jedi` / `nektar` / `deepmd` 扩展
 
 完成后请汇报：
 - 改了哪些文件
-- Phase 3 的成功证据规则是什么
+- docs 与 lifecycle object model 的对齐点是什么
 - 跑了哪些测试，结果如何
-- 还剩哪些更后续的缺口
+- 还剩哪些治理面对齐缺口
 ```
 
 ---
 
 ## 11. 结论
 
-如果新对话窗口要继续推进，**最合理的下一步是实现 Phase 3（MD + DP / typed hardening）**，而不是回头重做 Phase 0/1/2。
+如果新对话窗口要继续推进，**最合理的下一步是继续做 governance alignment 与文档真值同步**，而不是回头重做 Phase 0/1/2 或把当前主线退回成新的 family phase。
 
 当前代码已经具备：
 

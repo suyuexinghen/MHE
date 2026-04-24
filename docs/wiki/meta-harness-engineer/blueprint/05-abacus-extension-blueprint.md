@@ -112,6 +112,7 @@ AbacusGateway
 - required runtime paths
 - DeePMD / GPU / optional feature availability
 - 输出结构化 prerequisite / missing prerequisite 事实，而不是只给本地日志
+- 产出 lifecycle-aware 的环境对象：prerequisite 状态、消息与 environment-scoped `evidence_refs`
 
 ### Input Compiler
 - 生成 `INPUT`
@@ -119,6 +120,7 @@ AbacusGateway
 - 需要时生成 `KPT`
 - 规范 `suffix`
 - 输出 `AbacusRunPlan`
+- 将控制文件、运行资产、workspace 布局与期望输出组织成稳定的 lifecycle plan 对象
 
 ### Executor
 - 准备 workspace
@@ -126,6 +128,7 @@ AbacusGateway
 - 调用 launcher + `abacus`
 - 收集 stdout/stderr
 - 发现 `OUT.<suffix>/` 与关键产物
+- 将 prepared inputs、workspace 布局、output root 与 family-aware artifact groups 汇总成稳定 run artifact 对象
 - 后续需要更显式对齐 manifest `policy.sandbox` 与稳定 evidence anchors
 
 ### Validator
@@ -204,6 +207,14 @@ ABACUS contracts 当前应满足：
 - `AbacusRunPlan`
 - `AbacusRunArtifact`
 - `AbacusValidationReport`
+
+这些类型当前应被理解为一组嵌套 lifecycle 对象，而不是彼此独立的扁平记录：
+
+- control-file objects：`INPUT` / `STRU` / `KPT` 的 canonical 内容与相关 spec
+- runtime-asset objects：pseudo、orbital、`pot_file`、restart / charge density 等执行前置资产
+- workspace-layout objects：`working_directory`、prepared inputs、`OUT.<suffix>/` 与输出空间关系
+- artifact-group objects：logs、diagnostics、structure / restart / family-specific outputs
+- lifecycle-state objects：environment、run、validation 三段状态与对应 evidence handoff
 
 当前边界原则：
 
