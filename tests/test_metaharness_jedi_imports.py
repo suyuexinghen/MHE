@@ -62,7 +62,9 @@ def test_metaharness_jedi_contracts_round_trip() -> None:
         execution_mode="validate_only",
         working_directory="run-1",
     )
-    validation = JediValidationReport(task_id="task-1", run_id="run-1", passed=True, status="validated")
+    validation = JediValidationReport(
+        task_id="task-1", run_id="run-1", passed=True, status="validated"
+    )
     study = JediStudySpec(
         study_id="study-1",
         task_id="task-1",
@@ -70,11 +72,19 @@ def test_metaharness_jedi_contracts_round_trip() -> None:
         axis=JediMutationAxis(kind="variational_iterations", values=[10, 20]),
         metric_key="final_cost_function",
     )
-    study_report = JediStudyReport(study_id="study-1", task_id="task-1", axis_kind="variational_iterations", metric_key="final_cost_function")
+    study_report = JediStudyReport(
+        study_id="study-1",
+        task_id="task-1",
+        axis_kind="variational_iterations",
+        metric_key="final_cost_function",
+    )
 
     assert JEDI_EXPERIMENT_SPEC_ADAPTER.validate_python(variational.model_dump()) == variational
     assert JEDI_EXPERIMENT_SPEC_ADAPTER.validate_python(forecast.model_dump()) == forecast
-    assert JEDI_EXPERIMENT_SPEC_ADAPTER.validate_python(local_ensemble_da.model_dump()) == local_ensemble_da
+    assert (
+        JEDI_EXPERIMENT_SPEC_ADAPTER.validate_python(local_ensemble_da.model_dump())
+        == local_ensemble_da
+    )
     assert JEDI_EXPERIMENT_SPEC_ADAPTER.validate_python(hofx.model_dump()) == hofx
     assert JediRunPlan.model_validate(plan.model_dump()) == plan
     assert JediRunArtifact.model_validate(artifact.model_dump()) == artifact

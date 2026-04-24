@@ -156,6 +156,8 @@ class JediEnvironmentReport(BaseModel):
     missing_required_paths: list[str] = Field(default_factory=list)
     missing_data_paths: list[str] = Field(default_factory=list)
     missing_prerequisites: list[str] = Field(default_factory=list)
+    ready_prerequisites: list[str] = Field(default_factory=list)
+    prerequisite_evidence: dict[str, list[str]] = Field(default_factory=dict)
     environment_prerequisites: list[str] = Field(default_factory=list)
     smoke_candidate: JediApplicationFamily | None = None
     smoke_ready: bool = False
@@ -176,7 +178,9 @@ class JediRunPlan(BaseModel):
     expected_diagnostics: list[str] = Field(default_factory=list)
     expected_references: list[str] = Field(default_factory=list)
     required_runtime_paths: list[str] = Field(default_factory=list)
-    scientific_check: Literal["runtime_only", "rms_improves", "ensemble_outputs_present"] = "runtime_only"
+    scientific_check: Literal["runtime_only", "rms_improves", "ensemble_outputs_present"] = (
+        "runtime_only"
+    )
     config_text: str
     executable: JediExecutableSpec
 

@@ -94,7 +94,9 @@ def test_metaharness_jedi_manifest_set_is_complete() -> None:
 
 def test_metaharness_jedi_manifests_are_valid() -> None:
     for filename, expected in EXPECTED_MANIFESTS.items():
-        manifest = ComponentManifest.model_validate(json.loads((MANIFEST_DIR / filename).read_text()))
+        manifest = ComponentManifest.model_validate(
+            json.loads((MANIFEST_DIR / filename).read_text())
+        )
 
         assert manifest.name == expected["name"]
         assert manifest.entry == expected["entry"]
@@ -121,7 +123,9 @@ def test_metaharness_jedi_manifest_entries_are_importable() -> None:
 
 def test_metaharness_jedi_component_declarations_match_manifests() -> None:
     for filename, expected in EXPECTED_MANIFESTS.items():
-        manifest = ComponentManifest.model_validate(json.loads((MANIFEST_DIR / filename).read_text()))
+        manifest = ComponentManifest.model_validate(
+            json.loads((MANIFEST_DIR / filename).read_text())
+        )
         _, api = declare_component(f"{manifest.name}.primary", manifest)
         snapshot = api.snapshot()
 

@@ -120,7 +120,9 @@ class JediStudyComponent(HarnessComponent):
                 else "No passing trial produced the requested metric."
             ),
             summary_metrics=summary_metrics,
-            messages=[] if recommended is not None else ["No passing trial produced the requested metric."],
+            messages=[]
+            if recommended is not None
+            else ["No passing trial produced the requested metric."],
         )
 
     def _validate_axis(self, spec: JediStudySpec) -> None:
@@ -134,7 +136,9 @@ class JediStudyComponent(HarnessComponent):
         if spec.axis.kind not in supported_axes:
             raise NotImplementedError(f"Axis {spec.axis.kind} is not supported")
 
-    def _mutate_task(self, spec: JediStudySpec, value: str | int | float) -> JediVariationalSpec | JediLocalEnsembleDASpec:
+    def _mutate_task(
+        self, spec: JediStudySpec, value: str | int | float
+    ) -> JediVariationalSpec | JediLocalEnsembleDASpec:
         task = spec.base_task.model_copy(deep=True)
         task.task_id = f"{spec.task_id}__study__{spec.axis.kind}__{value}"
 
@@ -174,9 +178,13 @@ class JediStudyComponent(HarnessComponent):
             task.ensemble = {**task.ensemble, "localization_radius": float(value)}
             return task
 
-        raise NotImplementedError(f"Axis {spec.axis.kind} is not supported for {type(task).__name__}")
+        raise NotImplementedError(
+            f"Axis {spec.axis.kind} is not supported for {type(task).__name__}"
+        )
 
-    def _mutated_parameters(self, axis_kind: str, value: str | int | float) -> dict[str, int | float | str]:
+    def _mutated_parameters(
+        self, axis_kind: str, value: str | int | float
+    ) -> dict[str, int | float | str]:
         return {axis_kind: value}
 
     def _failed_run_artifact(

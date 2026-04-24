@@ -56,7 +56,7 @@ def test_jedi_compiler_variational_yaml_is_stable() -> None:
 
     assert plan_one.config_text == plan_two.config_text
     assert "cost function:" in plan_one.config_text
-    assert "  cost type: \"4D-Var\"" in plan_one.config_text
+    assert '  cost type: "4D-Var"' in plan_one.config_text
     assert "variational:" in plan_one.config_text
     assert "  minimizer:" in plan_one.config_text
     assert "output:" in plan_one.config_text

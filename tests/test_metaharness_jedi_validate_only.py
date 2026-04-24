@@ -20,7 +20,9 @@ class _FakeCompletedProcess:
         self.stderr = stderr
 
 
-def _build_spec(*, task_id: str = "jedi-task", execution_mode: str = "validate_only") -> JediVariationalSpec:
+def _build_spec(
+    *, task_id: str = "jedi-task", execution_mode: str = "validate_only"
+) -> JediVariationalSpec:
     return JediVariationalSpec(
         task_id=task_id,
         executable=JediExecutableSpec(binary_name="qg4DVar.x", execution_mode=execution_mode),
@@ -94,11 +96,68 @@ async def test_jedi_executor_builds_validate_only_command(tmp_path: Path, monkey
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("launcher", ["mpiexec", "mpirun", "srun", "jsrun"])
+@pytest.mark.parametrize(
+    ("launcher", "launcher_args", "expected_command"),
+    [
+        (
+            "mpiexec",
+            ["--bind-to", "core"],
+            [
+                "/usr/bin/mpiexec",
+                "-n",
+                "4",
+                "--bind-to",
+                "core",
+                "/usr/bin/qg4DVar.x",
+                "config.yaml",
+            ],
+        ),
+        (
+            "mpirun",
+            ["--bind-to", "core"],
+            [
+                "/usr/bin/mpirun",
+                "-n",
+                "4",
+                "--bind-to",
+                "core",
+                "/usr/bin/qg4DVar.x",
+                "config.yaml",
+            ],
+        ),
+        (
+            "srun",
+            ["--cpu-bind=cores"],
+            [
+                "/usr/bin/srun",
+                "-n",
+                "4",
+                "--cpu-bind=cores",
+                "/usr/bin/qg4DVar.x",
+                "config.yaml",
+            ],
+        ),
+        (
+            "jsrun",
+            ["--stdio_mode", "individual"],
+            [
+                "/usr/bin/jsrun",
+                "-n",
+                "4",
+                "--stdio_mode",
+                "individual",
+                "/usr/bin/qg4DVar.x",
+                "config.yaml",
+            ],
+        ),
+    ],
+)
 async def test_jedi_executor_builds_launcher_specific_real_run_command(
     tmp_path: Path,
     monkeypatch,
     launcher: str,
+    launcher_args: list[str],
+    expected_command: list[str],
 ) -> None:
     background = tmp_path / "background.nc"
     background.write_text("background")
@@ -107,7 +166,7 @@ async def test_jedi_executor_builds_launcher_specific_real_run_command(
         executable=JediExecutableSpec(
             binary_name="qg4DVar.x",
             launcher=launcher,
-            launcher_args=["--bind-to", "core"],
+            launcher_args=launcher_args,
             process_count=4,
             execution_mode="real_run",
         ),
@@ -131,15 +190,49 @@ async def test_jedi_executor_builds_launcher_specific_real_run_command(
 
     artifact = executor.execute_plan(plan)
 
-    assert artifact.command == [
-        f"/usr/bin/{launcher}",
-        "-n",
-        "4",
-        "--bind-to",
-        "core",
-        "/usr/bin/qg4DVar.x",
-        "config.yaml",
-    ]
+    assert artifact.command == expected_command
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("launcher", "launcher_arg"),
+    [
+        ("mpiexec", "-n"),
+        ("mpiexec", "-np"),
+        ("mpirun", "-n4"),
+        ("mpirun", "-np=4"),
+        ("srun", "--ntasks=4"),
+        ("jsrun", "-n"),
+    ],
+)
+async def test_jedi_executor_rejects_duplicate_launcher_process_count_flags(
+    tmp_path: Path,
+    launcher: str,
+    launcher_arg: str,
+) -> None:
+    background = tmp_path / "background.nc"
+    background.write_text("background")
+    plan = JediConfigCompilerComponent().build_plan(
+        JediVariationalSpec(
+            task_id=f"duplicate-{launcher}",
+            executable=JediExecutableSpec(
+                binary_name="qg4DVar.x",
+                launcher=launcher,
+                launcher_args=[launcher_arg, "4"],
+                process_count=4,
+                execution_mode="real_run",
+            ),
+            background_path=str(background),
+        )
+    )
+    executor = JediExecutorComponent()
+    await executor.activate(ComponentRuntime(storage_path=tmp_path))
+
+    with pytest.raises(
+        ValueError,
+        match="launcher_args must not include process-count flags; use executable.process_count",
+    ):
+        executor._build_launcher_command(plan, f"/usr/bin/{launcher}")
 
 
 @pytest.mark.asyncio
@@ -180,7 +273,9 @@ async def test_jedi_executor_marks_timeout_as_runtime_failed(tmp_path: Path, mon
     )
 
     def fake_run(command, *, cwd, text, capture_output, check, timeout):
-        raise subprocess.TimeoutExpired(command, timeout, output="partial-out", stderr="partial-err")
+        raise subprocess.TimeoutExpired(
+            command, timeout, output="partial-out", stderr="partial-err"
+        )
 
     monkeypatch.setattr("metaharness_ext.jedi.executor.subprocess.run", fake_run)
 

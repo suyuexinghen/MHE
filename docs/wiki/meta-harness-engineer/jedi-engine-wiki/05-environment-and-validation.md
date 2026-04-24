@@ -21,12 +21,21 @@ JEDI workflow 的早期失败，很多并不是 YAML 逻辑错误，而是环境
 首版至少检查：
 
 - binary 是否在 PATH 中
-- launcher 是否可调用（`direct` / `mpiexec` / `mpirun` / `srun`）
+- launcher 是否可调用（`direct` / `mpiexec` / `mpirun` / `srun` / `jsrun`）
+- launcher contract 是否被正确使用：process-count 必须来自 `process_count`，不能在 `launcher_args` 中重复给出
 - `ldd` 是否显示 unresolved libraries
 - 必需 YAML / testinput / data path 是否存在
 - 数据准备前提是否可能缺失
 
 这里的目标不是自动修复，而是返回稳定、可审计的 `JediEnvironmentReport`。
+
+当前 surface 不再停留在“只记录 prerequisite 名称”。对可直接由当前 spec / workspace / 路径存在性判定的前提，environment probe 还应显式区分：
+
+- `ready_prerequisites`
+- `missing_prerequisites`
+- `prerequisite_evidence`
+
+也就是说，像 observation data、QG toy-model background/background-error、forecast initial condition 这类前提，只要当前引用面已经落到具体路径，就应该返回“ready/missing + evidence path”而不是模糊提示。
 
 需要特别强调的是：`required paths` 不是统一的一组静态路径，而是 **family-aware 的引用面**。例如：
 
@@ -56,6 +65,15 @@ JEDI workflow 的早期失败，很多并不是 YAML 逻辑错误，而是环境
 - `validation_failed` 表示配置或引用关系未通过 executable 校验，或 runtime evidence 未达到当前最小判定面
 - `runtime_failed` 表示 runtime 调用失败、超时或缺少必要退出信息
 
+在 strengthened MHE 语义下，这组状态还应能映射到更高一层的治理分类，例如：
+
+- environment prerequisite missing
+- protected boundary violation
+- promotion blocker
+- evidence incomplete / policy defer
+
+也就是说，JEDI 的 failure taxonomy 不能只回答“extension-local 哪一步失败了”，还要回答“这一结果对 promotion / policy 路径意味着什么”。其中 validator 作为 protected governance component，其失败结论不应被 executor 或调用侧隐式降级。
+
 这组 taxonomy 对当前 Phase 0 是足够且刻意收敛的；进入 Phase 1+ 后，通常还需要扩展为更细的 runtime/result interpretation，例如：
 
 - run 完成但需要 richer diagnostics interpretation
@@ -73,6 +91,14 @@ JEDI workflow 的早期失败，很多并不是 YAML 逻辑错误，而是环境
 - `messages`
 - `summary_metrics`
 - `evidence_files`
+- `ready_prerequisites` / `missing_prerequisites` / `prerequisite_evidence`（来自 environment report，供上层一并消费）
+
+当前 evidence-first report 的目标也不只是“方便人看日志”，还要为上层保留最小治理锚点。对接 strengthened MHE 时，extension 侧 evidence 至少要预留承接以下引用面的能力：
+
+- candidate / graph version refs
+- session event refs
+- audit / provenance linkage
+- diagnostics 作为 governance-grade evidence 的可升级位置
 
 `evidence_files` 至少能指向：
 
@@ -95,6 +121,7 @@ Phase 0 不要求复杂 diagnostics interpretation，但这不意味着要把当
 更稳妥的做法是：
 
 - 当前已把 diagnostics 纳入 artifact / evidence surface
+- diagnostics enrichment 已经是当前实现事实，而不是单纯后续阶段
 - 在 contract / artifact layout 中保留 diagnostics files 的稳定位置
 - 文档中明确后续目标是 IODA/HDF5/ODB 组级证据提取，而不是单一 NetCDF 日志假设
 
@@ -126,6 +153,8 @@ Phase 0 不要求复杂 diagnostics interpretation，但这不意味着要把当
 - validate-only 命令构造
 - schema 命令构造
 - real-run 命令构造与 evidence 映射
+- launcher canonical mapping（`mpiexec` / `mpirun` / `srun` / `jsrun` 当前统一映射到 `-n`）
+- duplicate process-count flag rejection（例如 `launcher_args` 中的 `-n` / `-np` / `--ntasks`）
 - environment failure 与 validation failure 的语义分离
 - `executed` 与 scientific success 的语义分离
 

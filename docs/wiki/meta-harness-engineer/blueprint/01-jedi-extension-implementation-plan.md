@@ -20,11 +20,11 @@
 - 接收 family-aware typed spec
 - 编译受控 YAML
 - 显式 materialize 运行输入
-- 探测 binary / launcher / library / data-path 环境状态
+- 探测 binary / launcher / library / data/testinput prerequisite 环境状态
 - 运行 `schema`、`validate_only` 与 `real_run`
-- 返回稳定的结构化 `JediValidationReport`
+- 返回稳定的结构化 `JediEnvironmentReport` 与 `JediValidationReport`
 
-本阶段交付 **基础执行闭环**：显式 preprocessor、mode-aware execution、runtime evidence 归档与 evidence-first validation；但不进入 smoke policy 固化、不引入 richer diagnostics interpretation 或更高层 scientific acceptance checks。
+本阶段交付 **基础执行闭环**：显式 preprocessor、mode-aware execution、runtime evidence 归档、preprocessor manifest 记录与 evidence-first validation；但不进入 smoke policy 固化、不引入 richer diagnostics interpretation 或更高层 scientific acceptance checks。
 
 本阶段完成后，系统应具备以下基础能力：
 
@@ -141,12 +141,12 @@ smoke baseline policy、环境选择策略与更高层 scientific acceptance 仍
 `environment.py` 必须先于 `config_compiler.py` 和 `executor.py` 执行，至少检查：
 
 - binary 是否存在于 PATH
-- launcher 是否可用（`direct` / `mpiexec` / `mpirun` / `srun`）
+- launcher 是否可用（`direct` / `mpiexec` / `mpirun` / `srun` / `jsrun`）
 - 动态链接是否可解析（`ldd`）
-- 所需 YAML / testinput / data path 是否存在
-- 是否存在 `git-lfs` / `ctest -R get_` 相关数据准备前提缺失
+- 所需 runtime path、workspace `testinput` 与数据路径是否存在
+- 是否存在 `ctest -R get_` / `qg_get_data` / 等价数据准备前提缺失
 
-这一步的目的不是做“最佳努力”自动修复，而是返回稳定、可审计的 `JediEnvironmentReport`。
+这一步的目的不是做“最佳努力”自动修复，而是返回稳定、可审计的 `JediEnvironmentReport`，显式区分 `missing_required_paths`、`missing_data_paths` 与 `missing_prerequisites`。对于当前能够由 spec / workspace / 已引用路径直接判定的 data-prep surface，还应进一步返回 `ready_prerequisites` 与 `prerequisite_evidence`，避免只给出抽象 prerequisite 名称而不说明“哪些前提其实已就绪”。
 
 ### 1.4.5 compiler 只能生成受控 YAML，不能退化为任意 YAML 透传器
 
@@ -219,7 +219,7 @@ smoke baseline policy、环境选择策略与更高层 scientific acceptance 仍
 
 - `JediApplicationFamily = Literal["variational", "local_ensemble_da", "hofx", "forecast"]`
 - `JediExecutionMode = Literal["schema", "validate_only", "real_run"]`
-- `JediLauncher = Literal["direct", "mpiexec", "mpirun", "srun"]`
+- `JediLauncher = Literal["direct", "mpiexec", "mpirun", "srun", "jsrun"]`
 
 ### 1.6.2 executable spec
 
@@ -264,8 +264,18 @@ class JediEnvironmentReport(BaseModel):
     launcher_available: bool
     shared_libraries_resolved: bool
     required_paths_present: bool
+    workspace_testinput_present: bool = True
+    data_paths_present: bool = True
+    data_prerequisites_ready: bool = True
     binary_path: str | None = None
     launcher_path: str | None = None
+    workspace_root: str | None = None
+    missing_required_paths: list[str] = Field(default_factory=list)
+    missing_data_paths: list[str] = Field(default_factory=list)
+    missing_prerequisites: list[str] = Field(default_factory=list)
+    ready_prerequisites: list[str] = Field(default_factory=list)
+    prerequisite_evidence: dict[str, list[str]] = Field(default_factory=dict)
+    environment_prerequisites: list[str] = Field(default_factory=list)
     smoke_candidate: JediApplicationFamily | None = None
     smoke_ready: bool = False
     messages: list[str] = Field(default_factory=list)
@@ -406,13 +416,14 @@ class JediValidationReport(BaseModel):
 - 探测 binary 是否存在
 - 探测 launcher 是否存在
 - 探测 `ldd` 结果是否缺库
-- 探测 YAML / testinput / data path 是否存在
-- 探测数据准备前提是否缺失（`git-lfs` / `ctest -R get_` 等）
+- 探测 required runtime path、workspace `testinput` 与数据路径是否存在
+- 探测数据准备前提是否缺失（`ctest -R get_` / `qg_get_data` / 等价准备步骤）
+- 对可直接从当前引用面判定的 prerequisite 返回 `ready` / `missing` 与 evidence path
 - 生成 `JediEnvironmentReport`
 
 完成标志：
 
-- 能稳定区分 binary 缺失 / launcher 缺失 / library 缺失 / path 缺失
+- 能稳定区分 binary 缺失 / launcher 缺失 / library 缺失 / required path 缺失 / data prerequisite 缺失
 - 不把环境失败误报成 validation failure
 
 ## Step 5：实现 config compiler
@@ -448,6 +459,9 @@ class JediValidationReport(BaseModel):
 - 根据 `execution_mode` 构造命令
 - `schema` 模式：`<app>.x --output-json-schema=...`
 - `validate_only` 模式：`<app>.x --validate-only config.yaml`
+- `real_run` 模式：`<launcher> ... <app>.x config.yaml`，其中 launcher 当前覆盖 `direct` / `mpiexec` / `mpirun` / `srun` / `jsrun`
+- 拒绝在 `launcher_args` 中重复声明 process-count 参数，统一要求使用 `executable.process_count`
+- 执行前通过 preprocessor 落盘 `config.yaml` 并记录 `preprocessor_manifest.json`
 - 记录 command、stdout、stderr、return code、config path 与 runtime evidence
 - 生成 `JediRunArtifact`
 

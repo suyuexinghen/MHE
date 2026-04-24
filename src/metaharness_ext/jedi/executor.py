@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -16,6 +17,31 @@ from metaharness_ext.jedi.capabilities import (
 from metaharness_ext.jedi.contracts import JediRunArtifact, JediRunPlan
 from metaharness_ext.jedi.preprocessor import JediRunPreprocessor
 from metaharness_ext.jedi.slots import JEDI_EXECUTOR_SLOT
+
+_LAUNCHER_PROCESS_COUNT_FLAGS: dict[str, str | None] = {
+    "direct": None,
+    "mpiexec": "-n",
+    "mpirun": "-n",
+    "srun": "-n",
+    "jsrun": "-n",
+}
+
+_PROCESS_COUNT_FLAG_PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
+    "mpiexec": (
+        re.compile(r"^-n(?:=\d+|\d+)?$"),
+        re.compile(r"^-np(?:=\d+|\d+)?$"),
+    ),
+    "mpirun": (
+        re.compile(r"^-n(?:=\d+|\d+)?$"),
+        re.compile(r"^-np(?:=\d+|\d+)?$"),
+    ),
+    "srun": (re.compile(r"^-n(?:=\d+|\d+)?$"), re.compile(r"^--ntasks(?:=.*)?$")),
+    "jsrun": (
+        re.compile(r"^-n(?:=\d+|\d+)?$"),
+        re.compile(r"^-np(?:=\d+|\d+)?$"),
+        re.compile(r"^-r(?:=\d+|\d+)?$"),
+    ),
+}
 
 
 class JediExecutorComponent(HarnessComponent):
@@ -52,7 +78,10 @@ class JediExecutorComponent(HarnessComponent):
                 return_code=None,
                 status="unavailable",
                 prepared_inputs=[],
-                result_summary={"fallback_reason": "missing_required_runtime_path", "exit_code": None},
+                result_summary={
+                    "fallback_reason": "missing_required_runtime_path",
+                    "exit_code": None,
+                },
             )
 
         resolved_binary = self._resolve_binary(plan.executable.binary_name)
@@ -187,19 +216,32 @@ class JediExecutorComponent(HarnessComponent):
         return [*self._build_launcher_command(plan, resolved_launcher), *base_command]
 
     def _build_launcher_command(self, plan: JediRunPlan, resolved_launcher: str) -> list[str]:
+        launcher = plan.executable.launcher
         launcher_command = [resolved_launcher]
-        process_count_flag = self._process_count_flag(plan.executable.launcher)
+        self._reject_duplicate_process_count_args(launcher, plan.executable.launcher_args)
+        process_count_flag = self._process_count_flag(launcher)
         if plan.executable.process_count is not None and process_count_flag is not None:
             launcher_command.extend([process_count_flag, str(plan.executable.process_count)])
         launcher_command.extend(plan.executable.launcher_args)
         return launcher_command
 
     def _process_count_flag(self, launcher: str) -> str | None:
-        if launcher in {"mpiexec", "mpirun", "srun", "jsrun"}:
-            return "-n"
-        if launcher == "direct":
-            return None
+        if launcher in _LAUNCHER_PROCESS_COUNT_FLAGS:
+            return _LAUNCHER_PROCESS_COUNT_FLAGS[launcher]
         raise NotImplementedError(f"Unsupported JEDI launcher: {launcher}")
+
+    def _reject_duplicate_process_count_args(self, launcher: str, launcher_args: list[str]) -> None:
+        if launcher == "direct":
+            return
+        for arg in launcher_args:
+            if self._is_process_count_arg(launcher, arg):
+                raise ValueError(
+                    "launcher_args must not include process-count flags; use executable.process_count"
+                )
+
+    def _is_process_count_arg(self, launcher: str, arg: str) -> bool:
+        patterns = _PROCESS_COUNT_FLAG_PATTERNS.get(launcher, ())
+        return any(pattern.match(arg) for pattern in patterns)
 
     def _run_command(
         self,

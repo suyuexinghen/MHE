@@ -69,6 +69,7 @@
 - 以 **launcher + executable** 为执行面
 - 以 **environment probe + validator** 为失败边界
 - 以 **artifact / diagnostics / report** 为证据面
+- 以与 strengthened MHE **promotion / policy / provenance governance** 兼容为约束
 
 ---
 
@@ -85,7 +86,8 @@
 
 - Phase 0 承诺 `spec -> environment probe -> controlled compile -> explicit preprocessing -> mode-aware execution -> evidence-first validation` 的基础闭环
 - Phase 0 的 execution mode 包含 `schema`、`validate_only`、`real_run`
-- Phase 1 的 smoke baseline 与 observation-path 选择，是建立在现有 `real_run` 基础上的 policy / selection layer，必须由 environment probe 和 data readiness 结果来 gate
+- 当前代码已经落地 smoke policy、diagnostics enrichment、study 组件，因此本目录不再把这些能力表述成远期想法，而是把它们写成当前基线之上的治理集成入口
+- Phase 1 之后的新增工作，重点是把这些现有能力继续对齐 strengthened MHE 的 promotion / manifest policy / session-provenance evidence path
 - 不把尚未验证的外部构建/安装状态直接写死成实现前提
 
 ---
@@ -107,6 +109,8 @@
 ### 如果你要评审失败语义与测试策略
 
 先看：[05-环境与验证](05-environment-and-validation.md) → [09-测试与评审](09-testing-and-review.md)
+
+阅读 [05-环境与验证](05-environment-and-validation.md)、[06-实施路径](06-implementation-phases.md)、[08-封装与注册](08-packaging-and-registration.md)、[09-测试与评审](09-testing-and-review.md) 时，建议始终带着“当前实现 + governance integration”的视角，而不是只把 JEDI 理解成 extension-local pipeline。
 
 ---
 

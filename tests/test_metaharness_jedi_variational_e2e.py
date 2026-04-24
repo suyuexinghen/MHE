@@ -56,7 +56,9 @@ async def test_jedi_variational_real_run_requires_minimum_scientific_evidence(
 
     def fake_run(command, *, cwd, text, capture_output, check, timeout):
         (cwd / "analysis.out").write_text("analysis")
-        (cwd / "departures.json").write_text('{"rms_observation_minus_analysis": 0.7, "rms_observation_minus_background": 1.2}')
+        (cwd / "departures.json").write_text(
+            '{"rms_observation_minus_analysis": 0.7, "rms_observation_minus_background": 1.2}'
+        )
         (cwd / "reference.json").write_text('{"baseline": "toy-reference"}')
         return _FakeCompletedProcess(returncode=0, stdout="run ok", stderr="")
 
@@ -112,7 +114,9 @@ async def test_jedi_variational_real_run_fails_when_scientific_check_does_not_im
 
     def fake_run(command, *, cwd, text, capture_output, check, timeout):
         (cwd / "analysis.out").write_text("analysis")
-        (cwd / "departures.json").write_text('{"rms_observation_minus_analysis": 1.4, "rms_observation_minus_background": 1.1}')
+        (cwd / "departures.json").write_text(
+            '{"rms_observation_minus_analysis": 1.4, "rms_observation_minus_background": 1.1}'
+        )
         return _FakeCompletedProcess(returncode=0, stdout="run ok", stderr="")
 
     monkeypatch.setattr("metaharness_ext.jedi.executor.subprocess.run", fake_run)

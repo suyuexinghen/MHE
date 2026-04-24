@@ -44,13 +44,17 @@ def test_jedi_environment_marks_smoke_ready_when_runtime_prereqs_exist(
     Path(spec.background_path).write_text("background")
     probe = JediEnvironmentProbeComponent()
 
-    monkeypatch.setattr("metaharness_ext.jedi.environment.shutil.which", lambda name: "/usr/bin/ldd")
+    monkeypatch.setattr(
+        "metaharness_ext.jedi.environment.shutil.which", lambda name: "/usr/bin/ldd"
+    )
 
     class _Result:
         returncode = 0
         stdout = ""
 
-    monkeypatch.setattr("metaharness_ext.jedi.environment.subprocess.run", lambda *args, **kwargs: _Result())
+    monkeypatch.setattr(
+        "metaharness_ext.jedi.environment.subprocess.run", lambda *args, **kwargs: _Result()
+    )
 
     report = probe.probe(spec)
 

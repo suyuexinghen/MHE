@@ -14,8 +14,12 @@ from metaharness_ext.jedi.slots import JEDI_DIAGNOSTICS_SLOT
 class JediDiagnosticsCollectorComponent(HarnessComponent):
     """Extract structured evidence from JEDI diagnostic outputs."""
 
-    COST_FUNCTION_RE = re.compile(r"(?:cost function|cost)\s*[:=]\s*([-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)", re.IGNORECASE)
-    GRADIENT_NORM_RE = re.compile(r"gradient\s+norm\s*[:=]\s*([-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)", re.IGNORECASE)
+    COST_FUNCTION_RE = re.compile(
+        r"(?:cost function|cost)\s*[:=]\s*([-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)", re.IGNORECASE
+    )
+    GRADIENT_NORM_RE = re.compile(
+        r"gradient\s+norm\s*[:=]\s*([-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)", re.IGNORECASE
+    )
     OUTER_ITERATION_RE = re.compile(r"outer\s+iteration\s*[:#=]?\s*(\d+)", re.IGNORECASE)
     INNER_ITERATION_RE = re.compile(r"inner\s+iteration\s*[:#=]?\s*(\d+)", re.IGNORECASE)
     MINIMIZER_ITERATION_RE = re.compile(r"minimizer\s+iteration\s*[:#=]?\s*(\d+)", re.IGNORECASE)
@@ -59,7 +63,7 @@ class JediDiagnosticsCollectorComponent(HarnessComponent):
 
         candidate_paths = [
             *artifact.diagnostic_files,
-            *( [artifact.stdout_path] if artifact.stdout_path else [] ),
+            *([artifact.stdout_path] if artifact.stdout_path else []),
         ]
 
         for path_str in candidate_paths:
@@ -75,9 +79,15 @@ class JediDiagnosticsCollectorComponent(HarnessComponent):
                 gradient_norms.extend(self._extract_float_matches(self.GRADIENT_NORM_RE, text))
                 outer_iterations.extend(self._extract_int_matches(self.OUTER_ITERATION_RE, text))
                 inner_iterations.extend(self._extract_int_matches(self.INNER_ITERATION_RE, text))
-                minimizer_iterations.extend(self._extract_int_matches(self.MINIMIZER_ITERATION_RE, text))
-                posterior_output_detected = posterior_output_detected or self._detect_posterior_output(path, text)
-                observer_output_detected = observer_output_detected or self._detect_observer_output(path, text)
+                minimizer_iterations.extend(
+                    self._extract_int_matches(self.MINIMIZER_ITERATION_RE, text)
+                )
+                posterior_output_detected = (
+                    posterior_output_detected or self._detect_posterior_output(path, text)
+                )
+                observer_output_detected = observer_output_detected or self._detect_observer_output(
+                    path, text
+                )
 
         return JediDiagnosticSummary(
             ioda_groups_found=sorted(groups_found),

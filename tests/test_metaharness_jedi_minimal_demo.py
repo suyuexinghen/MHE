@@ -240,7 +240,9 @@ async def test_jedi_validate_only_happy_path_runs(
 
 
 @pytest.mark.asyncio
-async def test_jedi_real_run_happy_path_runs(examples_dir: Path, monkeypatch, tmp_path: Path) -> None:
+async def test_jedi_real_run_happy_path_runs(
+    examples_dir: Path, monkeypatch, tmp_path: Path
+) -> None:
     manifest_dir = examples_dir / "manifests" / "jedi"
     graphs_dir = examples_dir / "graphs"
     registry = _build_registry(manifest_dir)
@@ -294,7 +296,9 @@ async def test_jedi_real_run_happy_path_runs(examples_dir: Path, monkeypatch, tm
 
     def fake_run(command, *, cwd, text, capture_output, check, timeout):
         (cwd / "analysis.out").write_text("analysis")
-        (cwd / "departures.json").write_text('{"rms_observation_minus_analysis": 0.6, "rms_observation_minus_background": 1.1}')
+        (cwd / "departures.json").write_text(
+            '{"rms_observation_minus_analysis": 0.6, "rms_observation_minus_background": 1.1}'
+        )
         (cwd / "reference.json").write_text('{"baseline": "toy-reference"}')
         return type(
             "_RealRunCompletedProcess",

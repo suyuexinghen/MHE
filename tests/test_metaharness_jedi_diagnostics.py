@@ -43,12 +43,14 @@ class TestJediDiagnosticsCollectorComponent:
     def test_collects_ioda_groups_from_json_file(self, tmp_path: Path) -> None:
         diag_file = tmp_path / "departures.json"
         diag_file.write_text(
-            json.dumps({
-                "MetaData": {"station_id": [1, 2, 3]},
-                "ObsValue": {"temperature": [280.0, 285.0]},
-                "HofX": {"temperature": [281.0, 284.0]},
-                "ObsError": {"temperature": [1.0, 1.0]},
-            })
+            json.dumps(
+                {
+                    "MetaData": {"station_id": [1, 2, 3]},
+                    "ObsValue": {"temperature": [280.0, 285.0]},
+                    "HofX": {"temperature": [281.0, 284.0]},
+                    "ObsError": {"temperature": [1.0, 1.0]},
+                }
+            )
         )
 
         artifact = JediRunArtifact(

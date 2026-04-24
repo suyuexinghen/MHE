@@ -68,14 +68,16 @@ class JediEnvironmentProbeComponent(HarnessComponent):
         workspace_testinput_present = self._workspace_testinput_present(workspace_root)
 
         environment_prerequisites = self._environment_prerequisites(spec, workspace_root)
-        missing_prerequisites = [
-            prerequisite for prerequisite in environment_prerequisites if not self._prerequisite_ready(prerequisite, workspace_root)
-        ]
+        ready_prerequisites, missing_prerequisites, prerequisite_evidence = (
+            self._evaluate_prerequisites(spec, workspace_root, environment_prerequisites)
+        )
         for prerequisite in missing_prerequisites:
             messages.append(f"Missing environment prerequisite: {prerequisite}")
         data_prerequisites_ready = not missing_prerequisites
 
-        smoke_candidate: str | None = "hofx" if isinstance(spec, JediHofXSpec) else spec.application_family
+        smoke_candidate: str | None = (
+            "hofx" if isinstance(spec, JediHofXSpec) else spec.application_family
+        )
         smoke_ready = (
             binary_available
             and launcher_available
@@ -103,6 +105,8 @@ class JediEnvironmentProbeComponent(HarnessComponent):
             missing_required_paths=missing_required_paths,
             missing_data_paths=missing_data_paths,
             missing_prerequisites=missing_prerequisites,
+            ready_prerequisites=ready_prerequisites,
+            prerequisite_evidence=prerequisite_evidence,
             environment_prerequisites=environment_prerequisites,
             smoke_candidate=smoke_candidate,
             smoke_ready=smoke_ready,
@@ -162,11 +166,17 @@ class JediEnvironmentProbeComponent(HarnessComponent):
             return True
         return any(token in lowered for token in ("obs", "background", "reference", "ens."))
 
-    def _environment_prerequisites(self, spec: JediExperimentSpec, workspace_root: str | None) -> list[str]:
+    def _environment_prerequisites(
+        self, spec: JediExperimentSpec, workspace_root: str | None
+    ) -> list[str]:
         prerequisites: list[str] = []
         if workspace_root is not None:
             prerequisites.append("workspace testinput")
-        if spec.observation_paths if isinstance(spec, (JediVariationalSpec, JediLocalEnsembleDASpec, JediHofXSpec)) else False:
+        if (
+            spec.observation_paths
+            if isinstance(spec, (JediVariationalSpec, JediLocalEnsembleDASpec, JediHofXSpec))
+            else False
+        ):
             prerequisites.append("ctest -R get_ or equivalent observation data preparation")
         if isinstance(spec, (JediVariationalSpec, JediLocalEnsembleDASpec)):
             prerequisites.append("ctest -R qg_get_data or equivalent QG data preparation")
@@ -174,12 +184,80 @@ class JediEnvironmentProbeComponent(HarnessComponent):
             prerequisites.append("model initial-condition data prepared")
         return list(dict.fromkeys(prerequisites))
 
-    def _prerequisite_ready(self, prerequisite: str, workspace_root: str | None) -> bool:
+    def _evaluate_prerequisites(
+        self,
+        spec: JediExperimentSpec,
+        workspace_root: str | None,
+        prerequisites: list[str],
+    ) -> tuple[list[str], list[str], dict[str, list[str]]]:
+        ready: list[str] = []
+        missing: list[str] = []
+        evidence: dict[str, list[str]] = {}
+        for prerequisite in prerequisites:
+            status, matched_evidence = self._prerequisite_status(
+                prerequisite,
+                spec,
+                workspace_root,
+            )
+            if status == "ready":
+                ready.append(prerequisite)
+                evidence[prerequisite] = matched_evidence
+            elif status == "missing":
+                missing.append(prerequisite)
+        return ready, missing, evidence
+
+    def _prerequisite_status(
+        self,
+        prerequisite: str,
+        spec: JediExperimentSpec,
+        workspace_root: str | None,
+    ) -> tuple[str, list[str]]:
         if prerequisite == "workspace testinput":
-            return self._workspace_testinput_present(workspace_root)
-        if workspace_root is None:
-            return True
-        return False
+            if workspace_root is None:
+                return "unevaluated", []
+            testinput_path = str(Path(workspace_root) / "testinput")
+            if self._workspace_testinput_present(workspace_root):
+                return "ready", [testinput_path]
+            return "missing", []
+        if prerequisite == "ctest -R get_ or equivalent observation data preparation":
+            return self._paths_prerequisite_status(self._observation_paths(spec))
+        if prerequisite == "ctest -R qg_get_data or equivalent QG data preparation":
+            return self._paths_prerequisite_status(self._qg_data_paths(spec))
+        if prerequisite == "model initial-condition data prepared":
+            return self._paths_prerequisite_status(self._forecast_data_paths(spec))
+        return "unevaluated", []
+
+    def _paths_prerequisite_status(self, paths: list[str]) -> tuple[str, list[str]]:
+        if not paths:
+            return "unevaluated", []
+        existing = [str(Path(path).expanduser().resolve()) for path in paths if Path(path).expanduser().exists()]
+        if len(existing) == len(paths):
+            return "ready", existing
+        return "missing", []
+
+    def _observation_paths(self, spec: JediExperimentSpec) -> list[str]:
+        if isinstance(spec, (JediVariationalSpec, JediLocalEnsembleDASpec, JediHofXSpec)):
+            return list(spec.observation_paths)
+        return []
+
+    def _qg_data_paths(self, spec: JediExperimentSpec) -> list[str]:
+        if isinstance(spec, JediVariationalSpec):
+            return [
+                *([spec.background_path] if spec.background_path else []),
+                *([spec.background_error_path] if spec.background_error_path else []),
+            ]
+        if isinstance(spec, JediLocalEnsembleDASpec):
+            return [
+                *spec.ensemble_paths,
+                *([spec.background_path] if spec.background_path else []),
+                *spec.reference_paths,
+            ]
+        return []
+
+    def _forecast_data_paths(self, spec: JediExperimentSpec) -> list[str]:
+        if isinstance(spec, JediForecastSpec) and spec.initial_condition_path:
+            return [spec.initial_condition_path]
+        return []
 
     def _required_paths(self, spec: JediExperimentSpec) -> list[str]:
         if isinstance(spec, JediVariationalSpec):

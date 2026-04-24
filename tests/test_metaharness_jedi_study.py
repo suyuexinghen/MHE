@@ -34,7 +34,9 @@ class _FakeExecutor:
             axis_value = int(minimizer["iterations"])
         elif "inflation" in ensemble and ensemble.get("inflation") in self.values:
             axis_value = float(ensemble["inflation"])
-        elif "localization_radius" in ensemble and ensemble.get("localization_radius") in self.values:
+        elif (
+            "localization_radius" in ensemble and ensemble.get("localization_radius") in self.values
+        ):
             axis_value = float(ensemble["localization_radius"])
         elif plan.execution_mode == "validate_only":
             axis_value = "validate_only"
@@ -61,7 +63,9 @@ class _FakeDiagnostics:
     def collect(self, artifact: JediRunArtifact) -> JediDiagnosticSummary:
         metric_value = artifact.result_summary.get("final_cost_function")
         summary = JediDiagnosticSummary(
-            final_cost_function=float(metric_value) if isinstance(metric_value, int | float) else None
+            final_cost_function=float(metric_value)
+            if isinstance(metric_value, int | float)
+            else None
         )
         summary.messages = [
             f"metric:{key}={value}"

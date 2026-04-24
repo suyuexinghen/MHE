@@ -154,7 +154,9 @@ class JediValidatorComponent(HarnessComponent):
         scientific_check = artifact.result_summary.get("scientific_check", "runtime_only")
         if scientific_check == "rms_improves":
             if not self._has_rms_improvement(artifact.result_summary):
-                messages.append("JEDI real_run did not satisfy the minimum RMS improvement criterion.")
+                messages.append(
+                    "JEDI real_run did not satisfy the minimum RMS improvement criterion."
+                )
                 return JediValidationReport(
                     task_id=artifact.task_id,
                     run_id=artifact.run_id,
@@ -211,7 +213,9 @@ class JediValidatorComponent(HarnessComponent):
         enriched_metrics["diagnostic_files_scanned"] = len(diagnostic_summary.files_scanned)
 
         if diagnostic_summary.minimizer_iterations is not None:
-            enriched_metrics["minimizer_iterations"] = float(diagnostic_summary.minimizer_iterations)
+            enriched_metrics["minimizer_iterations"] = float(
+                diagnostic_summary.minimizer_iterations
+            )
         if diagnostic_summary.outer_iterations is not None:
             enriched_metrics["outer_iterations"] = float(diagnostic_summary.outer_iterations)
         if diagnostic_summary.inner_iterations is not None:
@@ -226,8 +230,12 @@ class JediValidatorComponent(HarnessComponent):
             enriched_metrics["final_gradient_norm"] = diagnostic_summary.final_gradient_norm
         if diagnostic_summary.gradient_norm_reduction is not None:
             enriched_metrics["gradient_norm_reduction"] = diagnostic_summary.gradient_norm_reduction
-        enriched_metrics["posterior_output_detected"] = str(diagnostic_summary.posterior_output_detected)
-        enriched_metrics["observer_output_detected"] = str(diagnostic_summary.observer_output_detected)
+        enriched_metrics["posterior_output_detected"] = str(
+            diagnostic_summary.posterior_output_detected
+        )
+        enriched_metrics["observer_output_detected"] = str(
+            diagnostic_summary.observer_output_detected
+        )
 
         if diagnostic_summary.ioda_groups_found:
             enriched_messages.append(
@@ -267,4 +275,3 @@ class JediValidatorComponent(HarnessComponent):
         if not isinstance(observation_minus_background, int | float):
             return False
         return float(observation_minus_analysis) < float(observation_minus_background)
-

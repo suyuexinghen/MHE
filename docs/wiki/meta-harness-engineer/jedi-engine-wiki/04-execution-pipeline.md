@@ -55,7 +55,10 @@ request
 
 - 属于当前基础执行接口面
 - 负责 `<launcher> ... <app>.x config.yaml` 或 direct real run 的命令构造
+- 当前 canonical launcher mapping 明确固定为：`mpiexec -> -n`、`mpirun -> -n`、`srun -> -n`、`jsrun -> -n`
+- `launcher_args` 只承载非 process-count 的附加参数；如果其中重复传入 `-n` / `-np` / `--ntasks` 一类 process-count flag，executor 应直接拒绝，避免与 `process_count` 形成双重来源
 - smoke baseline policy、richer diagnostics interpretation 与 scientific acceptance checks 再放到后续 phase
+- advanced scheduler/resource semantics 当前仍不支持；例如 `srun`/`jsrun` 的 richer placement、allocation、resource-set contract 还没有进入当前执行面
 
 ---
 

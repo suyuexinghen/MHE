@@ -98,10 +98,17 @@ def _build_variational_config(spec: JediVariationalSpec) -> dict[str, Any]:
             "window begin": spec.window_begin,
             "window length": spec.window_length,
             "geometry": spec.geometry,
-            "background": {**spec.background, **({"path": spec.background_path} if spec.background_path else {})},
+            "background": {
+                **spec.background,
+                **({"path": spec.background_path} if spec.background_path else {}),
+            },
             "background error": {
                 **spec.background_error,
-                **({"covariance path": spec.background_error_path} if spec.background_error_path else {}),
+                **(
+                    {"covariance path": spec.background_error_path}
+                    if spec.background_error_path
+                    else {}
+                ),
             },
             "observations": observations,
         },
@@ -120,7 +127,10 @@ def _build_local_ensemble_da_config(spec: JediLocalEnsembleDASpec) -> dict[str, 
         "window begin": spec.window_begin,
         "window length": spec.window_length,
         "geometry": spec.geometry,
-        "background": {**spec.background, **({"path": spec.background_path} if spec.background_path else {})},
+        "background": {
+            **spec.background,
+            **({"path": spec.background_path} if spec.background_path else {}),
+        },
         "observations": [{"path": path} for path in spec.observation_paths],
         "driver": {"task": "local_ensemble_da", **spec.driver},
         "local ensemble DA": {**spec.ensemble, "members": spec.ensemble_paths},
@@ -172,8 +182,15 @@ def _required_runtime_paths(spec: JediExperimentSpec) -> list[str]:
             *spec.required_paths,
         ]
     if isinstance(spec, JediHofXSpec):
-        return [*([spec.state_path] if spec.state_path else []), *spec.observation_paths, *spec.required_paths]
-    return [*([spec.initial_condition_path] if spec.initial_condition_path else []), *spec.required_paths]
+        return [
+            *([spec.state_path] if spec.state_path else []),
+            *spec.observation_paths,
+            *spec.required_paths,
+        ]
+    return [
+        *([spec.initial_condition_path] if spec.initial_condition_path else []),
+        *spec.required_paths,
+    ]
 
 
 def _expected_outputs(spec: JediExperimentSpec) -> list[str]:
@@ -186,7 +203,9 @@ def _expected_outputs(spec: JediExperimentSpec) -> list[str]:
         "hofx": "hofx.out",
         "forecast": "forecast.out",
     }
-    return [defaults[spec.application_family]] if spec.executable.execution_mode == "real_run" else []
+    return (
+        [defaults[spec.application_family]] if spec.executable.execution_mode == "real_run" else []
+    )
 
 
 def _expected_diagnostics(spec: JediExperimentSpec) -> list[str]:
@@ -213,7 +232,6 @@ def _expected_diagnostics(spec: JediExperimentSpec) -> list[str]:
     return []
 
 
-
 def _expected_references(spec: JediExperimentSpec) -> list[str]:
     if isinstance(spec, JediVariationalSpec):
         reference_files = list(spec.reference_paths)
@@ -236,7 +254,6 @@ def _expected_references(spec: JediExperimentSpec) -> list[str]:
             reference_files.append("ensemble_reference.json")
         return list(dict.fromkeys(reference_files))
     return []
-
 
 
 def _scientific_check(spec: JediExperimentSpec) -> str:

@@ -361,8 +361,18 @@ Annotated[
 - `launcher_available: bool`
 - `shared_libraries_resolved: bool`
 - `required_paths_present: bool`
+- `workspace_testinput_present: bool`
+- `data_paths_present: bool`
+- `data_prerequisites_ready: bool`
 - `binary_path: str | None`
 - `launcher_path: str | None`
+- `workspace_root: str | None`
+- `missing_required_paths: list[str]`
+- `missing_data_paths: list[str]`
+- `missing_prerequisites: list[str]`
+- `ready_prerequisites: list[str]`
+- `prerequisite_evidence: dict[str, list[str]]`
+- `environment_prerequisites: list[str]`
 - `smoke_candidate: JediApplicationFamily | None`
 - `smoke_ready: bool`
 - `messages: list[str]`
@@ -547,7 +557,7 @@ runtime.storage_path / "jedi_runs" / <task_id> / <run_id>/
 同时必须把数据准备语义写成显式环境前提，而不是隐含假设：
 
 - 若测试数据由 Git LFS 管理，则应先确认对应数据已被拉取，而不是等运行时再把缺失文件误报成 YAML 错误
-- 若当前 workspace 依赖 CTest 数据准备目标，则应显式检查并记录 `ctest -R get_` / `ctest -R qg_get_data` / `ctest -R l95_get_data` 一类步骤是否已执行
+- 若当前 workspace 依赖 CTest 数据准备目标，则应显式检查并记录 `ctest -R get_` / `ctest -R qg_get_data` / `ctest -R l95_get_data` 一类步骤是否已执行；对当前能由引用路径直接判定的前提，还应返回 `ready_prerequisites` 与 `prerequisite_evidence`
 - 文档与实现应区分 **CTest test name** 和 **executable name**：前者可保持 `qg_4dvar_rpcg` 这类测试名，后者应使用实际二进制名如 `qg4DVar.x`
 - `environment probe` / `preprocessor` 应把“binary 存在但 testinput / obsdata / reference data 未就位”判定为环境或输入准备失败，而不是 validation failure
 - Phase 0 的 preprocessor 只 materialize config、校验 `required_runtime_paths`、记录 `prepared_inputs`，不自动触发 `ctest -R get_`、`qg_get_data`、`l95_get_data` 或等价数据准备步骤

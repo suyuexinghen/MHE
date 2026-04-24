@@ -139,3 +139,36 @@ class TestJediValidatorWithDiagnostics:
         assert report.passed is True
         assert report.status == "executed"
         assert "ioda_groups_found" not in report.summary_metrics
+
+    def test_validator_preserves_base_evidence_when_diagnostics_add_scan_results(self) -> None:
+        artifact = JediRunArtifact(
+            task_id="task-1",
+            run_id="run-1",
+            application_family="forecast",
+            execution_mode="real_run",
+            command=["/usr/bin/qgForecast.x", "config.yaml"],
+            return_code=0,
+            config_path="/tmp/config.yaml",
+            stdout_path="/tmp/stdout.log",
+            working_directory="/tmp/run-1",
+            output_files=["/tmp/run-1/forecast.out"],
+            diagnostic_files=["/tmp/run-1/diag.nc"],
+            reference_files=["/tmp/run-1/reference.nc"],
+            status="completed",
+        )
+        diagnostics = JediDiagnosticSummary(
+            ioda_groups_found=["MetaData"],
+            ioda_groups_missing=[],
+            files_scanned=["/tmp/run-1/diag.nc", "/tmp/run-1/reference.nc"],
+            messages=[],
+        )
+
+        report = JediValidatorComponent().validate_run_with_diagnostics(artifact, diagnostics)
+
+        assert report.passed is True
+        assert report.status == "executed"
+        assert report.evidence_files[0] == "/tmp/config.yaml"
+        assert "/tmp/stdout.log" in report.evidence_files
+        assert "/tmp/run-1/diag.nc" in report.evidence_files
+        assert "/tmp/run-1/reference.nc" in report.evidence_files
+        assert report.evidence_files.count("/tmp/run-1/diag.nc") == 1
