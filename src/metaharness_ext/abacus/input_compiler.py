@@ -5,6 +5,7 @@ from metaharness.sdk.base import HarnessComponent
 from metaharness.sdk.runtime import ComponentRuntime
 from metaharness_ext.abacus.capabilities import CAP_ABACUS_CASE_COMPILE
 from metaharness_ext.abacus.contracts import (
+    AbacusEnvironmentReport,
     AbacusExperimentSpec,
     AbacusMdSpec,
     AbacusNscfSpec,
@@ -25,57 +26,82 @@ class AbacusInputCompilerComponent(HarnessComponent):
     def declare_interface(self, api: HarnessAPI) -> None:
         api.bind_slot(ABACUS_INPUT_COMPILER_SLOT)
         api.declare_input("task", "AbacusExperimentSpec")
+        api.declare_input("environment", "AbacusEnvironmentReport", required=False)
         api.declare_output("plan", "AbacusRunPlan", mode="sync")
         api.provide_capability(CAP_ABACUS_CASE_COMPILE)
 
-    def compile(self, spec: AbacusExperimentSpec) -> AbacusRunPlan:
+    def compile(
+        self,
+        spec: AbacusExperimentSpec,
+        environment: AbacusEnvironmentReport | None = None,
+    ) -> AbacusRunPlan:
         if isinstance(spec, AbacusNscfSpec):
-            return self._compile_nscf(spec)
+            return self._compile_nscf(spec, environment)
         if isinstance(spec, AbacusRelaxSpec):
-            return self._compile_relax(spec)
+            return self._compile_relax(spec, environment)
         if isinstance(spec, AbacusMdSpec):
-            return self._compile_md(spec)
+            return self._compile_md(spec, environment)
         if isinstance(spec, AbacusScfSpec):
-            return self._compile_scf(spec)
+            return self._compile_scf(spec, environment)
         raise ValueError(f"ABACUS family not yet supported: {type(spec).__name__}")
 
-    def _compile_scf(self, spec: AbacusScfSpec) -> AbacusRunPlan:
+    def _compile_scf(
+        self,
+        spec: AbacusScfSpec,
+        environment: AbacusEnvironmentReport | None,
+    ) -> AbacusRunPlan:
         return self._build_plan(
             spec,
+            environment=environment,
             application_family="scf",
             expected_logs=["running_scf.log"],
             required_runtime_paths=[],
         )
 
-    def _compile_nscf(self, spec: AbacusNscfSpec) -> AbacusRunPlan:
+    def _compile_nscf(
+        self,
+        spec: AbacusNscfSpec,
+        environment: AbacusEnvironmentReport | None,
+    ) -> AbacusRunPlan:
         required_runtime_paths = [
             path for path in [spec.charge_density_path, spec.restart_file_path] if path is not None
         ]
         return self._build_plan(
             spec,
+            environment=environment,
             application_family="nscf",
             expected_logs=["running_nscf.log", "running_scf.log"],
             required_runtime_paths=required_runtime_paths,
         )
 
-    def _compile_relax(self, spec: AbacusRelaxSpec) -> AbacusRunPlan:
+    def _compile_relax(
+        self,
+        spec: AbacusRelaxSpec,
+        environment: AbacusEnvironmentReport | None,
+    ) -> AbacusRunPlan:
         restart_path = spec.relax_controls.get("restart_file_path")
         required_runtime_paths = (
             [restart_path] if isinstance(restart_path, str) and restart_path else []
         )
         return self._build_plan(
             spec,
+            environment=environment,
             application_family="relax",
             expected_logs=["running_relax.log", "running_scf.log"],
             required_runtime_paths=required_runtime_paths,
         )
 
-    def _compile_md(self, spec: AbacusMdSpec) -> AbacusRunPlan:
+    def _compile_md(
+        self,
+        spec: AbacusMdSpec,
+        environment: AbacusEnvironmentReport | None,
+    ) -> AbacusRunPlan:
         required_runtime_paths = (
             [spec.pot_file] if spec.esolver_type == "dp" and spec.pot_file else []
         )
         return self._build_plan(
             spec,
+            environment=environment,
             application_family="md",
             expected_logs=["running_md.log"],
             required_runtime_paths=required_runtime_paths,
@@ -85,6 +111,7 @@ class AbacusInputCompilerComponent(HarnessComponent):
         self,
         spec: AbacusScfSpec | AbacusNscfSpec | AbacusRelaxSpec | AbacusMdSpec,
         *,
+        environment: AbacusEnvironmentReport | None,
         application_family: str,
         expected_logs: list[str],
         required_runtime_paths: list[str],
@@ -105,8 +132,16 @@ class AbacusInputCompilerComponent(HarnessComponent):
             suffix=spec.suffix,
             esolver_type=spec.esolver_type,
             pot_file=spec.pot_file,
-            environment_prerequisites=self._environment_prerequisites(spec),
-            environment_evidence_refs=[f"abacus://environment/{spec.task_id}"],
+            environment_prerequisites=(
+                list(environment.environment_prerequisites)
+                if environment is not None
+                else self._environment_prerequisites(spec)
+            ),
+            environment_evidence_refs=(
+                list(environment.evidence_refs)
+                if environment is not None
+                else [f"abacus://environment/{spec.task_id}"]
+            ),
             output_root=output_root,
             expected_outputs=[f"{output_root}/"],
             expected_logs=expected_logs,

@@ -52,7 +52,7 @@
 - 以 **INPUT / STRU / KPT** 为稳定控制面
 - 以 **workspace + launcher + executable** 为执行面
 - 以 **environment probe + validation report** 为失败边界
-- 以 **artifact / evidence / governance-ready validation** 为证据面
+- 以 **artifact / evidence / governance validation** 为证据面
 
 因此本目录的重点是 **设计边界**，而不是交付顺序。
 

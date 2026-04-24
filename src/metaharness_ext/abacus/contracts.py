@@ -260,5 +260,5 @@ class AbacusValidationReport(BaseModel):
     missing_evidence: list[str] = Field(default_factory=list)
     issues: list[ValidationIssue] = Field(default_factory=list)
     blocks_promotion: bool = False
-    governance_state: Literal["ready", "defer", "blocked"] = "defer"
+    governance_state: Literal["defer", "blocked"] = "defer"
     scored_evidence: ScoredEvidence | None = None

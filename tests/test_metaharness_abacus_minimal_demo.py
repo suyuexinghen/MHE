@@ -46,6 +46,7 @@ def test_abacus_minimal_scf_chain_with_missing_binary() -> None:
     assert report.blocks_promotion is True
     assert report.governance_state == "blocked"
     assert report.scored_evidence is not None
+    assert report.scored_evidence.attributes["governance_state"] == "blocked"
 
 
 def test_abacus_minimal_scf_chain_with_real_echo_binary() -> None:
@@ -117,6 +118,9 @@ def test_abacus_validator_accepts_sufficient_evidence() -> None:
 
     assert report.passed is True
     assert report.status == "executed"
+    assert report.governance_state == "defer"
+    assert report.scored_evidence is not None
+    assert report.scored_evidence.attributes["governance_state"] == "defer"
 
 
 def test_abacus_validator_rejects_nonzero_return_code() -> None:
@@ -212,6 +216,7 @@ def test_abacus_minimal_relax_chain_with_stubbed_structure_evidence(
     assert report.blocks_promotion is False
     assert report.governance_state == "defer"
     assert report.scored_evidence is not None
+    assert report.scored_evidence.attributes["governance_state"] == "defer"
 
 
 def test_abacus_minimal_md_chain_with_stubbed_artifact_evidence(
@@ -252,6 +257,9 @@ def test_abacus_minimal_md_chain_with_stubbed_artifact_evidence(
     report = validator.validate_run(artifact)
     assert report.passed is True
     assert report.status == "executed"
+    assert report.governance_state == "defer"
+    assert report.scored_evidence is not None
+    assert report.scored_evidence.attributes["governance_state"] == "defer"
 
 
 def test_abacus_minimal_md_dp_chain_with_stubbed_artifact_evidence(
@@ -300,6 +308,9 @@ def test_abacus_minimal_md_dp_chain_with_stubbed_artifact_evidence(
     report = validator.validate_run(artifact)
     assert report.passed is True
     assert report.status == "executed"
+    assert report.governance_state == "defer"
+    assert report.scored_evidence is not None
+    assert report.scored_evidence.attributes["governance_state"] == "defer"
 
 
 def test_abacus_minimal_md_dp_chain_blocks_when_deepmd_support_unknown(
@@ -344,6 +355,8 @@ def test_abacus_minimal_md_dp_chain_blocks_when_deepmd_support_unknown(
     assert report.status == "environment_invalid"
     assert report.blocks_promotion is True
     assert report.governance_state == "blocked"
+    assert report.scored_evidence is not None
+    assert report.scored_evidence.attributes["governance_state"] == "blocked"
     assert any(ref.startswith("abacus://environment/") for ref in report.evidence_refs)
 
 
@@ -355,6 +368,8 @@ def test_abacus_minimal_graph_shape_matches_phase4_story() -> None:
 
     assert "abacus_gateway.primary.task" in graph
     assert "abacus_environment.primary.task" in graph
+    assert "abacus_input_compiler.primary.task" in graph
+    assert "abacus_input_compiler.primary.environment" in graph
     assert "abacus_input_compiler.primary.plan" in graph
     assert "abacus_executor.primary.run" in graph
     assert "abacus_validator.primary.run" in graph

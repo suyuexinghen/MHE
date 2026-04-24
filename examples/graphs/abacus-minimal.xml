@@ -9,7 +9,8 @@
   <Connections>
     <Connection id="c1" from="abacus_gateway.primary.task" to="abacus_environment.primary.task" payload="AbacusExperimentSpec" mode="sync" policy="required" />
     <Connection id="c2" from="abacus_gateway.primary.task" to="abacus_input_compiler.primary.task" payload="AbacusExperimentSpec" mode="sync" policy="required" />
-    <Connection id="c3" from="abacus_input_compiler.primary.plan" to="abacus_executor.primary.plan" payload="AbacusRunPlan" mode="sync" policy="required" />
-    <Connection id="c4" from="abacus_executor.primary.run" to="abacus_validator.primary.run" payload="AbacusRunArtifact" mode="sync" policy="required" />
+    <Connection id="c3" from="abacus_environment.primary.environment" to="abacus_input_compiler.primary.environment" payload="AbacusEnvironmentReport" mode="sync" policy="required" />
+    <Connection id="c4" from="abacus_input_compiler.primary.plan" to="abacus_executor.primary.plan" payload="AbacusRunPlan" mode="sync" policy="required" />
+    <Connection id="c5" from="abacus_executor.primary.run" to="abacus_validator.primary.run" payload="AbacusRunArtifact" mode="sync" policy="required" />
   </Connections>
 </Harness>

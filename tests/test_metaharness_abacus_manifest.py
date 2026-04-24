@@ -22,6 +22,7 @@ from metaharness_ext.abacus.slots import (
 )
 
 MANIFEST_DIR = Path(__file__).resolve().parent.parent / "src" / "metaharness_ext" / "abacus"
+EXAMPLE_MANIFEST_DIR = Path(__file__).resolve().parent.parent / "examples" / "manifests" / "abacus"
 EXPECTED_MANIFESTS = {
     "manifest.json": {
         "name": "abacus",
@@ -152,3 +153,22 @@ def test_metaharness_abacus_component_declarations_match_manifests() -> None:
         assert snapshot.slots[0].slot == expected["slot"]
         assert snapshot.outputs[0].name == expected["output"]
         assert sorted(cap.name for cap in snapshot.provides) == sorted(expected["capabilities"])
+
+
+def test_metaharness_abacus_example_manifests_match_current_schema() -> None:
+    expected_example_inputs = {
+        "abacus_gateway.json": [],
+        "abacus_environment.json": ["task"],
+        "abacus_input_compiler.json": ["task", "environment"],
+        "abacus_executor.json": ["plan"],
+        "abacus_validator.json": ["run"],
+    }
+
+    for filename, input_names in expected_example_inputs.items():
+        manifest = ComponentManifest.model_validate(
+            json.loads((EXAMPLE_MANIFEST_DIR / filename).read_text())
+        )
+        assert [port.name for port in manifest.contracts.inputs] == input_names
+        assert manifest.policy.sandbox.tier == manifest.safety.sandbox_profile
+        assert manifest.policy.credentials.requires_subject is False
+        assert manifest.policy.credentials.allow_inline_credentials is True

@@ -1,6 +1,7 @@
 import pytest
 
 from metaharness_ext.abacus.contracts import (
+    AbacusEnvironmentReport,
     AbacusExecutableSpec,
     AbacusKPointSpec,
     AbacusMdSpec,
@@ -120,6 +121,29 @@ def test_abacus_compiler_builds_md_dp_plan() -> None:
     assert plan.required_runtime_paths == ["/tmp/model.pb"]
     assert plan.environment_prerequisites == ["deeppmd_support"]
     assert "pot_file /tmp/model.pb" in plan.input_content
+
+
+def test_abacus_compiler_prefers_environment_report_when_provided() -> None:
+    spec = AbacusMdSpec(
+        task_id="task-md-dp-env",
+        executable=AbacusExecutableSpec(binary_name="abacus"),
+        structure=AbacusStructureSpec(content="ATOMIC_SPECIES\nSi 28.0 Si.upf\n"),
+        esolver_type="dp",
+        pot_file="/tmp/model.pb",
+    )
+    environment = AbacusEnvironmentReport(
+        environment_prerequisites=["deeppmd_support", "gpu_support"],
+        evidence_refs=["abacus://environment/task-md-dp-env", "abacus://binary/abacus"],
+    )
+
+    compiler = AbacusInputCompilerComponent()
+    plan = compiler.compile(spec, environment)
+
+    assert plan.environment_prerequisites == ["deeppmd_support", "gpu_support"]
+    assert plan.environment_evidence_refs == [
+        "abacus://environment/task-md-dp-env",
+        "abacus://binary/abacus",
+    ]
 
 
 def test_abacus_md_dp_requires_pot_file() -> None:

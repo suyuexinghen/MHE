@@ -77,6 +77,9 @@ def test_abacus_validator_accepts_relax_structure_evidence(tmp_path: Path) -> No
 
     assert report.passed is True
     assert report.status == "executed"
+    assert report.governance_state == "defer"
+    assert report.scored_evidence is not None
+    assert report.scored_evidence.attributes["governance_state"] == "defer"
 
 
 def test_abacus_validator_rejects_relax_without_structure_evidence() -> None:
@@ -125,6 +128,9 @@ def test_abacus_validator_accepts_md_artifact_evidence(tmp_path: Path) -> None:
 
     assert report.passed is True
     assert report.status == "executed"
+    assert report.governance_state == "defer"
+    assert report.scored_evidence is not None
+    assert report.scored_evidence.attributes["governance_state"] == "defer"
 
 
 def test_abacus_validator_accepts_md_restart_artifact_evidence(tmp_path: Path) -> None:
@@ -236,6 +242,8 @@ def test_abacus_validator_blocks_md_dp_missing_prerequisite() -> None:
     assert report.status == "environment_invalid"
     assert report.blocks_promotion is True
     assert report.governance_state == "blocked"
+    assert report.scored_evidence is not None
+    assert report.scored_evidence.attributes["governance_state"] == "blocked"
     assert any("deeppmd_support" in item for item in report.missing_evidence)
     assert any(issue.blocks_promotion for issue in report.issues)
     assert any(
@@ -264,6 +272,8 @@ def test_abacus_validator_rejects_md_without_artifact_evidence() -> None:
     assert report.status == "validation_failed"
     assert report.blocks_promotion is True
     assert report.governance_state == "blocked"
+    assert report.scored_evidence is not None
+    assert report.scored_evidence.attributes["governance_state"] == "blocked"
     assert any("MD evidence" in item for item in report.missing_evidence)
     assert any("completed but evidence insufficient" in message for message in report.messages)
     assert any(issue.blocks_promotion for issue in report.issues)

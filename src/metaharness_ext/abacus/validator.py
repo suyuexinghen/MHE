@@ -229,6 +229,7 @@ class AbacusValidatorComponent(HarnessComponent):
         if isinstance(esolver_type, str):
             summary_metrics["esolver_type"] = esolver_type
 
+        governance_state = "defer" if passed else "blocked"
         scored_evidence = ScoredEvidence(
             score=1.0 if passed else 0.0,
             metrics={
@@ -248,7 +249,7 @@ class AbacusValidatorComponent(HarnessComponent):
             attributes={
                 "status": status,
                 "application_family": artifact.application_family,
-                "governance_state": "defer" if passed else "blocked",
+                "governance_state": governance_state,
             },
         )
         return AbacusValidationReport(
@@ -263,7 +264,7 @@ class AbacusValidatorComponent(HarnessComponent):
             missing_evidence=missing_evidence or [],
             issues=issues,
             blocks_promotion=any(issue.blocks_promotion for issue in issues),
-            governance_state="defer" if passed else "blocked",
+            governance_state=governance_state,
             scored_evidence=scored_evidence,
         )
 

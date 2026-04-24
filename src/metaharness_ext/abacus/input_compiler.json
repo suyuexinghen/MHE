@@ -11,6 +11,12 @@
         "type": "AbacusExperimentSpec",
         "required": true,
         "description": ""
+      },
+      {
+        "name": "environment",
+        "type": "AbacusEnvironmentReport",
+        "required": false,
+        "description": ""
       }
     ],
     "outputs": [
