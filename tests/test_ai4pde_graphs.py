@@ -38,7 +38,9 @@ def test_ai4pde_graph_is_semantically_valid(examples_dir: Path) -> None:
     engine = ConnectionEngine(registry, GraphVersionStore())
     snapshot = parse_graph_xml(graphs_dir / "ai4pde-minimal.xml")
 
-    candidate, report = engine.stage(PendingConnectionSet(nodes=snapshot.nodes, edges=snapshot.edges))
+    candidate, report = engine.stage(
+        PendingConnectionSet(nodes=snapshot.nodes, edges=snapshot.edges)
+    )
     version = engine.commit("ai4pde-minimal", candidate, report)
 
     assert report.valid is True
@@ -52,7 +54,9 @@ def test_ai4pde_baseline_graph_is_semantically_valid(examples_dir: Path) -> None
     engine = ConnectionEngine(registry, GraphVersionStore())
     snapshot = parse_graph_xml(graphs_dir / "ai4pde-baseline.xml")
 
-    candidate, report = engine.stage(PendingConnectionSet(nodes=snapshot.nodes, edges=snapshot.edges))
+    candidate, report = engine.stage(
+        PendingConnectionSet(nodes=snapshot.nodes, edges=snapshot.edges)
+    )
     version = engine.commit("ai4pde-baseline", candidate, report)
 
     assert report.valid is True
@@ -66,7 +70,9 @@ def test_ai4pde_expanded_graph_is_semantically_valid(examples_dir: Path) -> None
     engine = ConnectionEngine(registry, GraphVersionStore())
     snapshot = parse_graph_xml(graphs_dir / "ai4pde-expanded.xml")
 
-    candidate, report = engine.stage(PendingConnectionSet(nodes=snapshot.nodes, edges=snapshot.edges))
+    candidate, report = engine.stage(
+        PendingConnectionSet(nodes=snapshot.nodes, edges=snapshot.edges)
+    )
     version = engine.commit("ai4pde-expanded", candidate, report)
 
     assert report.valid is True

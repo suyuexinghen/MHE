@@ -117,10 +117,14 @@ def summarize_reference_error(metrics: dict[str, float | str] | None = None) -> 
         messages.append("No error tolerance was provided, so no pass/fail judgement was made.")
     elif max_l2 is not None and max_l2 <= tolerance:
         status = "reference_error_within_tolerance"
-        messages.append(f"Maximum L2 reference error {max_l2:.6g} is within tolerance {tolerance:.6g}.")
+        messages.append(
+            f"Maximum L2 reference error {max_l2:.6g} is within tolerance {tolerance:.6g}."
+        )
     elif max_l2 is not None:
         status = "reference_error_exceeds_tolerance"
-        messages.append(f"Maximum L2 reference error {max_l2:.6g} exceeds tolerance {tolerance:.6g}.")
+        messages.append(
+            f"Maximum L2 reference error {max_l2:.6g} exceeds tolerance {tolerance:.6g}."
+        )
 
     return ErrorSummary(
         l2_keys=l2_keys,
@@ -227,7 +231,9 @@ def _detect_output_format(path: Path) -> str:
     return "unknown"
 
 
-def _collect_error_pairs(metrics: dict[str, float | str], *, prefix: str) -> list[tuple[str, float]]:
+def _collect_error_pairs(
+    metrics: dict[str, float | str], *, prefix: str
+) -> list[tuple[str, float]]:
     pairs: list[tuple[str, float]] = []
     for key, value in metrics.items():
         if not key.startswith(prefix):

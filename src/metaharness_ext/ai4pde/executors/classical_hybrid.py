@@ -6,7 +6,10 @@ from metaharness_ext.ai4pde.types import SolverFamily
 
 def run_classical_hybrid(plan: PDEPlan) -> PDERunArtifact:
     requested_artifacts = plan.expected_artifacts or ["solution_field"]
-    artifact_refs = [f"artifact://{artifact.replace('/', '_')}/{plan.task_id}" for artifact in requested_artifacts]
+    artifact_refs = [
+        f"artifact://{artifact.replace('/', '_')}/{plan.task_id}"
+        for artifact in requested_artifacts
+    ]
     return PDERunArtifact(
         run_id=f"run-{plan.task_id}",
         task_id=plan.task_id,

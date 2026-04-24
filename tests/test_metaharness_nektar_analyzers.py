@@ -20,7 +20,6 @@ def test_parse_solver_log_returns_missing_state_for_absent_file(tmp_path: Path) 
     assert summary.incns_metrics == {}
 
 
-
 def test_parse_solver_log_extracts_step_and_time_metrics(tmp_path: Path) -> None:
     log_path = tmp_path / "solver.log"
     log_path.write_text(
@@ -42,13 +41,9 @@ def test_parse_solver_log_extracts_step_and_time_metrics(tmp_path: Path) -> None
     assert summary.linf_error_keys == ["linf_error_u"]
 
 
-
 def test_parse_solver_log_extracts_warning_and_error_lines(tmp_path: Path) -> None:
     log_path = tmp_path / "solver.log"
-    log_path.write_text(
-        "Warning: CFL nearing threshold\n"
-        "Runtime Error: solver diverged\n"
-    )
+    log_path.write_text("Warning: CFL nearing threshold\nRuntime Error: solver diverged\n")
 
     summary = parse_solver_log(log_path)
 
@@ -58,13 +53,11 @@ def test_parse_solver_log_extracts_warning_and_error_lines(tmp_path: Path) -> No
     assert summary.errors == ["Runtime Error: solver diverged"]
 
 
-
-def test_parse_solver_log_ignores_scientific_error_norm_lines_as_runtime_errors(tmp_path: Path) -> None:
+def test_parse_solver_log_ignores_scientific_error_norm_lines_as_runtime_errors(
+    tmp_path: Path,
+) -> None:
     log_path = tmp_path / "solver.log"
-    log_path.write_text(
-        "L 2 error (variable u) : 1.2e-05\n"
-        "L inf error (variable u) : 2.4e-05\n"
-    )
+    log_path.write_text("L 2 error (variable u) : 1.2e-05\nL inf error (variable u) : 2.4e-05\n")
 
     summary = parse_solver_log(log_path)
 
@@ -72,7 +65,6 @@ def test_parse_solver_log_ignores_scientific_error_norm_lines_as_runtime_errors(
     assert summary.errors == []
     assert summary.l2_error_keys == ["l2_error_u"]
     assert summary.linf_error_keys == ["linf_error_u"]
-
 
 
 def test_parse_solver_log_extracts_incns_convergence_metrics(tmp_path: Path) -> None:
@@ -96,7 +88,6 @@ def test_parse_solver_log_extracts_incns_convergence_metrics(tmp_path: Path) -> 
     assert summary.incns_metrics["incns_infnorm_0"] == pytest.approx(2.0e-02)
 
 
-
 def test_parse_solver_log_detects_timeout_marker(tmp_path: Path) -> None:
     log_path = tmp_path / "solver.log"
     log_path.write_text("Solver timed out after 12.0 seconds.\n")
@@ -104,7 +95,6 @@ def test_parse_solver_log_detects_timeout_marker(tmp_path: Path) -> None:
     summary = parse_solver_log(log_path)
 
     assert summary.has_timeout_marker is True
-
 
 
 def test_parse_filter_outputs_summarizes_existing_and_missing_files(tmp_path: Path) -> None:
@@ -120,7 +110,6 @@ def test_parse_filter_outputs_summarizes_existing_and_missing_files(tmp_path: Pa
     assert summary.nonempty_count == 1
     assert summary.has_vtu is True
     assert summary.has_dat is True
-
 
 
 def test_parse_filter_outputs_detects_formats_and_sizes(tmp_path: Path) -> None:
@@ -144,7 +133,6 @@ def test_parse_filter_outputs_detects_formats_and_sizes(tmp_path: Path) -> None:
     assert summary.nonempty_count == 2
 
 
-
 def test_parse_filter_outputs_handles_empty_input() -> None:
     summary = parse_filter_outputs()
 
@@ -156,14 +144,12 @@ def test_parse_filter_outputs_handles_empty_input() -> None:
     assert summary.nonempty_count == 0
 
 
-
 def test_summarize_reference_error_returns_no_reference_error_for_empty_metrics() -> None:
     summary = summarize_reference_error()
 
     assert summary.status == "no_reference_error"
     assert summary.max_l2 is None
     assert summary.messages == ["No reference error metrics were found."]
-
 
 
 def test_summarize_reference_error_extracts_l2_and_linf_extrema() -> None:
@@ -185,7 +171,6 @@ def test_summarize_reference_error_extracts_l2_and_linf_extrema() -> None:
     assert summary.status == "reference_error_present"
 
 
-
 def test_summarize_reference_error_marks_within_tolerance_when_available() -> None:
     summary = summarize_reference_error(
         {
@@ -197,7 +182,6 @@ def test_summarize_reference_error_marks_within_tolerance_when_available() -> No
 
     assert summary.status == "reference_error_within_tolerance"
     assert any("within tolerance" in message for message in summary.messages)
-
 
 
 def test_summarize_reference_error_marks_exceeds_tolerance_when_available() -> None:

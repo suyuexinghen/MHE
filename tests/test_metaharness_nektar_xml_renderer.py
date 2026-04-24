@@ -49,7 +49,9 @@ def test_render_adr_session_uses_normative_section_order() -> None:
             geometry=_minimal_geometry(),
         ),
         variables=["u"],
-        expansions=[NektarExpansionSpec(field="u", composite_ids=["0"], basis_type="MODIFIED", num_modes=4)],
+        expansions=[
+            NektarExpansionSpec(field="u", composite_ids=["0"], basis_type="MODIFIED", num_modes=4)
+        ],
         solver_info={"EQTYPE": "Helmholtz", "Projection": "Continuous"},
         parameters={"Lambda": 1},
         boundary_regions=[{"id": "0", "composite": "C[1]"}],
@@ -138,7 +140,9 @@ def test_render_robin_boundary_condition_includes_primcoeff() -> None:
             geometry=_minimal_geometry(),
         ),
         variables=["u"],
-        expansions=[NektarExpansionSpec(field="u", composite_ids=["0"], basis_type="MODIFIED", num_modes=4)],
+        expansions=[
+            NektarExpansionSpec(field="u", composite_ids=["0"], basis_type="MODIFIED", num_modes=4)
+        ],
         solver_info={"EQTYPE": "Helmholtz", "Projection": "Continuous"},
         parameters={"Lambda": 1},
         boundary_regions=[{"id": "1", "composite": "C[1]"}],
@@ -175,7 +179,9 @@ def test_render_supports_top_level_forcing_and_function_forcing_together() -> No
             geometry=_minimal_geometry(),
         ),
         variables=["u"],
-        expansions=[NektarExpansionSpec(field="u", composite_ids=["0"], basis_type="MODIFIED", num_modes=4)],
+        expansions=[
+            NektarExpansionSpec(field="u", composite_ids=["0"], basis_type="MODIFIED", num_modes=4)
+        ],
         solver_info={"EQTYPE": "UnsteadyReactionDiffusion", "Projection": "Continuous"},
         parameters={"TimeStep": 0.001},
         time_integration={"METHOD": "IMEX", "ORDER": 1},
@@ -214,7 +220,9 @@ def test_renderer_rejects_globalsyssolninfo_in_phase1() -> None:
         equation_type=NektarAdrEqType.HELMHOLTZ,
         mesh=NektarMeshSpec(source_mode="existing_xml", source_path="mesh.xml"),
         variables=["u"],
-        expansions=[NektarExpansionSpec(field="u", composite_ids=["0"], basis_type="MODIFIED", num_modes=4)],
+        expansions=[
+            NektarExpansionSpec(field="u", composite_ids=["0"], basis_type="MODIFIED", num_modes=4)
+        ],
         solver_info={"EQTYPE": "Helmholtz", "Projection": "Continuous"},
         parameters={"Lambda": 1},
         boundary_regions=[{"id": "0", "composite": "C[1]"}],

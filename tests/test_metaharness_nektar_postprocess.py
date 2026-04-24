@@ -39,9 +39,13 @@ def _make_solver_artifact(
         session_files=[str(run_dir / "session.xml")],
         field_files=[str(run_dir / name) for name in fld_files],
         log_files=[],
-        filter_output=FilterOutputSummary(checkpoint_files=[str(run_dir / name) for name in chk_files]),
+        filter_output=FilterOutputSummary(
+            checkpoint_files=[str(run_dir / name) for name in chk_files]
+        ),
         result_summary=result_summary or {"exit_code": 0, "timeout_seconds": 600},
-        postprocess_plan=postprocess_plan if postprocess_plan is not None else [{"type": "fieldconvert", "output": "solution.vtu"}],
+        postprocess_plan=postprocess_plan
+        if postprocess_plan is not None
+        else [{"type": "fieldconvert", "output": "solution.vtu"}],
         status="completed",
     )
 
@@ -53,7 +57,9 @@ class _FakeCompletedProcess:
         self.stderr = stderr
 
 
-def test_postprocess_runs_fieldconvert_for_field_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_postprocess_runs_fieldconvert_for_field_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     artifact = _make_solver_artifact(tmp_path, field_files=["solution.fld"])
     monkeypatch.setattr(
         "metaharness_ext.nektar.postprocess.shutil.which",
@@ -105,7 +111,9 @@ def test_postprocess_prefers_fld_over_chk(tmp_path: Path, monkeypatch: pytest.Mo
     assert "solution.fld" in commands[0][-2]
 
 
-def test_postprocess_falls_back_to_latest_checkpoint(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_postprocess_falls_back_to_latest_checkpoint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     artifact = _make_solver_artifact(
         tmp_path,
         checkpoint_files=["a.chk", "b.chk"],
@@ -128,7 +136,9 @@ def test_postprocess_falls_back_to_latest_checkpoint(tmp_path: Path, monkeypatch
     assert input_file.endswith("b.chk")
 
 
-def test_postprocess_marks_missing_binary_unavailable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_postprocess_marks_missing_binary_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     artifact = _make_solver_artifact(tmp_path, field_files=["solution.fld"])
     monkeypatch.setattr("metaharness_ext.nektar.postprocess.shutil.which", lambda name: None)
 
@@ -150,7 +160,9 @@ def test_postprocess_skips_when_no_input_exists(tmp_path: Path) -> None:
     assert step["fallback_reason"] == "postprocess_input_not_found"
 
 
-def test_postprocess_marks_nonzero_exit_failed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_postprocess_marks_nonzero_exit_failed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     artifact = _make_solver_artifact(tmp_path, field_files=["solution.fld"])
     monkeypatch.setattr(
         "metaharness_ext.nektar.postprocess.shutil.which",
@@ -242,7 +254,7 @@ def test_postprocess_surfaces_error_norms(tmp_path: Path, monkeypatch: pytest.Mo
         return _FakeCompletedProcess(
             returncode=0,
             stdout=(
-                "Written file: \"out.dat\"\n"
+                'Written file: "out.dat"\n'
                 "L 2 error (variable u) : 1.11262e-05\n"
                 "L inf error (variable u) : 1.28659e-05\n"
             ),
@@ -373,7 +385,7 @@ def test_postprocess_extracts_error_norms_from_real_fieldconvert_output(
         lambda name: "/usr/bin/FieldConvert",
     )
     real_output = (
-        "Writing: \"/tmp/out.vtu\"\n"
+        'Writing: "/tmp/out.vtu"\n'
         "Written file: /tmp/out.vtu\n"
         "L 2 error (variable x) : 6.45495\n"
         "L inf error (variable x) : 5\n"
@@ -427,7 +439,7 @@ def test_postprocess_extracts_error_norms_from_solver_stderr(
         lambda name: "/usr/bin/FieldConvert",
     )
     solver_style_output = (
-        "Writing: \"Helmholtz2D.fld\" (0.000166556s, XML)\n"
+        'Writing: "Helmholtz2D.fld" (0.000166556s, XML)\n'
         "-------------------------------------------\n"
         "Total Computation Time = 0.00107107s\n"
         "-------------------------------------------\n"
@@ -485,7 +497,9 @@ def test_postprocess_runs_fieldconvert_with_vorticity_module(
     artifact = _make_solver_artifact(
         tmp_path,
         field_files=["solution.fld"],
-        postprocess_plan=[{"type": "fieldconvert", "output": "vorticity.fld", "module": "vorticity"}],
+        postprocess_plan=[
+            {"type": "fieldconvert", "output": "vorticity.fld", "module": "vorticity"}
+        ],
     )
     monkeypatch.setattr(
         "metaharness_ext.nektar.postprocess.shutil.which",
@@ -517,7 +531,9 @@ def test_postprocess_runs_fieldconvert_with_extract_boundary_module(
     artifact = _make_solver_artifact(
         tmp_path,
         field_files=["solution.fld"],
-        postprocess_plan=[{"type": "fieldconvert", "output": "boundary_b0.dat", "module": "extract:bnd=0"}],
+        postprocess_plan=[
+            {"type": "fieldconvert", "output": "boundary_b0.dat", "module": "extract:bnd=0"}
+        ],
     )
     monkeypatch.setattr(
         "metaharness_ext.nektar.postprocess.shutil.which",
@@ -599,7 +615,6 @@ def test_postprocess_extracts_incns_mapping_convergence_metrics(tmp_path: Path) 
     assert metrics["incns_velocity_error"] == pytest.approx(3.5e-07)
 
 
-
 def test_postprocess_extracts_incns_newton_norm_metrics(tmp_path: Path) -> None:
     artifact = _make_solver_artifact(tmp_path, field_files=["solution.fld"])
     artifact.solver_family = NektarSolverFamily.INCNS
@@ -619,7 +634,6 @@ def test_postprocess_extracts_incns_newton_norm_metrics(tmp_path: Path) -> None:
     assert metrics["incns_l2norm_1"] == pytest.approx(9.5e-03)
     assert metrics["incns_infnorm_0"] == pytest.approx(2.0e-02)
     assert metrics["incns_newton_iterations"] == pytest.approx(5.0)
-
 
 
 def test_validator_surfaces_incns_convergence_metrics(tmp_path: Path) -> None:

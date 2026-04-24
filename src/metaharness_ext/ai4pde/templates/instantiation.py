@@ -18,7 +18,11 @@ def instantiate_template_for_task(
             continue
         if not can_instantiate_template(template):
             continue
-        selected_method = template.supported_methods[0] if template.supported_methods else SolverFamily.PINN_STRONG
+        selected_method = (
+            template.supported_methods[0]
+            if template.supported_methods
+            else SolverFamily.PINN_STRONG
+        )
         return template, {
             "selected_method": selected_method,
             "slot_bindings": {SOLVER_EXECUTOR_SLOT: selected_method.value},
@@ -33,14 +37,19 @@ def instantiate_template_for_task(
     }
 
 
-def apply_template_to_plan(plan: PDEPlan, template: PDETemplate | None, template_data: dict[str, object]) -> PDEPlan:
+def apply_template_to_plan(
+    plan: PDEPlan, template: PDETemplate | None, template_data: dict[str, object]
+) -> PDEPlan:
     updated = plan.model_copy(deep=True)
     if template is not None and updated.template_id is None:
         updated.template_id = template.template_id
     if template is not None and updated.graph_family == "ai4pde-minimal":
         updated.graph_family = f"template::{template.template_id}"
     selected_method = template_data["selected_method"]
-    if isinstance(selected_method, SolverFamily) and updated.selected_method == SolverFamily.PINN_STRONG:
+    if (
+        isinstance(selected_method, SolverFamily)
+        and updated.selected_method == SolverFamily.PINN_STRONG
+    ):
         updated.selected_method = selected_method
     template_slot_bindings = dict(template_data["slot_bindings"])
     updated.slot_bindings = {**template_slot_bindings, **updated.slot_bindings}

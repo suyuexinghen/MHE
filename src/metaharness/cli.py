@@ -137,11 +137,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     validate.set_defaults(func=_cmd_validate)
 
-    ai4pde_case = subparsers.add_parser("ai4pde-case", help="Run an AI4PDECase XML through the AI4PDE demo flow")
+    ai4pde_case = subparsers.add_parser(
+        "ai4pde-case", help="Run an AI4PDECase XML through the AI4PDE demo flow"
+    )
     ai4pde_case.add_argument("case", help="path to AI4PDECase XML")
     ai4pde_case.set_defaults(func=_cmd_ai4pde_case)
 
-    validate_case = subparsers.add_parser("validate-case", help="Validate an AI4PDECase XML via the case parser")
+    validate_case = subparsers.add_parser(
+        "validate-case", help="Validate an AI4PDECase XML via the case parser"
+    )
     validate_case.add_argument("case", help="path to AI4PDECase XML")
     validate_case.set_defaults(func=_cmd_validate_case)
 

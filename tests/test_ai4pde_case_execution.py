@@ -50,7 +50,9 @@ def test_case_driven_flow_uses_compiled_plan() -> None:
     assert reference_result.summary["kind"] == "literature"
     assert reference_result.summary["metric"] == "drag_lift_residual"
     assert validation_bundle.reference_comparison["status"] == "better_or_equal"
-    assert evidence_bundle.reference_comparison_refs == ["reference://reference-cylinder-flow-re100"]
+    assert evidence_bundle.reference_comparison_refs == [
+        "reference://reference-cylinder-flow-re100"
+    ]
     assert evidence_bundle.benchmark_snapshot_refs == ["benchmark://cylinder-flow-re100/baseline"]
 
 

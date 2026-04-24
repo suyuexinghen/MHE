@@ -65,7 +65,11 @@ _DEFAULT_CATALOG = {
         fixed_contracts=["physics_spec", "ValidationBundle"],
         variable_params=["routing_thresholds", "stopping_criteria"],
         required_validators=["residuals", "boundary_conditions"],
-        supported_methods=[SolverFamily.PINN_STRONG, SolverFamily.PINO, SolverFamily.CLASSICAL_HYBRID],
+        supported_methods=[
+            SolverFamily.PINN_STRONG,
+            SolverFamily.PINO,
+            SolverFamily.CLASSICAL_HYBRID,
+        ],
         risk_level=RiskLevel.YELLOW,
         reproducibility_requirements=["residual_trace"],
         benchmark_profile="fluid-forward",

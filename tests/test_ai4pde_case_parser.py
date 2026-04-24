@@ -18,8 +18,7 @@ def test_parse_ai4pde_case_xml_compiles_request_and_plan() -> None:
     assert task.task_id == "cylinder-flow-re100"
     assert task.problem_type == ProblemType.FORWARD
     assert task.goal == (
-        "forward:incompressible_navier_stokes:cylinder_in_channel:"
-        "classical_hybrid/nektar++"
+        "forward:incompressible_navier_stokes:cylinder_in_channel:classical_hybrid/nektar++"
     )
     assert task.budget.cpu_hours == 4.0
     assert task.risk_level == RiskLevel.YELLOW

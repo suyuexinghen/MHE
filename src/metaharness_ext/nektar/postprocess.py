@@ -177,7 +177,9 @@ class PostprocessComponent(HarnessComponent):
             return Path(artifact.filter_output.checkpoint_files[-1]).parent
         raise ValueError("Cannot resolve postprocess run directory from artifact")
 
-    def _select_input_file(self, artifact: NektarRunArtifact, step: dict[str, object]) -> str | None:
+    def _select_input_file(
+        self, artifact: NektarRunArtifact, step: dict[str, object]
+    ) -> str | None:
         explicit = step.get("input")
         if explicit:
             return str(explicit)
@@ -266,7 +268,9 @@ class PostprocessComponent(HarnessComponent):
                     found.append(p)
         return found
 
-    def _update_artifact_outputs(self, artifact: NektarRunArtifact, produced_files: list[str]) -> None:
+    def _update_artifact_outputs(
+        self, artifact: NektarRunArtifact, produced_files: list[str]
+    ) -> None:
         for path in produced_files:
             if path not in artifact.derived_files:
                 artifact.derived_files.append(path)

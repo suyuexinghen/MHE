@@ -84,7 +84,9 @@ def _render_geometry(plan: NektarSessionPlan) -> ET.Element:
             child = ET.SubElement(element_element, tag, {"ID": str(item["id"])})
             child.text = item.get(
                 "text",
-                _normalize_output_text(item.get("edges", item.get("faces", item.get("vertices", [])))),
+                _normalize_output_text(
+                    item.get("edges", item.get("faces", item.get("vertices", [])))
+                ),
             )
 
     if geometry.curved:
@@ -114,7 +116,9 @@ def _render_expansions(plan: NektarSessionPlan) -> ET.Element:
         if not isinstance(expansion.num_modes, int):
             raise NotImplementedError("Phase 1 renderer only supports integer NUMMODES")
         attributes = {
-            "COMPOSITE": ",".join(_normalize_composite_id(item) for item in expansion.composite_ids),
+            "COMPOSITE": ",".join(
+                _normalize_composite_id(item) for item in expansion.composite_ids
+            ),
             "NUMMODES": str(expansion.num_modes),
             "FIELDS": expansion.field,
             "TYPE": expansion.basis_type,

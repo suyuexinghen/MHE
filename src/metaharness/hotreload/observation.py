@@ -122,7 +122,9 @@ def forbidden_event_probe(forbidden_events: set[str]) -> ObservationProbe:
             if name in forbidden_events:
                 seen.append(name)
         if not seen:
-            return ObservationProbeResult(passed=True, evidence={"forbidden_events": sorted(forbidden_events)})
+            return ObservationProbeResult(
+                passed=True, evidence={"forbidden_events": sorted(forbidden_events)}
+            )
         return ObservationProbeResult(
             passed=False,
             reason="forbidden event observed",

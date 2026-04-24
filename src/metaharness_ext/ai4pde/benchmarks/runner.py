@@ -24,5 +24,7 @@ def run_candidate_benchmark(
         "candidate_residual_l2": candidate_residual,
         "improved": improved,
         "evaluation_snapshot": f"evaluation://{candidate_run.task_id}/{candidate_run.run_id}",
-        "graph_family": evidence_bundle.graph_metadata.get("graph_family", validation_bundle.summary.get("status", "unknown")),
+        "graph_family": evidence_bundle.graph_metadata.get(
+            "graph_family", validation_bundle.summary.get("status", "unknown")
+        ),
     }

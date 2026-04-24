@@ -42,7 +42,9 @@ def test_ai4pde_minimal_path_runs(examples_dir: Path) -> None:
     registry = _build_registry(manifest_dir)
     engine = ConnectionEngine(registry, GraphVersionStore())
     snapshot = parse_graph_xml(graphs_dir / "ai4pde-minimal.xml")
-    candidate, report = engine.stage(PendingConnectionSet(nodes=snapshot.nodes, edges=snapshot.edges))
+    candidate, report = engine.stage(
+        PendingConnectionSet(nodes=snapshot.nodes, edges=snapshot.edges)
+    )
     version = engine.commit("ai4pde-minimal", candidate, report)
 
     gateway = PDEGatewayComponent()
@@ -75,7 +77,9 @@ def test_ai4pde_baseline_path_runs(examples_dir: Path) -> None:
     registry = _build_registry(manifest_dir)
     engine = ConnectionEngine(registry, GraphVersionStore())
     snapshot = parse_graph_xml(graphs_dir / "ai4pde-baseline.xml")
-    candidate, report = engine.stage(PendingConnectionSet(nodes=snapshot.nodes, edges=snapshot.edges))
+    candidate, report = engine.stage(
+        PendingConnectionSet(nodes=snapshot.nodes, edges=snapshot.edges)
+    )
     version = engine.commit("ai4pde-baseline", candidate, report)
 
     gateway = PDEGatewayComponent()

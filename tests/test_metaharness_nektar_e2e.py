@@ -121,7 +121,11 @@ def _run_real_solver(
             checkpoint_files=checkpoint_files,
             error_norms=error_norms,
         ),
-        result_summary={"exit_code": result.returncode, "timeout_seconds": 600, "fallback_reason": None},
+        result_summary={
+            "exit_code": result.returncode,
+            "timeout_seconds": 600,
+            "fallback_reason": None,
+        },
         postprocess_plan=[
             {"type": "fieldconvert", "output": "solution.vtu"},
         ],
@@ -197,7 +201,9 @@ def test_helmholtz_2d_e2e(nektar_examples_available: None, tmp_path: Path) -> No
 
 
 @pytest.mark.nektar
-def test_helmholtz_1d_convergence_study_e2e(nektar_examples_available: None, tmp_path: Path) -> None:
+def test_helmholtz_1d_convergence_study_e2e(
+    nektar_examples_available: None, tmp_path: Path
+) -> None:
     component = ConvergenceStudyComponent()
     import asyncio
 
@@ -236,7 +242,9 @@ def test_helmholtz_1d_convergence_study_e2e(nektar_examples_available: None, tmp
 
 
 @pytest.mark.nektar
-def test_helmholtz_2d_convergence_study_e2e(nektar_examples_available: None, tmp_path: Path) -> None:
+def test_helmholtz_2d_convergence_study_e2e(
+    nektar_examples_available: None, tmp_path: Path
+) -> None:
     component = ConvergenceStudyComponent()
     import asyncio
 
