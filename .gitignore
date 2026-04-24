@@ -10,3 +10,5 @@ sessions_export_extra
 sessions_export
 .claude
 abacus_runs
+__pycache__
+iter.000000
