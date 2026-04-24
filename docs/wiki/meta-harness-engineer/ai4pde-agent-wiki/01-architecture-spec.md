@@ -367,17 +367,16 @@ pending mutation
 
 ## 7.5.4 PDE 专用模板库
 
-建议模板库详见 [05-template-library-and-self-growth.md](05-template-library-and-self-growth.md) 第 5.4 节的完整目录。初始版本至少包含：
+AI4PDE 的**模板目录以 [05-template-library-and-self-growth.md](05-template-library-and-self-growth.md) 第 5.4 节为唯一权威来源**；本节只定义模板系统在架构层必须满足的元数据与约束，不重复维护模板清单。
 
-- `ForwardSolidMechanicsTemplate`
-- `InverseParameterIdentificationTemplate`
-- `OperatorSurrogateTemplate`
-- `PINOHybridCorrectionTemplate`
-- `TopologyOptimizationTemplate`
-- `FailureTriageTemplate`
-- `EvidencePackagingTemplate`
+因此，新增、删减或重命名模板时，应先更新 `05-template-library-and-self-growth.md` 的 catalog，再回看本节是否需要调整模板机制本身。
 
-以及后续扩展的 `ForwardFluidMechanicsTemplate`、`ValidationBundleTemplate`、`CounterfactualComparisonTemplate` 等。
+当前模板体系按四类组织：
+
+- workflow templates
+- validation templates
+- failure triage templates
+- reporting templates
 
 每个模板应显式声明：
 
@@ -442,23 +441,25 @@ pending mutation
 
 ## 7.6.1 运行时核心槽位
 
-建议将 AI4PDE runtime 组织为稳定槽位：
+建议将 AI4PDE runtime 组织为以下 **canonical slots**：
 
-- `ProblemFormulator`
-- `MethodRouter`
-- `KnowledgeAdapter`
-- `GeometryAdapter`
-- `SolverExecutor`
-- `ReferenceSolver`
-- `PhysicsValidator`
-- `EvidenceManager`
-- `ObservabilityHub`
-- `AssetMemory`
-- `PolicyGuard`
+| Slot | 绑定策略 | 说明 |
+|---|---|---|
+| `ProblemFormulator` | worker-bound | 问题形式化与 task normalization |
+| `MethodRouter` | worker-bound | 方法选择与执行建议输出 |
+| `KnowledgeAdapter` | platform-managed | 外部知识注入与检索适配 |
+| `GeometryAdapter` | worker-bound | 几何与网格预处理 |
+| `SolverExecutor` | worker-bound | 主求解执行入口 |
+| `ReferenceSolver` | worker-bound | 基线 / 高保真参考求解 |
+| `PhysicsValidator` | worker-bound | 物理一致性与科学正确性验证 |
+| `EvidenceManager` | worker-bound | 证据打包、摘要与报告交付 |
+| `ObservabilityHub` | platform-managed | 可观测性基础设施 |
+| `AssetMemory` | platform-managed | 资产、失败模式与演化记忆 |
+| `PolicyGuard` | protected | 治理与风险控制边界 |
 
 每个槽位都是可替换组件，但必须遵守契约。
 
-> 各 slot 的完整数据模型定义见 [03-data-models.md](03-data-models.md)。
+> 各 slot 的完整数据模型定义见 [03-data-models.md](03-data-models.md)。模板对 slot 的使用约束见 [05-template-library-and-self-growth.md](05-template-library-and-self-growth.md) 第 5.5 节。
 
 #### Role-to-Slot 映射
 

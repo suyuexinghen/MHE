@@ -1,10 +1,23 @@
-# 08. DeepMD Roadmap
+# 04. DeepMD Roadmap
 
-> 状态：proposed | 面向 `metaharness_ext.deepmd` 的正式执行路线图
+> 状态：merged from blueprint + engine wiki | 面向 `metaharness_ext.deepmd` 的正式执行路线图
 
-## 8.1 推荐执行顺序
+## 4.1 当前实现快照
 
-建议执行顺序如下：
+截至当前代码基线，DeepMD roadmap 已不应再被阅读为纯未来规划：
+
+- DeePMD `train` / `freeze` / `compress` / `test` / `model_devi` / `neighbor_stat` 已实现
+- DP-GEN `run` / `simplify` / `autotest` 已实现
+- validator status 已覆盖 `trained`、`frozen`、`tested`、`compressed`、`model_devi_computed`、`neighbor_stat_computed`、`baseline_success`、`simplify_success`、`converged`、`autotest_validated` 等阶段性结果
+- evidence bundle、policy `allow` / `defer` / `reject`、study baseline 已存在
+- environment report 已能表达 workspace / machine root / remote / scheduler prerequisites
+- 当前主要剩余缺口，是继续与 strengthened MHE 的 promotion context、session event/store、manifest policy、scored evidence 与 provenance authority 做更完整对齐
+
+因此本路线图采用 **“已实现 / 待补齐” 混合结构**，而不是把所有阶段都写成 proposal。
+
+---
+
+## 4.2 推荐执行顺序
 
 ```text
 Phase 0: Environment Probe + DeePMD Minimal Train/Test Foundation
@@ -27,58 +40,54 @@ Phase 0: Environment Probe + DeePMD Minimal Train/Test Foundation
 
 ---
 
-## 8.2 Phase 0：Environment Probe + DeePMD Minimal Train/Test Foundation
+## 4.3 Phase 0：Environment Probe + DeePMD Minimal Train/Test Foundation
 
-### 8.2.1 目标
+> 状态：已完成
+
+### 目标
 
 先交付一个“可以检查 DeepMD 环境、生成 `input.json`、完成 train/freeze/compress/test 并返回结构化结果”的最小可用链路。
 
-### 8.2.2 任务
+### 已落地结果
 
-1. 新增 `MHE/src/metaharness_ext/deepmd/` 包骨架与 manifests
-2. 新增最小 `gateway.py`，负责接收 request 并规范化 `DeepMDTrainSpec`
-3. 在 `contracts.py` 中引入 DeepMD family-aware contracts
-4. 新增 `environment.py`，实现 `dp` / `dpgen` / `dpdata` / `python` / `lmp` probe
-5. 新增 `train_config_compiler.py`，把 typed spec 编译成受控 `input.json`
-6. 新增 `executor.py`，先支持 `train` / `freeze` / `compress` / `test`
-7. 新增 `validator.py`，区分 environment failure / runtime failure / tested
-8. 新增 DeepMD 定向测试
+- `metaharness_ext.deepmd` 包骨架与 manifests 已存在
+- `DeepMDTrainSpec` 与 family-aware contracts 已建立
+- `environment.py` 已实现 DeePMD / DP-GEN 环境探测，并产出 `DeepMDEnvironmentReport`
+- `train_config_compiler.py` 已能生成受控 `input.json`
+- `executor.py` 已支持 DeePMD 执行模式 `train` / `freeze` / `test` / `compress` / `model_devi` / `neighbor_stat`
+- `validator.py` 已能区分 `environment_invalid`、`workspace_failed`、`runtime_failed`、`validation_failed` 等状态，并对不同 mode 给出成功态
 
-### 8.2.3 交付物
-
-- `metaharness_ext.deepmd` 最小包骨架
-- DeepMD typed contracts
-- environment probe
-- 可生成 `input.json` 的 compiler
-- 可运行 DeePMD 基础命令的 executor
-- 结构化 validator 与单测
-
-### 8.2.4 验收标准
+### 验收标准
 
 - 能从 typed spec 生成稳定 `input.json`
-- 能明确报告 `dp` / `dpdata` / 数据目录缺失
+- 能明确报告关键二进制或数据目录缺失
 - 能区分配置错误、环境错误与训练错误
 - 能显式产出 checkpoint / frozen / compressed / test artifacts
 - 不需要真实大规模训练也能完成首批测试
 
 ---
 
-## 8.3 Phase 1：DeePMD Artifact & Diagnostics Strengthening
+## 4.4 Phase 1：DeePMD Artifact & Diagnostics Strengthening
 
-### 8.3.1 目标
+> 状态：已大体完成
+
+### 目标
 
 把 Phase 0 从“能运行 DeePMD”推进到“能结构化解释训练与测试结果”。
 
-### 8.3.2 任务
+### 已落地结果
 
-1. 新增 `diagnostics.py`
-2. 提取 `lcurve.out` 的最后一步与关键 RMSE
-3. 提取 `train.log` 中的环境、时间与版本线索
-4. 规范 frozen / compressed model 产物收集
-5. 在 validator 中加入最小科学判据
-6. 新增相关测试
+- 学习曲线与 RMSE 指标已可解析
+- frozen / compressed model 产物已规范收集
+- validator 已基于 run artifact + summary 做 mode-aware 判定
+- evidence bundle 已能稳定引用训练与测试产物
 
-### 8.3.3 验收标准
+### 仍待补齐
+
+- 与 runtime 统一 `ScoredEvidence` 形状对齐
+- 更正式的 provenance / checkpoint refs 语义
+
+### 验收标准
 
 - diagnostics 不再只看 return code
 - `lcurve.out` 与 `dp test` 输出可结构化提取
@@ -87,27 +96,24 @@ Phase 0: Environment Probe + DeePMD Minimal Train/Test Foundation
 
 ---
 
-## 8.4 Phase 2：DP-GEN Run Baseline
+## 4.5 Phase 2：DP-GEN Run Baseline
 
-### 8.4.1 目标
+> 状态：已完成
 
-把 DeePMD 单体链路扩展到 DP-GEN 的最小 `run` baseline，验证：
+### 目标
 
-```text
-param/machine compile -> workspace -> dpgen run -> iteration collect -> validate
-```
+把 DeePMD 单体链路扩展到 DP-GEN 的最小 `run` baseline。
 
-### 8.4.2 任务
+### 已落地结果
 
-1. 新增 `DPGenRunSpec` / `DPGenMachineSpec`
-2. 新增 `dpgen_param_compiler.py`
-3. 新增 `dpgen_machine_compiler.py`
-4. 新增 `workspace.py`
-5. 扩展 `executor.py` 支持 `dpgen run`
-6. 新增 `DPGenIterationCollector`
-7. 新增 DP-GEN baseline 测试
+- `DPGenRunSpec` / `DPGenMachineSpec` 已建立
+- `dpgen_param_compiler.py` / `dpgen_machine_compiler.py` 已建立
+- `workspace.py` 已支持 workspace 准备
+- executor 已支持 execution mode `dpgen_run`
+- iteration collector 已能解析 `record.dpgen` 与 iteration 目录
+- validator 已能区分 `workspace_failed`、`run_failed` 与 `baseline_success`
 
-### 8.4.3 验收标准
+### 验收标准
 
 - 能从 typed spec 生成稳定 `param.json` / `machine.json`
 - 能识别 `iter.000000/00.train/01.model_devi/02.fp`
@@ -116,21 +122,28 @@ param/machine compile -> workspace -> dpgen run -> iteration collect -> validate
 
 ---
 
-## 8.5 Phase 3：DP-GEN Simplify / Transfer Learning Baseline
+## 4.6 Phase 3：DP-GEN Simplify / Transfer Learning Baseline
 
-### 8.5.1 目标
+> 状态：已完成基础闭环，仍需继续对齐治理证据语义
+
+### 目标
 
 让 `simplify` / transfer-learning 进入同一套 typed workflow，支持 relabeling 风格迭代。
 
-### 8.5.2 任务
+### 已落地结果
 
-1. 定义 `DPGenSimplifySpec`
-2. 支持 `training_init_model`、trainable mask、pick/relabel 参数
-3. 扩展 executor 支持 `dpgen simplify`
-4. 在 collector 中支持 simplify iteration 语义
-5. 新增 transfer-learning / simplify 测试
+- `DPGenSimplifySpec` 已建立
+- `training_init_model`、`trainable_mask` 与 `relabeling` 已进入 typed workflow
+- executor 已支持 execution mode `dpgen_simplify`
+- collector / validator 已支持 simplify iteration 与 convergence clues
+- evidence / policy 已可表达 relabeling 与 simplify-not-converged warning
 
-### 8.5.3 验收标准
+### 仍待补齐
+
+- 把 simplify 证据进一步对齐 promotion / provenance 语义
+- 如需继续扩展 simplify study，优先先把 raw dict relabeling 收为 typed 子模型
+
+### 验收标准
 
 - simplify 进入同一套 gateway/compiler/executor/collector/validator 体系
 - 能识别 relabeling 任务与已收敛状态
@@ -138,22 +151,27 @@ param/machine compile -> workspace -> dpgen run -> iteration collect -> validate
 
 ---
 
-## 8.6 Phase 4：Autotest & Property Validation Layer
+## 4.7 Phase 4：Autotest & Property Validation Layer
 
-### 8.6.1 目标
+> 状态：已完成最小实现，仍需继续补齐治理整合
+
+### 目标
 
 把系统从“训练链可用”升级到“模型性质验证链可用”。
 
-### 8.6.2 任务
+### 已落地结果
 
-1. 定义 `DPGenAutotestSpec`
-2. 支持 `autotest make/run/post`
-3. 识别 EOS / elastic / vacancy / surface 等结果目录
-4. 结构化读取 `result.out` / `result.json`
-5. 把结果接入 `DeepMDEvidenceBundle`
-6. 新增 autotest 测试
+- `DPGenAutotestSpec` 已建立
+- autotest 结果已能以 `summary.autotest_properties` 的形式结构化进入 evidence bundle
+- validator 已能给出 `autotest_validated` 结论
+- policy 已能识别 autotest property evidence 不完整时的 `defer` 条件
 
-### 8.6.3 验收标准
+### 仍待补齐
+
+- 更正式的 property evidence -> scored evidence 映射
+- 与 session / provenance evidence path 的统一引用语义
+
+### 验收标准
 
 - 至少一类 autotest 结果可被结构化消费
 - evidence bundle 中包含性质验证证据
@@ -161,28 +179,32 @@ param/machine compile -> workspace -> dpgen run -> iteration collect -> validate
 
 ---
 
-## 8.7 Phase 5：Study / Mutation Layer
+## 4.8 Phase 5：Study / Mutation Layer
 
-### 8.7.1 目标
+> 状态：已建立 baseline，仍待补齐 `ScoredEvidence` / `BrainProvider` 等更上层接缝
+
+### 目标
 
 在稳定 baseline 之上，加入最小研究能力，让 MHE 可以系统比较 DeepMD / DP-GEN 配置。
 
-### 8.7.2 首批参数轴
+### 已落地结果
 
-- DeePMD：`sel`、`rcut`、network width、`numb_steps`
-- DP-GEN：`model_devi_f_trust_lo` / `hi`
-- exploration 温压 / 时长计划
-- simplify pick number / 冻结层级
+- `DeepMDMutationAxis` / `DeepMDStudySpec` / `DeepMDStudyReport` 已建立
+- 只允许对白名单字段做 typed mutation
+- study 已串联 compiler -> executor -> validator
+- study trial 已附带 `evidence_bundle` 与 `policy_report`
+- 当前文档只把 `study.py` 中 `_mutate_task(...)` 已实现的参数轴记为“已支持”：
+  - DeePMD：`numb_steps`、`rcut`、`rcut_smth`、`sel`
+  - DP-GEN run：`model_devi_f_trust_lo` / `model_devi_f_trust_hi`
+  - DP-GEN simplify：`relabeling.pick_number`
 
-### 8.7.3 任务
+### 仍待补齐
 
-1. 定义 `DeepMDMutationAxis` / `DeepMDStudySpec` / `DeepMDStudyReport`
-2. 仅允许对白名单字段做 typed mutation
-3. 串联 compiler -> executor -> diagnostics -> validator
-4. 输出结构化 study report
-5. 新增 study 测试
+- `ScoredEvidence` 统一输出
+- 与 `BrainProvider` / 更上层 evaluator seam 对齐
+- 更明确的 promotion-aware study evidence 语义
 
-### 8.7.4 验收标准
+### 验收标准
 
 - 至少一种参数轴可做多 trial sweep
 - study report 有推荐结果与理由
@@ -191,40 +213,56 @@ param/machine compile -> workspace -> dpgen run -> iteration collect -> validate
 
 ---
 
-## 8.8 Phase 6：HPC / Governance Hardening
+## 4.9 Phase 6：HPC / Governance Hardening
 
-### 8.8.1 目标
+> 状态：待对齐 strengthened MHE 的重点剩余项
+
+### 目标
 
 补强真实外部环境与高成本 relabeling 场景下的稳定性和治理边界。
 
-### 8.8.2 任务
+### 重点任务
 
-1. 扩展 `machine.json` 验证与 scheduler probe
+1. 继续扩展 `machine.json` 验证与 scheduler probe
 2. 增加远程 SSH / queue / resource failure 的稳定错误语义
 3. 引入高成本 `fp` 与长时训练审批 gate
 4. 引入 reproducibility / budget / relabeling 风险检查
-5. 明确 observation window 与 candidate promotion 语义
+5. 明确 observation window 与 candidate promotion 语义（当前仍属上层 runtime 对齐项，不应表述为 DeepMD contracts 已内建）
+6. 把 manifest `policy.credentials` / `policy.sandbox`、HPC / credential boundary 与当前 manifest 兼容策略写清楚
+7. 把 validation / evidence 与 session event、audit、provenance refs 的预期形状进一步对齐
+8. 视需要把 extension evidence 与 `ScoredEvidence`、`BrainProvider` seam 对齐，而不是继续停留在 extension-local report
+9. 把 DeepMD validation failure 系统映射为 runtime-level `ValidationIssue.blocks_promotion` 候选
 
-### 8.8.3 验收标准
+### 验收标准
 
 - 环境缺失时失败语义清晰
 - scheduler / remote root / source_list 错误不再混成训练失败
 - 高成本步骤可进入 policy gate
 - 外部环境差异不会被误判成“模型逻辑错误”
+- extension-local validation / evidence 能自然进入 runtime promotion authority
 
 ---
 
-## 8.9 测试路线图
+## 4.10 测试路线
 
 ### 单元测试优先级
 
 1. `test_metaharness_deepmd_environment.py`
-2. `test_metaharness_deepmd_compiler.py`
-3. `test_metaharness_deepmd_executor.py`
-4. `test_metaharness_deepmd_diagnostics.py`
-5. `test_metaharness_dpgen_compiler.py`
-6. `test_metaharness_dpgen_collector.py`
-7. `test_metaharness_deepmd_validator.py`
+2. `test_metaharness_deepmd_executor.py`
+3. `test_metaharness_dpgen_compiler.py`
+4. `test_metaharness_dpgen_collector.py`
+5. `test_metaharness_deepmd_validator.py`
+6. `test_metaharness_deepmd_evidence.py`
+7. `test_metaharness_deepmd_policy.py`
+8. `test_metaharness_deepmd_study.py`
+
+### governance-oriented coverage
+
+- promotion blocker 候选失败态是否被稳定表达
+- protected validator boundary 是否不会被普通组件语义绕开
+- DP-GEN iteration evidence、autotest property evidence 不完整时是否进入 `defer`
+- environment prerequisite / workspace prerequisite 是否能与 runtime governance 证据对齐
+- scored-evidence / provenance 引用是否保持稳定形状
 
 ### e2e 测试优先级
 
@@ -234,17 +272,9 @@ param/machine compile -> workspace -> dpgen run -> iteration collect -> validate
 4. Autotest property baseline
 5. 参数 sweep / study case
 
-### 回归保障
-
-每个 Phase 的 PR 至少应验证：
-
-- `pytest` 针对 DeepMD 扩展的目标测试
-- `ruff check` 零警告
-- 不破坏既有 MHE wiki / docs 导航
-
 ---
 
-## 8.10 里程碑
+## 4.11 里程碑
 
 ### M1：DeepMD Minimal Foundation
 
@@ -264,23 +294,23 @@ param/machine compile -> workspace -> dpgen run -> iteration collect -> validate
 
 ### M5：Autotest Layer
 
-交付：Phase 4 完成。至少一类性质验证结果可被结构化消费。
+交付：Phase 4 的最小实现已存在。至少一类性质验证结果可被结构化消费；后续重点转为把这些结果接到更完整的 governance / provenance path。
 
 ### M6：Study Layer
 
-交付：Phase 5 完成。至少一种参数轴可做 typed sweep。
+交付：Phase 5 的 baseline 已存在。至少一种参数轴可做 typed sweep；后续重点转为 scored evidence 与上层决策接缝。
 
 ### M7：Governance Hardening
 
-交付：Phase 6 完成。高成本步骤与外部环境治理更清晰稳健。
+交付：Phase 6 完成。高成本步骤与外部环境治理更清晰稳健，并与 strengthened MHE 的 promotion context、session evidence、manifest policy 和 provenance authority 一致。
 
 ---
 
-## 8.11 风险与取舍
+## 4.12 风险与取舍
 
 ### 高收益投入
 
-- `environment probe + controlled JSON compiler + diagnostics` 的投入最小、收益最大
+- `environment probe + controlled JSON compiler + diagnostics/evidence` 的投入最小、收益最大
 - 它们最早建立 DeepMD 接入的契约边界、环境边界与错误语义
 
 ### 高风险投入
@@ -289,6 +319,7 @@ param/machine compile -> workspace -> dpgen run -> iteration collect -> validate
 - 过早引入无约束 scheduler 编排
 - 过早做无约束 JSON mutation
 - 过早把 DP-GEN 当成通用 shell 平台
+- 在未对齐 runtime evidence shape 前就继续发散 extension-local report 类型
 
 ### 关键控制点
 
@@ -297,24 +328,16 @@ param/machine compile -> workspace -> dpgen run -> iteration collect -> validate
 - executor 不应知道过多业务级 scientific policy 细节
 - validator 不应承担 config compiler 职责
 - study 层不应绕过 typed spec 直接改 JSON
+- evidence / policy 不应形成绕开 runtime promotion authority 的私有决策面
 
 ---
 
-## 8.12 最终建议
+## 4.13 结论
 
-推荐按两轮推进：
+合并后的正式路线图应以 `deepmd-engine-wiki/05-roadmap.md` 的“当前实现快照 + 已实现/待补齐”结构为主，并吸收原 blueprint 路线图更清楚的 phase 定义与阶段边界。
 
-### 第一轮
+当前 DeepMD 的正确推进方式已经不是“从零实现扩展”，而是：
 
-- Phase 0：Environment Probe + DeePMD Minimal Train/Test Foundation
-- Phase 1：DeePMD Artifact & Diagnostics Strengthening
-- Phase 2：DP-GEN Run Baseline
-- Phase 3：DP-GEN Simplify / Transfer Learning Baseline
-
-### 第二轮
-
-- Phase 4：Autotest & Property Validation Layer
-- Phase 5：Study / Mutation Layer
-- Phase 6：HPC / Governance Hardening
-
-这一路线最符合当前 DeepModeling 生态的工程现实：其稳定控制面是 JSON，其执行面是 workspace + executable，其高价值信息集中在 artifacts、iteration 状态与科学验证证据，而这些正是 MHE 最擅长承接的部分。
+- 维护已有 DeePMD / DP-GEN / simplify / autotest / study baseline
+- 继续把 validator / evidence / policy / study 输出对齐到 promotion context、session evidence、provenance 与 scored evidence 主路径
+- 让文档、代码和测试同时承认这些能力已经存在，并明确剩余缺口在哪里

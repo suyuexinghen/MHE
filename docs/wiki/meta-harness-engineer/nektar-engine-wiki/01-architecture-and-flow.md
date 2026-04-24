@@ -1,5 +1,7 @@
 # 01. Architecture and Flow
 
+本页回答一个问题：**`metaharness_ext.nektar` 在 MHE 中到底承担什么角色，以及它如何把 Nektar++ 工作流压缩成可测试的扩展边界。**
+
 ## 1.1 目标与分层
 
 `metaharness_ext.nektar` 的核心目标，是把 Nektar++ 求解流程包装成一组可声明、可组合、可验证的 `HarnessComponent`。

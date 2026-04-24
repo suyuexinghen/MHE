@@ -1,5 +1,7 @@
 # 02. Data Contracts and Rendering
 
+本页回答一个问题：**哪些 typed contracts 构成了 Nektar 扩展的稳定控制面，以及 renderer 明确接受或拒绝哪些 XML surface。**
+
 ## 2.1 设计原则
 
 `metaharness_ext.nektar` 的实现高度依赖 Pydantic contract。当前包的运行稳定性，很大程度上来自四类对象的清晰分层：

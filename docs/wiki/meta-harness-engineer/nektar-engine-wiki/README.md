@@ -1,27 +1,72 @@
-# Nektar Engine 技术手册 / 软件 Wiki
+# Nektar Extension for MHE Wiki
 
-> 版本：v0.1 | 最后更新：2026-04-21
+> 版本：v1.0 | 最后更新：2026-04-24
 
-本目录是 `MHE/src/metaharness_ext/nektar` 当前实现的中文技术手册，面向以下读者：
+本目录只讨论 **如何在 `MHE` 中设计与理解 `metaharness_ext.nektar`**。
 
-- 需要理解 `MetaHarness` 中 `Nektar++` 扩展执行链路的研发人员
-- 需要维护 `session compiler / xml renderer / solver executor / postprocess / validator` 的工程师
-- 需要把新的 Nektar case、后处理模块或验证规则接入当前运行时的贡献者
-- 需要基于现有实现排障、审计或扩展真实求解流程的平台人员
+它聚焦于扩展层的稳定边界：architecture、contracts、execution semantics、postprocess / validation surface，以及 testing / extension invariants。
+
+本目录**不再承载**以下内容作为主线：
+
+- 分阶段实施细节
+- 里程碑与 roadmap 叙述
+- 文件级脚手架清单
+- 当前实现状态盘点与推进记录
+- 与设计主线混写的 blueprint / implementation plan 内容
+
+这些内容统一下沉到 `blueprint/` 目录中的正式文档。
 
 ---
 
-## 文档目录
+## 目录导航
 
-| 文档 | 主题 | 状态 |
+| 文档 | 主题 | 读者 |
 |---|---|---|
-| [01-Architecture and Flow](01-architecture-and-flow.md) | `metaharness_ext.nektar` 的模块职责、槽位、能力与端到端运行链路 | draft |
-| [02-Data Contracts and Rendering](02-data-contracts-and-rendering.md) | `ProblemSpec / SessionPlan / RunArtifact / ValidationReport` 以及 XML 渲染约束 | draft |
-| [03-Execution, Postprocess and Validation](03-execution-postprocess-and-validation.md) | 求解执行、`FieldConvert` 后处理、误差提取、IncNS 指标和验证逻辑 | draft |
-| [04-Testing and Extension Guide](04-testing-and-extension-guide.md) | 当前测试覆盖、真实 e2e 基线、扩展入口与后续演进建议 | draft |
-| [05-Nektar Next-Phase Blueprint](05-nektar-next-phase-blueprint.md) | 面向收敛研究、分析器实现、3D/复杂网格支持的下一阶段正式蓝图 | proposed |
-| [06-Nektar Next-Phase Roadmap](06-nektar-next-phase-roadmap.md) | 对三条方向的分阶段执行路线、里程碑、依赖与测试计划的正式路线图 | proposed |
-| [07-Analyzers Implementation Plan](07-analyzers-implementation-plan.md) | 将 roadmap 第一阶段拆成可直接执行的 analyzers 实施计划 | proposed |
+| [01-Architecture and Flow](01-architecture-and-flow.md) | `gateway -> compiler -> executor -> postprocess -> validator` 的组件链、槽位与能力边界 | 所有人 |
+| [02-Data Contracts and Rendering](02-data-contracts-and-rendering.md) | `ProblemSpec / SessionPlan / RunArtifact / ValidationReport` 与 XML rendering surface | 核心开发 / compiler 维护者 |
+| [03-Execution, Postprocess and Validation](03-execution-postprocess-and-validation.md) | solver execution、`FieldConvert` 后处理、error / convergence evidence 与 validator 语义 | 运行时工程师 / 平台工程师 |
+| [04-Testing and Extension Guide](04-testing-and-extension-guide.md) | 测试分层、review 边界、扩展入口与设计不变量 | reviewer / 测试维护者 |
+
+---
+
+## 术语约定
+
+- prose 中使用 **solver family**；代码字段写作 `solver_family`
+- prose 中使用 **session plan**；代码类型写作 `NektarSessionPlan`
+- prose 中使用 **run artifact**；代码类型写作 `NektarRunArtifact`
+- **postprocess** 指 solver 运行后的派生处理层；**validation** 指消费证据并给出结论的判定层
+- **evidence** 指日志、字段文件、误差范数、收敛指标与派生文件的统一证据面
+
+---
+
+## 设计原则
+
+`metaharness_ext.nektar` 的当前版本应被理解为：
+
+- **solver-specific** 的 typed extension
+- 以 **Pydantic contracts** 为稳定控制面
+- 以 **session XML + solver binary** 为执行面
+- 以 **artifact / metrics / logs** 为证据面
+- 以 **postprocess + validator** 为结果判定面
+
+因此本目录的写作重点是 **设计边界与工程语义**，而不是交付顺序或实施脚手架。
+
+---
+
+## 与 `blueprint/` 的分工
+
+Nektar 扩展的正式实施材料位于 `MHE/docs/wiki/meta-harness-engineer/blueprint/`：
+
+- `02-nektar-next-phase-blueprint.md`：正式设计蓝图
+- `02-nektar-next-phase-roadmap.md`：阶段路线与里程碑
+- `02-nektar-analyzers-implementation-plan.md`：分析器实现计划与验收面
+
+分工原则如下：
+
+- **本 wiki**：回答“这个扩展当前应如何被理解、设计与扩展”
+- **blueprint**：回答“下一阶段正式设计主张是什么”
+- **roadmap**：回答“按什么顺序推进”
+- **implementation plan**：回答“当前阶段具体做什么、怎么验收”
 
 ---
 
@@ -29,7 +74,7 @@
 
 `metaharness_ext.nektar` 不是通用的 Nektar++ Python SDK，也不是完整的 case authoring 系统；它是 `MetaHarness` 的一个 **solver-specific extension package**，目标是把受控的 Nektar++ 工作流纳入 `HarnessComponent` / manifest / slot 体系。
 
-它当前实现了一个 Phase 1/2 风格的受限执行链：
+它当前实现了一个受限但完整的 execution slice：
 
 ```text
 NektarGateway
@@ -56,23 +101,37 @@ NektarGateway
 
 ---
 
-## 阅读建议
+## 推荐阅读顺序
 
-### 如果你想快速理解当前实现做了什么
+### 想先理解扩展边界
 
-先看：[01-Architecture and Flow](01-architecture-and-flow.md)
+先看：[01-Architecture and Flow](01-architecture-and-flow.md) → [02-Data Contracts and Rendering](02-data-contracts-and-rendering.md)
 
-### 如果你要修改 contracts 或 XML 生成逻辑
-
-先看：[02-Data Contracts and Rendering](02-data-contracts-and-rendering.md)
-
-### 如果你要改 solver / FieldConvert / validator
+### 想理解运行与证据语义
 
 先看：[03-Execution, Postprocess and Validation](03-execution-postprocess-and-validation.md)
 
-### 如果你要新增能力或补测试
+### 想看测试与扩展边界
 
 先看：[04-Testing and Extension Guide](04-testing-and-extension-guide.md)
+
+### 想看下一阶段实施材料
+
+转到：`blueprint/02-nektar-next-phase-blueprint.md`、`blueprint/02-nektar-next-phase-roadmap.md`、`blueprint/02-nektar-analyzers-implementation-plan.md`
+
+---
+
+## 不在本目录展开的内容
+
+以下内容不再作为本目录主线：
+
+- Nektar++ 软件本体的完整背景综述
+- 下一阶段 blueprint / roadmap 的细化推进叙述
+- analyzers 实施拆解与当前推进记录
+- HPC 调度、分布式编排与大规模运行管理
+- 全量 XML schema 或通用 case authoring 教程
+
+本目录只保留 **设计与维护 `metaharness_ext.nektar` 所必需** 的内容。
 
 ---
 

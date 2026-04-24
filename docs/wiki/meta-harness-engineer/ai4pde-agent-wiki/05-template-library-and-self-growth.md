@@ -76,6 +76,8 @@
 
 ## 5.4 建议的初始模板目录
 
+本节是 **AI4PDE 模板 catalog 的唯一权威来源**。`01-architecture-spec.md` 只引用本节，不再重复维护模板清单。
+
 建议初始模板至少包括：
 
 - `ForwardSolidMechanicsTemplate`
@@ -96,7 +98,7 @@
 - `CounterfactualComparisonTemplate`
 - `EvidencePackagingTemplate`
 
-> **注意**：本目录是 01-architecture-spec.md 中模板列表的权威扩展源。两份文档的模板列表应保持同步。
+> **注意**：本目录就是 AI4PDE 的 authoritative template catalog。`01-architecture-spec.md` 不再维护独立模板列表，只引用本目录。
 
 ---
 
@@ -125,21 +127,35 @@ PDETemplate
 
 #### `supported_slots`
 
-模板允许绑定的槽位。`supported_slots` 示例（完整 canonical slot 列表）：
+模板允许绑定的槽位。**canonical slot 名称以 [01-architecture-spec.md](01-architecture-spec.md) 第 7.6.1 节为准**；本节只定义模板通常如何使用这些 slot。
 
-| Slot | 是否常用绑定 | 说明 |
+| Slot | 绑定策略 | 模板中是否常用 | 说明 |
+|---|---|---|---|
+| `ProblemFormulator` | worker-bound | ✅ | 前向/反问题模板通常需要自定义形式化逻辑 |
+| `MethodRouter` | worker-bound | ✅ | 核心路由 slot |
+| `KnowledgeAdapter` | platform-managed | ⬜ | 通常由平台默认提供 |
+| `GeometryAdapter` | worker-bound | ✅ | 几何预处理 |
+| `SolverExecutor` | worker-bound | ✅ | 核心求解 slot |
+| `ReferenceSolver` | worker-bound | ✅ | 高保真模板需要参考求解 |
+| `PhysicsValidator` | worker-bound | ✅ | 核心验证 slot |
+| `EvidenceManager` | worker-bound | ⬜ | 报告 / 证据模板通常会绑定 |
+| `ObservabilityHub` | platform-managed | ❌ | 平台基础设施，模板不绑定 |
+| `AssetMemory` | platform-managed | ❌ | 平台基础设施，模板不绑定 |
+| `PolicyGuard` | protected | ❌ | 受保护 slot，模板不绑定 |
+
+#### Role-to-Slot 映射（模板视角）
+
+| Worker Role | 默认绑定 Slot | 模板含义 |
 |---|---|---|
-| `ProblemFormulator` | ✅ | 前向/反问题模板通常需要自定义形式化逻辑 |
-| `MethodRouter` | ✅ | 核心路由 slot |
-| `KnowledgeAdapter` | ⬜ | 通常由平台默认提供 |
-| `GeometryAdapter` | ✅ | 几何预处理 |
-| `SolverExecutor` | ✅ | 核心求解 slot |
-| `ReferenceSolver` | ✅ | 高保真模板需要参考求解 |
-| `PhysicsValidator` | ✅ | 核心验证 slot |
-| `EvidenceManager` | ⬜ | 通常由平台默认提供 |
-| `ObservabilityHub` | ❌ | 平台基础设施，模板不绑定 |
-| `AssetMemory` | ❌ | 平台基础设施，模板不绑定 |
-| `PolicyGuard` | ❌ | 受保护 slot，模板不绑定 |
+| `ProblemFormulatorWorker` | `ProblemFormulator` | 决定任务形式化骨架 |
+| `MethodRouterWorker` | `MethodRouter` | 决定方法选择与回退路径 |
+| `GeometryWorker` | `GeometryAdapter` | 决定几何/网格处理骨架 |
+| `SolverWorker` | `SolverExecutor` | 决定主求解骨架 |
+| `ReferenceSolverWorker` | `ReferenceSolver` | 决定 baseline / reference 分支 |
+| `PhysicsValidatorWorker` | `PhysicsValidator` | 决定验证闭环骨架 |
+| `ReportWorker` | `EvidenceManager` | 决定证据打包与报告交付 |
+
+`PDECoordinator`、`KnowledgeAdapter`、`ObservabilityHub`、`AssetMemory`、`PolicyGuard` 不属于模板直接绑定的 worker-to-slot 范围：前者是管理层角色，后四者是平台管理或受保护能力。
 
 #### `fixed_contracts`
 

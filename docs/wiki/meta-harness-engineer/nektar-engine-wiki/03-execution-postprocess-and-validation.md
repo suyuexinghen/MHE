@@ -1,5 +1,7 @@
 # 03. Execution, Postprocess and Validation
 
+本页回答一个问题：**一次 Nektar session plan 如何变成可审计的运行证据，以及 validator 依赖哪些信号给出最终结论。**
+
 ## 3.1 执行器：`SolverExecutorComponent`
 
 `SolverExecutorComponent` 位于 `MHE/src/metaharness_ext/nektar/solver_executor.py:23`，是当前实现中最接近“真实运行时边界”的组件。

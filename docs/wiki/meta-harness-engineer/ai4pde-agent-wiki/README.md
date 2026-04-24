@@ -1,41 +1,73 @@
 # AI4PDE Agent 技术手册 / 软件 Wiki
 
-> 版本：v0.2 | 最后更新：2026-04-19
+> 版本：v1.0 | 最后更新：2026-04-24
 
-本目录是 `Aeloon` 中 `AI4PDE Agent` 子系统的独立中文技术手册，面向以下读者：
+本目录只讨论 **如何在 `MHE` 中设计 `AI4PDE Agent` 的 team runtime、scientific workflow 与受控演化边界**。
 
-- 需要设计或实现 AI4PDE 科学智能体的研发人员
-- 需要将 PDE 求解能力、团队运行时与元优化框架整合的架构师
-- 需要维护 AI4PDE workflow、模板库、验证器与治理机制的工程师
-- 需要部署、审计、排障长航时 PDE 科学任务的运维与平台人员
+它关注的是子系统级设计边界：runtime lifecycle、typed data models、scientific governance、template library 与 self-growth semantics。
+
+本目录**不再承载**以下内容作为主线：
+
+- 分阶段实施细节
+- 文件级脚手架清单
+- 当前实现状态盘点
+- roadmap / milestone 推进说明
+- 混合在设计文档中的 implementation plan 叙述
+
+这些内容统一下沉到 `blueprint/` 目录中的正式文档。
 
 ---
 
-## 文档目录
+## 目录导航
 
-| 文档 | 主题 | 状态 |
+| 文档 | 主题 | 读者 |
 |---|---|---|
-| [01-Architecture Spec](01-architecture-spec.md) | AI4PDE Team Runtime + Meta-Harness 的总体架构规范 | draft |
-| [02-Runtime Flow](02-runtime-flow.md) | 从任务形式化到 team 协作、求解、验证、回滚与交付的生命周期 | draft |
-| [03-Data Models](03-data-models.md) | Team、Task、Mailbox、Graph Version、Evidence、Template 等核心对象 | draft |
-| [04-Governance and Observability](04-governance-and-observability.md) | 科学治理不变量、预算、风险、审计、回放与观测分层 | draft |
-| [05-Template Library and Self-Growth](05-template-library-and-self-growth.md) | PDE 模板库、模板状态流转、自增长阶梯与失败记忆机制 | draft |
-| [06-Implementation Blueprint](06-implementation-blueprint.md) | 基于 MHE 落地 AI4PDE 域软件的分层实现蓝图 | draft |
-| [07-Scaffold Plan](07-scaffold-plan.md) | 面向仓库落地的文件级脚手架计划、职责划分与实现顺序 | draft |
-| [08-Development Roadmap](08-development-roadmap.md) | 将脚手架方案拆解为 milestone 驱动的执行任务与完成标准 | draft |
+| [01-架构规范](01-architecture-spec.md) | AI4PDE = Team Runtime + Meta-Harness + PDE Capability Fabric 的总体设计 | 所有人 |
+| [02-运行流程](02-runtime-flow.md) | 从任务形式化到 team 协作、求解、验证、交付与图版本演化的生命周期 | 架构师 / 运行时开发 |
+| [03-数据模型](03-data-models.md) | task、team、mailbox、graph version、evidence、template 等 typed object 边界 | 核心开发 / 存储维护者 |
+| [04-治理与可观测性](04-governance-and-observability.md) | 科学治理不变量、预算、风险分级、观察窗口、审计与回放 | 平台 / 治理 / reviewer |
+| [05-模板库与自增长](05-template-library-and-self-growth.md) | workflow template、状态流转、受控变体空间与失败记忆 | 架构师 / optimizer 维护者 |
 
 ---
 
-## 定位
+## 术语约定
 
-`AI4PDE Agent` 不是单纯的“PDE 求解工具代理”，而是一个结合了：
+- prose 中使用 **Team Runtime**；对象命名写作 `PDETeamFile`、`PDEWorkerTask`、`PDEMailboxMessage`
+- prose 中使用 **Meta-Harness**；图对象字段写作 `graph_version_id`、`template_id`、`instantiation_id`
+- prose 中使用 **scientific governance**；规则对象使用 invariant、risk level、budget gate 等术语
+- **candidate graph** 表示待验证的工作流图版本；**active graph** 表示当前承载生产任务的稳定图版本
+- **evidence bundle** 指一次科学任务交付所需的结构化证据集合；**provenance** 指结果的可追溯来源链
 
-- **Team Runtime**：多 worker 协作执行
-- **Meta-Harness**：受控自增长与工作流演化
-- **PDE Capability Fabric**：PINN / DEM / Operator / PINO / Classical Hybrid 求解能力
-- **Scientific Governance**：证据优先、预算控制、图版本回滚、可重放审计
+---
 
-的科学智能体子系统。
+## 设计原则
+
+`AI4PDE Agent` 的首版应被理解为：
+
+- **team-scoped** 的科学协作运行时
+- 以 **typed workflow + typed evidence** 为稳定控制面
+- 以 **planner / router / solver / validator** 为执行面
+- 以 **policy / budget / rollback** 为治理面
+- 以 **template library + controlled self-growth** 为演化面
+
+因此本目录的写作重点是 **设计边界与职责分层**，而不是交付顺序或实现脚手架。
+
+---
+
+## 与 `blueprint/` 的分工
+
+AI4PDE 的正式实施材料位于 `MHE/docs/wiki/meta-harness-engineer/blueprint/`：
+
+- `03-ai4pde-implementation-blueprint.md`：正式设计蓝图
+- `03-ai4pde-development-roadmap.md`：阶段路线与里程碑
+- `03-ai4pde-scaffold-plan.md`：实施计划、文件脚手架与验收面
+
+分工原则如下：
+
+- **本 wiki**：回答“这个子系统应如何被设计”
+- **blueprint**：回答“正式设计主张是什么”
+- **roadmap**：回答“按什么顺序推进”
+- **scaffold plan**：回答“当前阶段具体怎么做、改哪些文件、怎么验收”
 
 ---
 
@@ -49,49 +81,44 @@
 
 ---
 
-## 与 science-agent-wiki 的关系
+## 与 `science-agent-wiki` 的关系
 
-本文档目录是 [science-agent-wiki/07-ai4pde-team-runtime-meta-harness.md](../science-agent-wiki/07-ai4pde-team-runtime-meta-harness.md) 的展开版：
+本文档目录是 `science-agent-wiki/07-ai4pde-team-runtime-meta-harness.md` 的展开版：
 
-- 07 是综合架构概览，涵盖三层架构、Team Runtime、Meta-Harness、治理与演化路线
-- 本 wiki 将 07 的内容拆分为 5 个独立章节，各自深入展开
-- 两份文档应保持核心概念（不变量、槽位定义、模板目录、状态枚举）的一致性
-
----
-
-## 阅读建议
-
-### 如果你想快速理解 AI4PDE Agent 是什么
-
-先看：[01-Architecture Spec](01-architecture-spec.md)
-
-### 如果你关心多 worker 协作
-
-先看：[02-Runtime Flow](02-runtime-flow.md)
-
-### 如果你关心核心对象与持久化
-
-先看：[03-Data Models](03-data-models.md)
-
-### 如果你关心治理、审计与回放
-
-先看：[04-Governance and Observability](04-governance-and-observability.md)
-
-### 如果你关心工作流如何安全进化
-
-先看：[05-Template Library and Self-Growth](05-template-library-and-self-growth.md)
+- `07` 提供三层架构、Team Runtime、Meta-Harness 与治理的综合视图
+- 本 wiki 将其拆分为 5 个设计章节，分别讨论运行时、对象模型、治理与演化边界
+- 两份文档应保持核心概念（不变量、slot 定义、模板目录、状态枚举）的一致性
 
 ---
 
-## 术语表
+## 推荐阅读顺序
 
-| 术语 | 定义 |
-|---|---|
-| **PDE Capability Fabric** | 运行期求解能力层，由 11 个可替换 slot 组成 |
-| **Meta-Harness** | 系统演化运行时，负责图版本管理、策略审查与受控自增长 |
-| **Team Runtime** | 执行协作运行时，负责多 worker 团队的任务分配、消息与审批 |
-| **Evidence-First Delivery** | 证据先于结论的交付范式，所有结论必须绑定溯源与验证证据 |
-| **Slot** | 运行期可替换组件的稳定抽象槽位，通过契约（contract）定义输入输出 |
-| **Candidate Graph** | 待验证的工作流图版本，通过沙盒/影子验证后才能激活 |
-| **Observation Window** | 图版本切换后的监控期，用于检测退化并决定 stabilize 或 rollback |
-| **Protected Slot** | 受治理保护的槽位（PolicyGuard、EvidenceManager 等），普通优化器不可修改 |
+### 想先理解子系统边界
+
+先看：[01-架构规范](01-architecture-spec.md) → [02-运行流程](02-runtime-flow.md) → [03-数据模型](03-data-models.md)
+
+### 想理解治理与交付可信度
+
+先看：[04-治理与可观测性](04-governance-and-observability.md)
+
+### 想理解模板化演化与受控改进
+
+先看：[05-模板库与自增长](05-template-library-and-self-growth.md)
+
+### 想看实施材料
+
+转到：`blueprint/03-ai4pde-implementation-blueprint.md`、`blueprint/03-ai4pde-development-roadmap.md`、`blueprint/03-ai4pde-scaffold-plan.md`
+
+---
+
+## 不在本目录展开的内容
+
+以下内容不再作为本目录主线：
+
+- PDE 方法学教材式综述
+- PINN / DEM / Operator / PINO 的算法百科
+- 构建教程与环境兼容性细节
+- 文件级落地计划与当前实现盘点
+- 分阶段执行清单与 milestone 跟踪
+
+本目录只保留 **设计 `AI4PDE Agent` 所必需** 的内容。

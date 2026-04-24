@@ -1,5 +1,7 @@
 # 04. Testing and Extension Guide
 
+本页回答一个问题：**当前 Nektar 扩展靠哪些测试边界保持稳定，以及新增能力时应遵守哪些扩展与评审不变量。**
+
 ## 4.1 测试策略概览
 
 `metaharness_ext.nektar` 当前有一套相对完整的分层测试策略：
