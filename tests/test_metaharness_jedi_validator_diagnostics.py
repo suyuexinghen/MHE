@@ -43,6 +43,8 @@ class TestJediValidatorWithDiagnostics:
 
         assert report.passed is True
         assert report.status == "executed"
+        assert report.policy_decision == "allow"
+        assert report.blocking_reasons == []
         assert report.summary_metrics["ioda_groups_found"] == 3
         assert report.summary_metrics["ioda_groups_missing"] == 2
         assert report.summary_metrics["minimizer_iterations"] == 4.0
@@ -87,6 +89,8 @@ class TestJediValidatorWithDiagnostics:
 
         assert report.passed is False
         assert report.status == "runtime_failed"
+        assert report.policy_decision == "defer"
+        assert report.blocking_reasons == report.messages[:1]
         assert report.summary_metrics["ioda_groups_found"] == 2
         assert report.summary_metrics["ioda_groups_missing"] == 2
         assert "MetaData, ObsValue" in report.messages[-2]

@@ -103,6 +103,10 @@ def test_metaharness_jedi_manifests_are_valid() -> None:
         assert manifest.contracts.slots[0].slot == expected["slot"]
         assert manifest.contracts.outputs[0].name == expected["output"]
         assert sorted(manifest.all_provided_capabilities()) == sorted(expected["capabilities"])
+        assert manifest.policy is not None
+        assert manifest.policy.sandbox is not None
+        assert manifest.policy.credentials is not None
+        assert manifest.safety.sandbox_profile == manifest.policy.sandbox.tier
 
 
 def test_metaharness_jedi_manifest_entries_are_importable() -> None:

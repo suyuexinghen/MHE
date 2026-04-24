@@ -53,6 +53,8 @@ class _FakeExecutor:
             return_code=0,
             stdout_path="/tmp/stdout.log",
             stderr_path="/tmp/stderr.log",
+            output_files=["/tmp/output.nc"] if plan.execution_mode == "real_run" else [],
+            diagnostic_files=["/tmp/diagnostics.nc"] if plan.execution_mode == "real_run" else [],
             working_directory="/tmp/run",
             status="completed",
             result_summary={"exit_code": 0, self.metric_key: metric},
@@ -154,6 +156,9 @@ async def test_study_minimizes_variational_iterations_metric(tmp_path: Path) -> 
     assert [trial.axis_value for trial in report.trials] == [10, 20, 30]
     assert report.recommended_value == 20
     assert report.summary_metrics["best_final_cost_function"] == pytest.approx(3.0)
+    assert all(trial.evidence_bundle is not None for trial in report.trials)
+    assert all(trial.policy_report is not None for trial in report.trials)
+    assert all(trial.policy_report.decision == "allow" for trial in report.trials if trial.policy_report is not None)
 
 
 @pytest.mark.asyncio
@@ -395,6 +400,9 @@ async def test_study_continues_when_one_trial_raises(tmp_path: Path) -> None:
     assert failed_trial.metric_value is None
     assert failed_trial.validation.status == "runtime_failed"
     assert failed_trial.messages == ["Study trial failed: transient launcher failure"]
+    assert failed_trial.evidence_bundle is not None
+    assert failed_trial.policy_report is not None
+    assert failed_trial.policy_report.decision == "defer"
     assert report.recommended_value == 30
     assert report.summary_metrics["best_final_cost_function"] == pytest.approx(4.0)
 

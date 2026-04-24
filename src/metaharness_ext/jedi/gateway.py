@@ -4,6 +4,7 @@ from typing import Literal
 
 from metaharness.sdk.api import HarnessAPI
 from metaharness.sdk.base import HarnessComponent
+from metaharness.sdk.manifest import ComponentManifest
 from metaharness.sdk.runtime import ComponentRuntime
 from metaharness_ext.jedi.capabilities import CAP_JEDI_CASE_COMPILE
 from metaharness_ext.jedi.contracts import (
@@ -16,6 +17,10 @@ from metaharness_ext.jedi.types import JediExecutionMode
 
 
 class JediGatewayComponent(HarnessComponent):
+    def __init__(self, manifest: ComponentManifest | None = None) -> None:
+        self._manifest = manifest
+        self._runtime: ComponentRuntime | None = None
+
     async def activate(self, runtime: ComponentRuntime) -> None:
         self._runtime = runtime
 
@@ -40,7 +45,15 @@ class JediGatewayComponent(HarnessComponent):
         observation_paths: list[str] | None = None,
         working_directory: str | None = None,
         scientific_check: Literal["runtime_only", "rms_improves"] = "runtime_only",
+        subject_id: str | None = None,
+        credentials: dict[str, str] | None = None,
+        claims: dict[str, str] | None = None,
     ) -> JediVariationalSpec:
+        self._enforce_ingress_policy(
+            subject_id=subject_id,
+            credentials=credentials,
+            claims=claims,
+        )
         return JediVariationalSpec(
             task_id=task_id,
             executable=JediExecutableSpec(
@@ -74,7 +87,15 @@ class JediGatewayComponent(HarnessComponent):
         observation_paths: list[str] | None = None,
         working_directory: str | None = None,
         scientific_check: Literal["runtime_only", "ensemble_outputs_present"] = "runtime_only",
+        subject_id: str | None = None,
+        credentials: dict[str, str] | None = None,
+        claims: dict[str, str] | None = None,
     ) -> JediLocalEnsembleDASpec:
+        self._enforce_ingress_policy(
+            subject_id=subject_id,
+            credentials=credentials,
+            claims=claims,
+        )
         return JediLocalEnsembleDASpec(
             task_id=task_id,
             executable=JediExecutableSpec(
@@ -95,3 +116,29 @@ class JediGatewayComponent(HarnessComponent):
             expected_diagnostics=["posterior.out"],
             scientific_check=scientific_check,
         )
+
+    def _enforce_ingress_policy(
+        self,
+        *,
+        subject_id: str | None,
+        credentials: dict[str, str] | None,
+        claims: dict[str, str] | None,
+    ) -> None:
+        runtime = getattr(self, "_runtime", None)
+        manifest = getattr(self, "_manifest", None)
+        if runtime is None or manifest is None:
+            return
+        runtime.require_sandbox_tier(manifest.policy.sandbox.tier)
+        runtime.require_credentials(
+            subject_id=subject_id,
+            credentials=credentials,
+            requires_subject=manifest.policy.credentials.requires_subject,
+            allow_inline_credentials=manifest.policy.credentials.allow_inline_credentials,
+        )
+        required_claims = manifest.policy.credentials.required_claims
+        if not required_claims:
+            return
+        present_claims = set((claims or {}).keys())
+        missing = [claim for claim in required_claims if claim not in present_claims]
+        if missing:
+            raise ValueError("credential policy missing required claims: " + ", ".join(missing))

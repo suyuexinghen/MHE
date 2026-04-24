@@ -7,6 +7,7 @@ from metaharness.core.connection_engine import ConnectionEngine
 from metaharness.core.graph_versions import GraphVersionStore
 from metaharness.core.models import PendingConnectionSet
 from metaharness.sdk.loader import declare_component, load_manifest
+from metaharness.sdk.manifest import ComponentManifest, ComponentType, ContractSpec
 from metaharness.sdk.registry import ComponentRegistry
 from metaharness.sdk.runtime import ComponentRuntime
 from metaharness_ext.jedi.config_compiler import JediConfigCompilerComponent
@@ -22,6 +23,17 @@ JEDI_COMPONENTS = [
     "jedi_executor",
     "jedi_validator",
 ]
+
+
+def _jedi_gateway_manifest(**policy: object) -> ComponentManifest:
+    return ComponentManifest(
+        name="jedi_gateway",
+        version="0.1.0",
+        kind=ComponentType.CORE,
+        entry="metaharness_ext.jedi.gateway:JediGatewayComponent",
+        contracts=ContractSpec(),
+        policy=policy,
+    )
 
 
 def _build_registry(manifest_dir: Path) -> ComponentRegistry:
@@ -414,3 +426,42 @@ async def test_jedi_local_ensemble_real_run_happy_path_runs(
     assert any(path.endswith("ensemble_reference.json") for path in artifact.reference_files)
     assert validation.passed is True
     assert validation.status == "executed"
+
+
+@pytest.mark.asyncio
+async def test_jedi_gateway_enforces_subject_claims_and_sandbox_policy() -> None:
+    class _SandboxClient:
+        def supports_tier(self, tier) -> bool:
+            return tier.value == "gvisor"
+
+    gateway = JediGatewayComponent(
+        manifest=_jedi_gateway_manifest(
+            credentials={"requires_subject": True, "required_claims": ["scope"]},
+            sandbox={"tier": "gvisor"},
+        )
+    )
+    await gateway.activate(ComponentRuntime(sandbox_client=_SandboxClient()))
+
+    with pytest.raises(ValueError, match="requires subject_id"):
+        gateway.issue_task(background_path="/tmp/background.nc")
+
+    with pytest.raises(ValueError, match="missing required claims: scope"):
+        gateway.issue_task(
+            background_path="/tmp/background.nc",
+            subject_id="service:jedi",
+        )
+
+
+@pytest.mark.asyncio
+async def test_jedi_gateway_rejects_unsupported_sandbox_tier() -> None:
+    class _SandboxClient:
+        def supports_tier(self, tier) -> bool:
+            return False
+
+    gateway = JediGatewayComponent(
+        manifest=_jedi_gateway_manifest(sandbox={"tier": "gvisor"})
+    )
+    await gateway.activate(ComponentRuntime(sandbox_client=_SandboxClient()))
+
+    with pytest.raises(ValueError, match="sandbox policy requires tier 'gvisor'"):
+        gateway.issue_local_ensemble_task(background_path="/tmp/background.nc")

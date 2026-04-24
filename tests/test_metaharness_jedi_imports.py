@@ -10,11 +10,15 @@ from metaharness_ext.jedi import (
     CAP_JEDI_VALIDATE,
     CAP_JEDI_VALIDATE_ONLY,
     JEDI_EXPERIMENT_SPEC_ADAPTER,
+    JediEvidenceBundle,
+    JediEvidencePolicy,
+    JediEvidenceWarning,
     JediExecutableSpec,
     JediForecastSpec,
     JediHofXSpec,
     JediLocalEnsembleDASpec,
     JediMutationAxis,
+    JediPolicyReport,
     JediRunArtifact,
     JediRunPlan,
     JediRunPreprocessor,
@@ -65,6 +69,16 @@ def test_metaharness_jedi_contracts_round_trip() -> None:
     validation = JediValidationReport(
         task_id="task-1", run_id="run-1", passed=True, status="validated"
     )
+    evidence_warning = JediEvidenceWarning(code="warning-1", message="warning")
+    evidence_bundle = JediEvidenceBundle(
+        task_id="task-1",
+        run_id="run-1",
+        application_family="variational",
+        execution_mode="validate_only",
+        run=artifact,
+        validation=validation,
+    )
+    policy_report = JediPolicyReport(passed=True, decision="allow", reason="ok")
     study = JediStudySpec(
         study_id="study-1",
         task_id="task-1",
@@ -89,6 +103,10 @@ def test_metaharness_jedi_contracts_round_trip() -> None:
     assert JediRunPlan.model_validate(plan.model_dump()) == plan
     assert JediRunArtifact.model_validate(artifact.model_dump()) == artifact
     assert JediValidationReport.model_validate(validation.model_dump()) == validation
+    assert JediEvidenceWarning.model_validate(evidence_warning.model_dump()) == evidence_warning
+    assert JediEvidenceBundle.model_validate(evidence_bundle.model_dump()) == evidence_bundle
+    assert JediPolicyReport.model_validate(policy_report.model_dump()) == policy_report
+    assert JediEvidencePolicy is not None
     assert JediStudySpec.model_validate(study.model_dump()) == study
     assert JediStudyReport.model_validate(study_report.model_dump()) == study_report
 

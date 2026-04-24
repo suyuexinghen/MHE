@@ -16,7 +16,9 @@ from metaharness_ext.jedi.contracts import (
     JediVariationalSpec,
 )
 from metaharness_ext.jedi.diagnostics import JediDiagnosticsCollectorComponent
+from metaharness_ext.jedi.evidence import build_evidence_bundle
 from metaharness_ext.jedi.executor import JediExecutorComponent
+from metaharness_ext.jedi.policy import JediEvidencePolicy
 from metaharness_ext.jedi.slots import JEDI_STUDY_SLOT
 from metaharness_ext.jedi.validator import JediValidatorComponent
 
@@ -45,6 +47,7 @@ class JediStudyComponent(HarnessComponent):
     ) -> JediStudyReport:
         self._validate_axis(spec)
         trials: list[JediStudyTrial] = []
+        policy = JediEvidencePolicy()
         for value in spec.axis.values:
             try:
                 trial_task = self._mutate_task(spec, value)
@@ -52,6 +55,8 @@ class JediStudyComponent(HarnessComponent):
                 run = executor.execute_plan(plan)
                 diagnostic_summary = diagnostics.collect(run)
                 validation = validator.validate_run_with_diagnostics(run, diagnostic_summary)
+                evidence_bundle = build_evidence_bundle(run, validation, diagnostic_summary)
+                policy_report = policy.evaluate(evidence_bundle)
                 metric_value = self._extract_metric(validation, spec.metric_key)
                 trials.append(
                     JediStudyTrial(
@@ -63,6 +68,8 @@ class JediStudyComponent(HarnessComponent):
                         run=run,
                         diagnostics=diagnostic_summary,
                         validation=validation,
+                        evidence_bundle=evidence_bundle,
+                        policy_report=policy_report,
                         metric_value=metric_value,
                         passed=validation.passed,
                         messages=list(validation.messages),
@@ -85,6 +92,9 @@ class JediStudyComponent(HarnessComponent):
                     messages=[f"Study trial failed: {exc}"],
                     evidence_files=[],
                 )
+                diagnostic_summary = JediDiagnosticSummary()
+                evidence_bundle = build_evidence_bundle(run, validation, diagnostic_summary)
+                policy_report = policy.evaluate(evidence_bundle)
                 trials.append(
                     JediStudyTrial(
                         trial_id=trial_id,
@@ -93,8 +103,10 @@ class JediStudyComponent(HarnessComponent):
                         axis_value=value,
                         mutated_parameters=self._mutated_parameters(spec.axis.kind, value),
                         run=run,
-                        diagnostics=JediDiagnosticSummary(),
+                        diagnostics=diagnostic_summary,
                         validation=validation,
+                        evidence_bundle=evidence_bundle,
+                        policy_report=policy_report,
                         metric_value=None,
                         passed=False,
                         messages=list(validation.messages),

@@ -66,6 +66,8 @@ async def test_jedi_executor_builds_schema_command(tmp_path: Path, monkeypatch) 
     assert artifact.schema_path is not None
     assert report.passed is True
     assert report.status == "validated"
+    assert report.blocking_reasons == []
+    assert report.policy_decision == "allow"
 
 
 @pytest.mark.asyncio
@@ -93,6 +95,8 @@ async def test_jedi_executor_builds_validate_only_command(tmp_path: Path, monkey
     assert artifact.command == ["/usr/bin/qg4DVar.x", "--validate-only", "config.yaml"]
     assert report.passed is True
     assert report.status == "validated"
+    assert report.blocking_reasons == []
+    assert report.policy_decision == "allow"
 
 
 @pytest.mark.asyncio
@@ -256,6 +260,8 @@ async def test_jedi_executor_marks_missing_binary_as_environment_invalid(
     assert artifact.status == "unavailable"
     assert artifact.result_summary["fallback_reason"] == "binary_not_found"
     assert report.status == "environment_invalid"
+    assert report.blocking_reasons == report.messages
+    assert report.policy_decision == "reject"
 
 
 @pytest.mark.asyncio
@@ -285,6 +291,8 @@ async def test_jedi_executor_marks_timeout_as_runtime_failed(tmp_path: Path, mon
     assert artifact.status == "failed"
     assert artifact.result_summary["fallback_reason"] == "command_timeout"
     assert report.status == "runtime_failed"
+    assert report.blocking_reasons == report.messages
+    assert report.policy_decision == "defer"
 
 
 @pytest.mark.asyncio
@@ -314,6 +322,8 @@ async def test_jedi_executor_maps_nonzero_validate_only_to_runtime_failed(
     assert artifact.return_code == 2
     assert report.passed is False
     assert report.status == "runtime_failed"
+    assert report.blocking_reasons == report.messages
+    assert report.policy_decision == "defer"
 
 
 @pytest.mark.asyncio
@@ -368,3 +378,5 @@ def test_jedi_validator_rejects_completed_artifact_without_exit_code() -> None:
     assert report.passed is False
     assert report.status == "runtime_failed"
     assert "did not report an exit code" in report.messages[0]
+    assert report.blocking_reasons == report.messages
+    assert report.policy_decision == "defer"

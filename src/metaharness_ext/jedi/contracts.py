@@ -5,6 +5,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, TypeAdapter, field_validator, model_validator
 
+from metaharness.safety.gates import GateResult
 from metaharness_ext.jedi.types import (
     JediApplicationFamily,
     JediCostType,
@@ -237,6 +238,40 @@ class JediValidationReport(BaseModel):
     messages: list[str] = Field(default_factory=list)
     summary_metrics: dict[str, float | str] = Field(default_factory=dict)
     evidence_files: list[str] = Field(default_factory=list)
+    blocking_reasons: list[str] = Field(default_factory=list)
+    policy_decision: Literal["allow", "defer", "reject"] | None = None
+    prerequisite_evidence: dict[str, list[str]] = Field(default_factory=dict)
+    provenance_refs: list[str] = Field(default_factory=list)
+    checkpoint_refs: list[str] = Field(default_factory=list)
+
+
+class JediEvidenceWarning(BaseModel):
+    code: str
+    message: str
+    severity: Literal["info", "warning"] = "warning"
+    evidence: dict[str, Any] = Field(default_factory=dict)
+
+
+class JediEvidenceBundle(BaseModel):
+    task_id: str
+    run_id: str
+    application_family: JediApplicationFamily
+    execution_mode: JediExecutionMode
+    run: JediRunArtifact
+    validation: JediValidationReport | None = None
+    summary: JediDiagnosticSummary | None = None
+    evidence_files: list[str] = Field(default_factory=list)
+    warnings: list[JediEvidenceWarning] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class JediPolicyReport(BaseModel):
+    passed: bool
+    decision: Literal["allow", "defer", "reject"]
+    reason: str
+    warnings: list[JediEvidenceWarning] = Field(default_factory=list)
+    gates: list[GateResult] = Field(default_factory=list)
+    evidence: dict[str, Any] = Field(default_factory=dict)
 
 
 class JediMutationAxis(BaseModel):
@@ -275,6 +310,8 @@ class JediStudyTrial(BaseModel):
     run: JediRunArtifact
     diagnostics: JediDiagnosticSummary
     validation: JediValidationReport
+    evidence_bundle: JediEvidenceBundle | None = None
+    policy_report: JediPolicyReport | None = None
     metric_value: float | None = None
     passed: bool = False
     messages: list[str] = Field(default_factory=list)

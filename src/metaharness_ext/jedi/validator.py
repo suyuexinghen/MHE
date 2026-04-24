@@ -44,108 +44,77 @@ class JediValidatorComponent(HarnessComponent):
             ]
             if path is not None
         ]
+        prerequisite_evidence = self._coerce_prerequisite_evidence(
+            artifact.result_summary.get("prerequisite_evidence")
+        )
+        provenance_refs = self._coerce_string_list(artifact.result_summary.get("provenance_refs"))
+        checkpoint_refs = self._coerce_string_list(artifact.result_summary.get("checkpoint_refs"))
+
+        def build_report(
+            *,
+            passed: bool,
+            status: str,
+            summary_metrics: dict[str, float | str] | None = None,
+        ) -> JediValidationReport:
+            return JediValidationReport(
+                task_id=artifact.task_id,
+                run_id=artifact.run_id,
+                passed=passed,
+                status=status,
+                messages=list(messages),
+                summary_metrics=summary_metrics or {},
+                evidence_files=evidence_files,
+                blocking_reasons=self._blocking_reasons_for_status(status, messages),
+                policy_decision=self._policy_decision_for_status(status),
+                prerequisite_evidence=prerequisite_evidence,
+                provenance_refs=provenance_refs,
+                checkpoint_refs=checkpoint_refs,
+            )
 
         if artifact.status == "unavailable":
             messages.append(f"JEDI run unavailable: {fallback_reason}.")
-            return JediValidationReport(
-                task_id=artifact.task_id,
-                run_id=artifact.run_id,
-                passed=False,
-                status="environment_invalid",
-                messages=messages,
-                evidence_files=evidence_files,
-            )
+            return build_report(passed=False, status="environment_invalid")
 
         if fallback_reason == "command_timeout":
             messages.append("JEDI command timed out.")
-            return JediValidationReport(
-                task_id=artifact.task_id,
-                run_id=artifact.run_id,
-                passed=False,
-                status="runtime_failed",
-                messages=messages,
-                evidence_files=evidence_files,
-            )
+            return build_report(passed=False, status="runtime_failed")
 
         if artifact.return_code is None:
             messages.append("JEDI command did not report an exit code.")
-            return JediValidationReport(
-                task_id=artifact.task_id,
-                run_id=artifact.run_id,
-                passed=False,
-                status="runtime_failed",
-                messages=messages,
-                evidence_files=evidence_files,
-            )
+            return build_report(passed=False, status="runtime_failed")
 
         if artifact.return_code != 0 or artifact.status == "failed":
             messages.append(f"JEDI command exited with code {artifact.return_code}.")
-            return JediValidationReport(
-                task_id=artifact.task_id,
-                run_id=artifact.run_id,
-                passed=False,
-                status="runtime_failed",
-                messages=messages,
-                evidence_files=evidence_files,
-            )
+            return build_report(passed=False, status="runtime_failed")
 
         summary_metrics: dict[str, float | str] = {}
         if artifact.execution_mode == "schema":
             if artifact.schema_path is None:
                 messages.append("Schema output file was not produced.")
-                return JediValidationReport(
-                    task_id=artifact.task_id,
-                    run_id=artifact.run_id,
-                    passed=False,
-                    status="validation_failed",
-                    messages=messages,
-                    evidence_files=evidence_files,
-                )
+                return build_report(passed=False, status="validation_failed")
             messages.append("JEDI configuration validated successfully.")
             summary_metrics["schema_path"] = artifact.schema_path
-            return JediValidationReport(
-                task_id=artifact.task_id,
-                run_id=artifact.run_id,
+            return build_report(
                 passed=True,
                 status="validated",
-                messages=messages,
                 summary_metrics=summary_metrics,
-                evidence_files=evidence_files,
             )
 
         if artifact.execution_mode == "validate_only":
             messages.append("JEDI configuration validated successfully.")
-            return JediValidationReport(
-                task_id=artifact.task_id,
-                run_id=artifact.run_id,
+            return build_report(
                 passed=True,
                 status="validated",
-                messages=messages,
                 summary_metrics=summary_metrics,
-                evidence_files=evidence_files,
             )
 
         if not artifact.output_files:
             messages.append("JEDI real_run finished without a primary analysis output.")
-            return JediValidationReport(
-                task_id=artifact.task_id,
-                run_id=artifact.run_id,
-                passed=False,
-                status="validation_failed",
-                messages=messages,
-                evidence_files=evidence_files,
-            )
+            return build_report(passed=False, status="validation_failed")
 
         if not artifact.diagnostic_files and not artifact.reference_files:
             messages.append("JEDI real_run finished without diagnostics or reference evidence.")
-            return JediValidationReport(
-                task_id=artifact.task_id,
-                run_id=artifact.run_id,
-                passed=False,
-                status="validation_failed",
-                messages=messages,
-                evidence_files=evidence_files,
-            )
+            return build_report(passed=False, status="validation_failed")
 
         summary_metrics["primary_output"] = artifact.output_files[0]
         summary_metrics["diagnostic_count"] = float(len(artifact.diagnostic_files))
@@ -157,14 +126,10 @@ class JediValidatorComponent(HarnessComponent):
                 messages.append(
                     "JEDI real_run did not satisfy the minimum RMS improvement criterion."
                 )
-                return JediValidationReport(
-                    task_id=artifact.task_id,
-                    run_id=artifact.run_id,
+                return build_report(
                     passed=False,
                     status="validation_failed",
-                    messages=messages,
                     summary_metrics=summary_metrics,
-                    evidence_files=evidence_files,
                 )
             summary_metrics["rms_observation_minus_analysis"] = float(
                 artifact.result_summary["rms_observation_minus_analysis"]
@@ -178,14 +143,10 @@ class JediValidatorComponent(HarnessComponent):
         else:
             messages.append("JEDI real_run completed with runtime and artifact evidence.")
 
-        return JediValidationReport(
-            task_id=artifact.task_id,
-            run_id=artifact.run_id,
+        return build_report(
             passed=True,
             status="executed",
-            messages=messages,
             summary_metrics=summary_metrics,
-            evidence_files=evidence_files,
         )
 
     def validate_run_with_diagnostics(
@@ -265,6 +226,11 @@ class JediValidatorComponent(HarnessComponent):
             messages=enriched_messages,
             summary_metrics=enriched_metrics,
             evidence_files=deduped_files,
+            blocking_reasons=list(report.blocking_reasons),
+            policy_decision=report.policy_decision,
+            prerequisite_evidence=dict(report.prerequisite_evidence),
+            provenance_refs=list(report.provenance_refs),
+            checkpoint_refs=list(report.checkpoint_refs),
         )
 
     def _has_rms_improvement(self, result_summary: dict[str, object]) -> bool:
@@ -275,3 +241,30 @@ class JediValidatorComponent(HarnessComponent):
         if not isinstance(observation_minus_background, int | float):
             return False
         return float(observation_minus_analysis) < float(observation_minus_background)
+
+    def _blocking_reasons_for_status(self, status: str, messages: list[str]) -> list[str]:
+        if status in {"validated", "executed"}:
+            return []
+        return list(messages)
+
+    def _policy_decision_for_status(self, status: str) -> str:
+        if status in {"validated", "executed"}:
+            return "allow"
+        if status == "environment_invalid":
+            return "reject"
+        return "defer"
+
+    def _coerce_prerequisite_evidence(self, value: object) -> dict[str, list[str]]:
+        if not isinstance(value, dict):
+            return {}
+        evidence: dict[str, list[str]] = {}
+        for key, raw_paths in value.items():
+            if not isinstance(key, str) or not isinstance(raw_paths, list):
+                continue
+            evidence[key] = [path for path in raw_paths if isinstance(path, str)]
+        return evidence
+
+    def _coerce_string_list(self, value: object) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        return [item for item in value if isinstance(item, str)]

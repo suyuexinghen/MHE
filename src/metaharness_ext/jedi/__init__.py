@@ -19,12 +19,15 @@ from metaharness_ext.jedi.contracts import (
     JEDI_EXPERIMENT_SPEC_ADAPTER,
     JediDiagnosticSummary,
     JediEnvironmentReport,
+    JediEvidenceBundle,
+    JediEvidenceWarning,
     JediExecutableSpec,
     JediExperimentSpec,
     JediForecastSpec,
     JediHofXSpec,
     JediLocalEnsembleDASpec,
     JediMutationAxis,
+    JediPolicyReport,
     JediRunArtifact,
     JediRunPlan,
     JediStudyReport,
@@ -35,8 +38,10 @@ from metaharness_ext.jedi.contracts import (
 )
 from metaharness_ext.jedi.diagnostics import JediDiagnosticsCollectorComponent
 from metaharness_ext.jedi.environment import JediEnvironmentProbeComponent
+from metaharness_ext.jedi.evidence import build_evidence_bundle
 from metaharness_ext.jedi.executor import JediExecutorComponent
 from metaharness_ext.jedi.gateway import JediGatewayComponent
+from metaharness_ext.jedi.policy import JediEvidencePolicy
 from metaharness_ext.jedi.preprocessor import JediRunPreprocessor
 from metaharness_ext.jedi.slots import (
     JEDI_CONFIG_COMPILER_SLOT,
@@ -88,6 +93,9 @@ __all__ = [
     "JediDiagnosticsCollectorComponent",
     "JediEnvironmentProbeComponent",
     "JediEnvironmentReport",
+    "JediEvidenceBundle",
+    "JediEvidencePolicy",
+    "JediEvidenceWarning",
     "JediExecutableSpec",
     "JediExecutionMode",
     "JediExecutorComponent",
@@ -98,6 +106,7 @@ __all__ = [
     "JediLauncher",
     "JediLocalEnsembleDASpec",
     "JediMutationAxis",
+    "JediPolicyReport",
     "JediRunArtifact",
     "JediRunPlan",
     "JediRunPreprocessor",
@@ -113,6 +122,7 @@ __all__ = [
     "JediValidatorComponent",
     "JediVariationalSpec",
     "PROTECTED_SLOTS",
+    "build_evidence_bundle",
     "build_jedi_config",
     "render_jedi_yaml",
 ]
