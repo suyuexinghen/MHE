@@ -140,6 +140,9 @@ class JediExecutableSpec(BaseModel):
 - status taxonomy
 - summary metrics
 - evidence files
+- blocking reasons / policy decision
+- prerequisite evidence
+- candidate / graph version / session / audit / provenance handoff refs
 
 当前实现里，`JediValidationReport` 仍保持轻量字段面，但其语义已经不只是“本地报告是否好看”。更准确的定位是：
 

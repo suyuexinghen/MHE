@@ -93,7 +93,10 @@ JEDI workflow 的早期失败，很多并不是 YAML 逻辑错误，而是环境
 - `messages`
 - `summary_metrics`
 - `evidence_files`
-- `ready_prerequisites` / `missing_prerequisites` / `prerequisite_evidence`（来自 environment report，供上层一并消费）
+- `blocking_reasons` / `policy_decision`
+- `prerequisite_evidence`
+- `candidate_id` / `graph_version_id` / `session_id`
+- `session_events` / `audit_refs` / `provenance_refs`
 
 当前 evidence-first report 的目标也不只是“方便人看日志”，还要为上层保留最小治理锚点。对接 strengthened MHE 时，extension 侧 evidence 至少要预留承接以下引用面的能力：
 

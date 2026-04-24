@@ -27,6 +27,8 @@ request
   -> explicit preprocessing
   -> mode-aware execution
   -> validation report
+  -> evidence bundle + policy review
+  -> governance handoff
 ```
 
 这个顺序的设计意义在于：

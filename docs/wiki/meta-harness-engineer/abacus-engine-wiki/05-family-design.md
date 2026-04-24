@@ -13,7 +13,7 @@
 
 ---
 
-## 5.2 当前 family 集合
+## 5.2 当前 baseline family 集合
 
 当前在包与 contracts 层支持的 family 为：
 
@@ -22,7 +22,9 @@
 - `relax`
 - `md`
 
-它们不是整个 ABACUS 世界的完整分类，而是当前扩展的正式支持边界。
+它们不是整个 ABACUS 世界的完整分类，而是当前扩展**已经收敛到 typed surface 的正式支持边界**。
+
+这里的“支持”应理解为：family boundary、contracts 和 validator 语义已经被显式建模；不应自动读成“每个 family 的所有运行变体和高层治理接缝都已经完全开发完成”。
 
 ---
 
@@ -42,7 +44,7 @@
 
 ### 设计意义
 
-它是 ABACUS 扩展最自然的最小 baseline，因为最容易验证输入文件链、launcher 语义与输出目录证据面。
+它是 ABACUS 扩展当前最自然的最小 baseline，因为最容易验证输入文件链、launcher 语义与输出目录证据面；这表示实现优先级与验证便利性，不表示 `scf` 被提升为唯一长期语义中心。
 
 ---
 
@@ -110,6 +112,8 @@
 
 这样可以避免把 ABACUS-native workflow 与 DeepMD-native workflow 混成两套并行体系。
 
+同时也要保持当前语气边界：这表示 contracts 与 family model 已经明确把 `md + dp` 放在 `md` family 内解释，不表示所有相关 feature probe、artifact interpretation 与治理接缝都已经完全补齐。
+
 ---
 
 ## 5.8 family、mode 与 baseline 的关系
@@ -137,3 +141,5 @@
 - 现有 family + mode 组合是否已经无法自然表达
 
 只有这些问题有明确答案，才值得把它提升为新的一级 family。
+
+对仍在开发中的 ABACUS extension 来说，这条规则尤其重要：优先收紧现有 family 的真实边界，比过早扩大家族集合更有价值。

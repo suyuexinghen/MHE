@@ -24,7 +24,7 @@
 - 运行 `schema`、`validate_only` 与 `real_run`
 - 返回稳定的结构化 `JediEnvironmentReport` 与 `JediValidationReport`
 
-本阶段交付 **基础执行闭环**：显式 preprocessor、mode-aware execution、runtime evidence 归档、preprocessor manifest 记录与 evidence-first validation；但不进入 smoke policy 固化、不引入 richer diagnostics interpretation 或更高层 scientific acceptance checks。
+本阶段交付 **基础执行闭环**：显式 preprocessor、mode-aware execution、runtime evidence 归档、preprocessor manifest 记录与 evidence-first validation；当前实现还已具备 environment-gated smoke baseline recommendation 与最小 orchestration handoff 字段，但本计划不把 smoke policy 固化、richer diagnostics interpretation 或更高层 scientific acceptance checks 作为本阶段主验收面。
 
 本阶段完成后，系统应具备以下基础能力：
 
@@ -134,7 +134,7 @@
 - testinput / data path 未就位
 - YAML 结构非法
 
-smoke baseline policy、环境选择策略与更高层 scientific acceptance 仍留到 Phase 1+。
+smoke baseline policy 的固化与更高层 scientific acceptance 仍留到 Phase 1+；当前 Phase 0 只要求 environment probe 给出 `smoke_candidate` / `smoke_ready` 这类可复用决策输入。
 
 ### 1.4.4 environment probe 要先于 compiler / executor
 
@@ -493,6 +493,7 @@ class JediValidationReport(BaseModel):
 - 保持消息稳定且适合 agent / CLI 消费
 - 首版补出轻量 governance-bearing fields（`blocking_reasons` / `policy_decision` / `prerequisite_evidence` / refs）
 - 明确 `JediValidationReport` 是 runtime evidence handoff 面，而不是 extension-local 的一次性终端输出
+- 当前这些字段已可承接 orchestration identity 与后续 governance decision；下一 slice 再把 evidence/policy/governance adapter 串成独立闭环
 
 完成标志：
 
@@ -611,9 +612,112 @@ Phase 0 PR 合并前，必须满足：
 
 本实施计划完成后，下一份直接衔接的实施计划应覆盖 **Phase 1: Toy Smoke Policy + Evidence Strengthening**，重点增加：
 
+- 基于现有 `smoke_candidate` / `smoke_ready` 的 smoke policy 固化
 - `hofx` smoke baseline
-- environment-gated baseline selection policy
 - richer IODA 组级 diagnostics interpretation
+- evidence/policy/governance handoff 的独立闭环
 - `MHE/tests/test_metaharness_jedi_smoke.py`
 
 也就是说，Phase 0 的实现结果必须天然可复用于下一阶段，而不是做一次性脚手架。
+
+---
+
+## 1.12 下一阶段实施计划
+
+当前建议把下一阶段拆成两个紧邻的小 slice，并按以下顺序实施。
+
+### Slice A：新增 orchestration-level happy path
+
+#### 目标
+
+新增一条最小 happy-path 测试，把当前已存在的 JEDI 主链稳定串起来：
+
+```text
+gateway -> environment probe -> smoke policy -> compiler -> executor -> validator -> evidence/policy/governance
+```
+
+这一步重点验证“现有能力是否真的在同一条 orchestration 主链中协同工作”，而不是继续扩展新的底层 surface。
+
+#### 目标文件
+
+优先修改/新增：
+
+- `MHE/tests/test_metaharness_jedi_minimal_demo.py`
+- 或新增 `MHE/tests/test_metaharness_jedi_orchestration.py`
+- 如确有必要，再最小修改：
+  - `MHE/src/metaharness_ext/jedi/gateway.py`
+  - `MHE/src/metaharness_ext/jedi/smoke_policy.py`
+  - `MHE/src/metaharness_ext/jedi/governance.py`
+
+#### 实施步骤
+
+1. 选定最小 smoke-ready `JediEnvironmentReport` fixture
+2. 通过 `JediGatewayComponent.issue_smoke_task(...)` 生成 baseline task
+3. 用 compiler / executor / validator 跑通最小 happy path
+4. 构建 evidence bundle、policy report 与 governance handoff
+5. 断言 issued task、run artifact、validation、policy 与 governance 输出在同一条链上语义一致
+
+#### 验收标准
+
+- smoke issuance 只在 smoke-ready 环境下发生
+- issued task 与 smoke policy 推荐 family/binary 一致
+- validator / evidence / policy / governance handoff 在同一测试中全部可观察
+- 不引入新的大 contract 或宽抽象
+
+#### 建议验证
+
+- `pytest MHE/tests/test_metaharness_jedi_smoke.py`
+- `pytest MHE/tests/test_metaharness_jedi_governance.py`
+- `pytest MHE/tests/test_metaharness_jedi_minimal_demo.py` 或新增 orchestration test 文件
+- `ruff check MHE/src/metaharness_ext/jedi MHE/tests/test_metaharness_jedi_*.py`
+
+### Slice B：补强 richer fallback smoke selection
+
+#### 目标
+
+把当前 smoke selection 从简单的 family-to-binary mapping 补强为真正的 environment-gated fallback selection，按以下优先级在当前环境中选择 baseline：
+
+1. `hofx`
+2. `variational`
+3. `local_ensemble_da`
+4. `forecast`
+
+#### 目标文件
+
+优先修改：
+
+- `MHE/src/metaharness_ext/jedi/smoke_policy.py`
+- `MHE/src/metaharness_ext/jedi/environment.py`
+- `MHE/tests/test_metaharness_jedi_smoke_policy.py`
+- `MHE/tests/test_metaharness_jedi_environment.py`
+- `MHE/tests/test_metaharness_jedi_smoke.py`
+
+#### 实施步骤
+
+1. 明确每个 family 的最小 readiness facts
+2. 在 smoke policy 中实现按优先级逐项回退的选择逻辑
+3. 确保 fallback 只消费 readiness facts，不混入 scientific acceptance
+4. 为每个 fallback 分支补 focused tests
+5. 与 gateway smoke issuance 保持同一套 policy 入口
+
+#### 验收标准
+
+- smoke policy 能在多个 family 之间稳定回退
+- 缺失 observation/data/runtime prerequisites 时不会错误推荐更重 baseline
+- `hofx` / `variational` / `local_ensemble_da` / `forecast` 的 binary recommendation 与 family recommendation 保持一致
+- smoke selection 仍然只是 pre-execution selection layer，而不是 scientific success 判定层
+
+#### 建议验证
+
+- `pytest MHE/tests/test_metaharness_jedi_environment.py`
+- `pytest MHE/tests/test_metaharness_jedi_smoke_policy.py`
+- `pytest MHE/tests/test_metaharness_jedi_smoke.py`
+- `ruff check MHE/src/metaharness_ext/jedi/smoke_policy.py MHE/src/metaharness_ext/jedi/environment.py`
+
+### 顺序说明
+
+先做 Slice A，再做 Slice B。原因是：
+
+- Slice A 以更低成本确认当前独立切片已经形成可用 orchestration 主链
+- Slice B 再在这个主链上增强 smoke policy 的真实环境适配能力
+- 这样可以避免先把 fallback 逻辑做复杂，却缺少一条稳定的集成 happy-path 约束

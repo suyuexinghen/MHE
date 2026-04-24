@@ -40,7 +40,7 @@
 - prose 中使用 **execution mode**；代码字面量写作 `schema`、`validate_only`、`real_run`
 - prose 中使用 **validate-only**、**real run** 作为自然语言写法
 - **family** 表示扩展层支持的应用族边界；**baseline** 表示某个 family 下被选中的具体运行样例
-- **run artifact** 指一次运行产出的结构化证据集合；`evidence_files` 指 report 对外暴露的关键证据文件
+- **run artifact** 指一次运行产出的结构化证据集合；`evidence_files` 指 report 或 evidence bundle 对外暴露的关键证据文件
 
 ---
 

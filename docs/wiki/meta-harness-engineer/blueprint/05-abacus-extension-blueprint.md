@@ -10,9 +10,11 @@
 
 - `MHE/src/metaharness_ext/abacus/`
 - `MHE/tests/test_metaharness_abacus_*.py`
-- `MHE/docs/wiki/meta-harness-engineer/abacus-engine-wiki/04-extension-blueprint.md`
-- `MHE/docs/wiki/meta-harness-engineer/abacus-engine-wiki/05-roadmap.md`
-- `MHE/docs/wiki/meta-harness-engineer/abacus-engine-wiki/06-implementation-hardening-checklist.md`
+- `MHE/docs/wiki/meta-harness-engineer/blueprint/05-abacus-extension-blueprint.md`
+- `MHE/docs/wiki/meta-harness-engineer/blueprint/05-abacus-roadmap.md`
+- `MHE/docs/wiki/meta-harness-engineer/.trash/abacus-engine-wiki/04-extension-blueprint.md`
+- `MHE/docs/wiki/meta-harness-engineer/.trash/abacus-engine-wiki/05-roadmap.md`
+- `MHE/docs/wiki/meta-harness-engineer/.trash/abacus-engine-wiki/06-implementation-hardening-checklist.md`
 
 ABACUS 的运行模型可以概括为：
 
@@ -130,7 +132,8 @@ AbacusGateway
 - 区分 `environment_invalid` / `input_invalid` / `runtime_failed` / `validation_failed` / `executed`
 - 按 family 进行最小成功判定
 - 当前已是 protected governance component
-- 后续需要从 extension-local report 提升为 governance-grade output：issues / `blocks_promotion` / `ScoredEvidence` / canonical `evidence_refs`
+- 当前已输出 `issues`、`blocks_promotion`、`ScoredEvidence` 与 canonical `evidence_refs`
+- 成功校验当前表示可进入后续 review 的 governance-shaped baseline，而不等于直接 graph promotion
 
 ---
 

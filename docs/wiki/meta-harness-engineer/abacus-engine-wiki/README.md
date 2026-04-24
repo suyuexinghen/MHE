@@ -31,6 +31,8 @@
 | [05-family 设计](05-family-design.md) | `scf` / `nscf` / `relax` / `md` 与 `md+dp` 的 family 边界 | 架构师 / compiler 维护者 |
 | [06-封装与注册](06-packaging-and-registration.md) | 包结构、exports、capabilities、slots、manifest 与 protected boundary | 核心开发 / reviewer |
 | [07-范围与分工](07-scope-and-boundaries.md) | design wiki、blueprint、roadmap、`.trash` 与代码真相的职责分工 | 文档维护者 / reviewer |
+| [08-运行生命周期](08-runtime-lifecycle.md) | 从 task spec 到 `OUT.<suffix>/` 的 canonical lifecycle 与 family 差异 | 架构师 / 运行时工程师 |
+| [09-核心对象与 I/O 模型](09-core-objects-and-io-model.md) | `INPUT` / `STRU` / `KPT`、assets、output root、restart 与 evidence model | 核心开发 / reviewer |
 
 ---
 
@@ -93,6 +95,10 @@ ABACUS 扩展的正式实施材料位于 `MHE/docs/wiki/meta-harness-engineer/bl
 ### 想理解 family 与注册面
 
 先看：[05-family 设计](05-family-design.md) → [06-封装与注册](06-packaging-and-registration.md)
+
+### 想理解系统如何从输入走到结果
+
+先看：[08-运行生命周期](08-runtime-lifecycle.md) → [09-核心对象与 I/O 模型](09-core-objects-and-io-model.md)
 
 ### 想看正式实施材料
 

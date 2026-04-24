@@ -111,9 +111,9 @@ manifest 的主要目标不是“方便动态魔法”，而是：
 
 - `kind`：区分 `core` 与 `governance` 组件；当前 validator manifest 已属于 `governance`
 - `safety.protected`：标识 protected boundary；当前 validator 已是 protected component
-- `policy.credentials`：描述凭证/主体边界的预留 policy surface
-- `policy.sandbox`：描述 launcher / binary / sandbox 约束的 policy surface
-- legacy `safety.sandbox_profile`：作为兼容字段保留，但不应再被误解为完整 policy 模型
+- `policy.credentials`：描述凭证/主体边界的当前 policy surface
+- `policy.sandbox`：描述 launcher / binary / sandbox 约束的当前 policy surface
+- legacy `safety.sandbox_profile`：作为兼容字段保留，并与当前 `policy.sandbox.tier` 保持一致
 
 ---
 
