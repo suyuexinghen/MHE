@@ -45,7 +45,45 @@ def test_build_evidence_bundle_aggregates_run_validation_and_summary() -> None:
     assert "/tmp/extra.nc" in bundle.evidence_files
     assert bundle.evidence_files.count("/tmp/departures.json") == 1
     assert bundle.warnings == []
+    assert bundle.candidate_id == "run-1"
+    assert bundle.graph_version_id is None
+    assert bundle.session_id == "task-1"
+    assert bundle.session_events == []
+    assert bundle.audit_refs == []
     assert bundle.metadata["policy_decision"] == "allow"
+
+
+def test_build_evidence_bundle_preserves_validation_prerequisite_and_checkpoint_handoff() -> None:
+    run = JediRunArtifact(
+        task_id="task-handoff",
+        run_id="run-handoff",
+        application_family="variational",
+        execution_mode="validate_only",
+        command=["/usr/bin/qg4DVar.x", "--validate-only", "config.yaml"],
+        return_code=0,
+        stdout_path="/tmp/stdout.log",
+        stderr_path="/tmp/stderr.log",
+        working_directory="/tmp/run",
+        status="completed",
+    )
+    validation = JediValidationReport(
+        task_id="task-handoff",
+        run_id="run-handoff",
+        passed=True,
+        status="validated",
+        policy_decision="allow",
+        prerequisite_evidence={"workspace testinput": ["/tmp/testinput"]},
+        checkpoint_refs=["checkpoint://jedi/prerequisite/workspace-testinput"],
+    )
+
+    bundle = build_evidence_bundle(run, validation)
+
+    assert bundle.audit_refs == []
+    assert bundle.validation is not None
+    assert bundle.validation.prerequisite_evidence == {"workspace testinput": ["/tmp/testinput"]}
+    assert bundle.validation.checkpoint_refs == [
+        "checkpoint://jedi/prerequisite/workspace-testinput"
+    ]
 
 
 def test_build_evidence_bundle_warns_for_incomplete_real_run_evidence() -> None:

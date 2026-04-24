@@ -57,7 +57,14 @@ class _FakeExecutor:
             diagnostic_files=["/tmp/diagnostics.nc"] if plan.execution_mode == "real_run" else [],
             working_directory="/tmp/run",
             status="completed",
-            result_summary={"exit_code": 0, self.metric_key: metric},
+            result_summary={
+                "exit_code": 0,
+                self.metric_key: metric,
+                "candidate_id": plan.candidate_id,
+                "graph_version_id": plan.graph_version_id,
+                "session_id": plan.session_id,
+                "audit_refs": list(plan.audit_refs),
+            },
         )
 
 
@@ -102,6 +109,10 @@ class _FakeValidator:
             status="executed" if self.passed else "validation_failed",
             summary_metrics=summary_metrics,
             evidence_files=[],
+            candidate_id=artifact.result_summary.get("candidate_id"),
+            graph_version_id=artifact.result_summary.get("graph_version_id"),
+            session_id=artifact.result_summary.get("session_id"),
+            audit_refs=list(artifact.result_summary.get("audit_refs", [])),
         )
 
 
@@ -135,10 +146,18 @@ async def test_study_minimizes_variational_iterations_metric(tmp_path: Path) -> 
     diagnostics = _FakeDiagnostics()
     validator = _FakeValidator()
 
+    base_task = _build_variational_spec().model_copy(
+        update={
+            "candidate_id": "candidate-study-1",
+            "graph_version_id": 21,
+            "session_id": "session-study-1",
+            "audit_refs": ["audit-record:study-1"],
+        }
+    )
     spec = JediStudySpec(
         study_id="study-1",
         task_id="jedi-study-task",
-        base_task=_build_variational_spec(),
+        base_task=base_task,
         axis=JediMutationAxis(kind="variational_iterations", values=[10, 20, 30]),
         metric_key="final_cost_function",
         goal="minimize",
@@ -159,6 +178,10 @@ async def test_study_minimizes_variational_iterations_metric(tmp_path: Path) -> 
     assert all(trial.evidence_bundle is not None for trial in report.trials)
     assert all(trial.policy_report is not None for trial in report.trials)
     assert all(trial.policy_report.decision == "allow" for trial in report.trials if trial.policy_report is not None)
+    assert all(trial.validation.candidate_id == "candidate-study-1" for trial in report.trials)
+    assert all(trial.validation.graph_version_id == 21 for trial in report.trials)
+    assert all(trial.validation.session_id == "session-study-1" for trial in report.trials)
+    assert all(trial.validation.audit_refs == ["audit-record:study-1"] for trial in report.trials)
 
 
 @pytest.mark.asyncio

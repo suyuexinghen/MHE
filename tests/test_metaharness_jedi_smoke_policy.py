@@ -62,6 +62,25 @@ class TestJediSmokePolicyComponent:
         assert policy.recommended_binary is None
         assert "Environment not smoke-ready" in policy.reason
 
+    def test_evaluate_environment_reports_missing_readiness_fields_without_messages(self) -> None:
+        env = JediEnvironmentReport(
+            binary_available=True,
+            launcher_available=True,
+            shared_libraries_resolved=False,
+            required_paths_present=True,
+            workspace_testinput_present=True,
+            data_paths_present=True,
+            data_prerequisites_ready=False,
+            smoke_candidate="variational",
+            smoke_ready=False,
+        )
+
+        ready, reason = JediSmokePolicyComponent().evaluate_environment(env)
+
+        assert ready is False
+        assert "shared_libraries_resolved" in reason
+        assert "data_prerequisites_ready" in reason
+
     def test_maps_local_ensemble_da_to_letkf_binary(self) -> None:
         env = JediEnvironmentReport(
             binary_available=True,

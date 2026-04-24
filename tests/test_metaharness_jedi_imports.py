@@ -15,6 +15,7 @@ from metaharness_ext.jedi import (
     JediEvidenceWarning,
     JediExecutableSpec,
     JediForecastSpec,
+    JediGovernanceAdapter,
     JediHofXSpec,
     JediLocalEnsembleDASpec,
     JediMutationAxis,
@@ -121,6 +122,7 @@ def test_metaharness_jedi_exports_exist() -> None:
     assert CAP_JEDI_VALIDATE in CANONICAL_CAPABILITIES
     assert callable(build_jedi_config)
     assert callable(render_jedi_yaml)
+    assert JediGovernanceAdapter is not None
     assert JediRunPreprocessor is not None
 
 

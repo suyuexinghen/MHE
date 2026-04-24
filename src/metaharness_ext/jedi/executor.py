@@ -14,7 +14,7 @@ from metaharness_ext.jedi.capabilities import (
     CAP_JEDI_SCHEMA,
     CAP_JEDI_VALIDATE_ONLY,
 )
-from metaharness_ext.jedi.contracts import JediRunArtifact, JediRunPlan
+from metaharness_ext.jedi.contracts import JediEnvironmentReport, JediRunArtifact, JediRunPlan
 from metaharness_ext.jedi.preprocessor import JediRunPreprocessor
 from metaharness_ext.jedi.slots import JEDI_EXECUTOR_SLOT
 
@@ -59,7 +59,11 @@ class JediExecutorComponent(HarnessComponent):
         api.provide_capability(CAP_JEDI_VALIDATE_ONLY)
         api.provide_capability(CAP_JEDI_REAL_RUN)
 
-    def execute_plan(self, plan: JediRunPlan) -> JediRunArtifact:
+    def execute_plan(
+        self,
+        plan: JediRunPlan,
+        environment_report: JediEnvironmentReport | None = None,
+    ) -> JediRunArtifact:
         run_dir = self._resolve_run_dir(plan)
         try:
             prepared_inputs = JediRunPreprocessor().prepare(plan, run_dir)
@@ -78,10 +82,11 @@ class JediExecutorComponent(HarnessComponent):
                 return_code=None,
                 status="unavailable",
                 prepared_inputs=[],
-                result_summary={
-                    "fallback_reason": "missing_required_runtime_path",
-                    "exit_code": None,
-                },
+                result_summary=self._base_result_summary(
+                    fallback_reason="missing_required_runtime_path",
+                    exit_code=None,
+                    environment_report=environment_report,
+                ),
             )
 
         resolved_binary = self._resolve_binary(plan.executable.binary_name)
@@ -100,7 +105,11 @@ class JediExecutorComponent(HarnessComponent):
                 return_code=None,
                 status="unavailable",
                 prepared_inputs=prepared_inputs,
-                result_summary={"fallback_reason": "binary_not_found", "exit_code": None},
+                result_summary=self._base_result_summary(
+                    fallback_reason="binary_not_found",
+                    exit_code=None,
+                    environment_report=environment_report,
+                ),
             )
 
         resolved_launcher: str | None = None
@@ -121,7 +130,11 @@ class JediExecutorComponent(HarnessComponent):
                     return_code=None,
                     status="unavailable",
                     prepared_inputs=prepared_inputs,
-                    result_summary={"fallback_reason": "launcher_not_found", "exit_code": None},
+                    result_summary=self._base_result_summary(
+                        fallback_reason="launcher_not_found",
+                        exit_code=None,
+                        environment_report=environment_report,
+                    ),
                 )
 
         command = self._build_command(plan, resolved_binary, resolved_launcher)
@@ -153,7 +166,11 @@ class JediExecutorComponent(HarnessComponent):
                 return_code=None,
                 status="failed",
                 prepared_inputs=prepared_inputs,
-                result_summary={"fallback_reason": "command_timeout", "exit_code": None},
+                result_summary=self._base_result_summary(
+                    fallback_reason="command_timeout",
+                    exit_code=None,
+                    environment_report=environment_report,
+                ),
             )
 
         stdout_path, stderr_path = self._write_logs(
@@ -171,8 +188,39 @@ class JediExecutorComponent(HarnessComponent):
             return_code=result.returncode,
             status=status,
             prepared_inputs=prepared_inputs,
-            result_summary={"fallback_reason": None, "exit_code": result.returncode},
+            result_summary=self._base_result_summary(
+                fallback_reason=None,
+                exit_code=result.returncode,
+                environment_report=environment_report,
+            ),
         )
+
+    def _base_result_summary(
+        self,
+        *,
+        fallback_reason: str | None,
+        exit_code: int | None,
+        environment_report: JediEnvironmentReport | None,
+    ) -> dict[str, object]:
+        summary: dict[str, object] = {
+            "fallback_reason": fallback_reason,
+            "exit_code": exit_code,
+        }
+        if environment_report is None:
+            return summary
+        summary["prerequisite_evidence"] = {
+            prerequisite: list(paths)
+            for prerequisite, paths in environment_report.prerequisite_evidence.items()
+        }
+        if environment_report.ready_prerequisites:
+            summary["checkpoint_refs"] = [
+                f"checkpoint://jedi/prerequisite/{self._checkpoint_slug(prerequisite)}"
+                for prerequisite in environment_report.ready_prerequisites
+            ]
+        return summary
+
+    def _checkpoint_slug(self, value: str) -> str:
+        return re.sub(r"[^a-z0-9]+", "-", value.strip().lower()).strip("-")
 
     def _resolve_run_dir(self, plan: JediRunPlan) -> Path:
         runtime = getattr(self, "_runtime", None)
@@ -294,6 +342,10 @@ class JediExecutorComponent(HarnessComponent):
             result_summary,
             scientific_check=plan.scientific_check,
             diagnostic_files=diagnostic_files,
+            candidate_id=plan.candidate_id,
+            graph_version_id=plan.graph_version_id,
+            session_id=plan.session_id,
+            audit_refs=plan.audit_refs,
         )
         return JediRunArtifact(
             task_id=plan.task_id,
@@ -321,8 +373,19 @@ class JediExecutorComponent(HarnessComponent):
         *,
         scientific_check: str,
         diagnostic_files: list[str],
+        candidate_id: str | None,
+        graph_version_id: int | None,
+        session_id: str | None,
+        audit_refs: list[str],
     ) -> dict[str, object]:
-        summary = {**result_summary, "scientific_check": scientific_check}
+        summary = {
+            **result_summary,
+            "scientific_check": scientific_check,
+            "candidate_id": candidate_id,
+            "graph_version_id": graph_version_id,
+            "session_id": session_id,
+            "audit_refs": list(audit_refs),
+        }
         if scientific_check != "rms_improves":
             return summary
 

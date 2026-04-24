@@ -4,8 +4,20 @@ from metaharness.sdk.api import HarnessAPI
 from metaharness.sdk.base import HarnessComponent
 from metaharness.sdk.runtime import ComponentRuntime
 from metaharness_ext.jedi.capabilities import CAP_JEDI_SMOKE_POLICY
-from metaharness_ext.jedi.contracts import JediEnvironmentReport, JediSmokePolicyReport
+from metaharness_ext.jedi.contracts import (
+    JediEnvironmentReport,
+    JediSmokePolicyReport,
+)
 from metaharness_ext.jedi.slots import JEDI_SMOKE_POLICY_SLOT
+
+_SMOKE_READINESS_FIELDS = (
+    "binary_available",
+    "launcher_available",
+    "shared_libraries_resolved",
+    "required_paths_present",
+    "workspace_testinput_present",
+    "data_prerequisites_ready",
+)
 
 
 class JediSmokePolicyComponent(HarnessComponent):
@@ -28,12 +40,13 @@ class JediSmokePolicyComponent(HarnessComponent):
         api.provide_capability(CAP_JEDI_SMOKE_POLICY)
 
     def select_baseline(self, report: JediEnvironmentReport) -> "JediSmokePolicyReport":
-        if not report.smoke_ready:
+        ready, reason = self.evaluate_environment(report)
+        if not ready:
             return JediSmokePolicyReport(
                 ready=False,
                 recommended_family=report.smoke_candidate,
                 recommended_binary=None,
-                reason="Environment not smoke-ready: " + "; ".join(report.messages),
+                reason=reason,
             )
 
         candidate = report.smoke_candidate
@@ -45,6 +58,14 @@ class JediSmokePolicyComponent(HarnessComponent):
             recommended_binary=binary,
             reason=f"Environment gated: {candidate} baseline selected.",
         )
+
+    def evaluate_environment(self, report: JediEnvironmentReport) -> tuple[bool, str]:
+        missing = [field for field in _SMOKE_READINESS_FIELDS if not getattr(report, field)]
+        if not missing:
+            return True, "Environment is smoke-ready."
+        if report.messages:
+            return False, "Environment not smoke-ready: " + "; ".join(report.messages)
+        return False, "Environment not smoke-ready: missing " + ", ".join(missing)
 
     def _binary_for_family(self, family: str | None) -> str | None:
         mapping = {

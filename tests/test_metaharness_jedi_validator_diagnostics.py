@@ -45,6 +45,12 @@ class TestJediValidatorWithDiagnostics:
         assert report.status == "executed"
         assert report.policy_decision == "allow"
         assert report.blocking_reasons == []
+        assert report.candidate_id == "run-1"
+        assert report.graph_version_id is None
+        assert report.session_id == "task-1"
+        assert len(report.session_events) == 1
+        assert report.session_events[0].candidate_id == "run-1"
+        assert report.audit_refs == []
         assert report.summary_metrics["ioda_groups_found"] == 3
         assert report.summary_metrics["ioda_groups_missing"] == 2
         assert report.summary_metrics["minimizer_iterations"] == 4.0
@@ -91,6 +97,8 @@ class TestJediValidatorWithDiagnostics:
         assert report.status == "runtime_failed"
         assert report.policy_decision == "defer"
         assert report.blocking_reasons == report.messages[:1]
+        assert len(report.session_events) == 1
+        assert report.session_events[0].event_type.value == "candidate_validated"
         assert report.summary_metrics["ioda_groups_found"] == 2
         assert report.summary_metrics["ioda_groups_missing"] == 2
         assert "MetaData, ObsValue" in report.messages[-2]
@@ -142,6 +150,8 @@ class TestJediValidatorWithDiagnostics:
 
         assert report.passed is True
         assert report.status == "executed"
+        assert report.candidate_id == "run-1"
+        assert len(report.session_events) == 1
         assert "ioda_groups_found" not in report.summary_metrics
 
     def test_validator_preserves_base_evidence_when_diagnostics_add_scan_results(self) -> None:

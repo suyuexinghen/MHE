@@ -41,6 +41,7 @@ from metaharness_ext.jedi.environment import JediEnvironmentProbeComponent
 from metaharness_ext.jedi.evidence import build_evidence_bundle
 from metaharness_ext.jedi.executor import JediExecutorComponent
 from metaharness_ext.jedi.gateway import JediGatewayComponent
+from metaharness_ext.jedi.governance import JediGovernanceAdapter
 from metaharness_ext.jedi.policy import JediEvidencePolicy
 from metaharness_ext.jedi.preprocessor import JediRunPreprocessor
 from metaharness_ext.jedi.slots import (
@@ -102,6 +103,7 @@ __all__ = [
     "JediExperimentSpec",
     "JediForecastSpec",
     "JediGatewayComponent",
+    "JediGovernanceAdapter",
     "JediHofXSpec",
     "JediLauncher",
     "JediLocalEnsembleDASpec",

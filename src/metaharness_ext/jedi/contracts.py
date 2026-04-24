@@ -5,6 +5,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, TypeAdapter, field_validator, model_validator
 
+from metaharness.core.models import SessionEvent
 from metaharness.safety.gates import GateResult
 from metaharness_ext.jedi.types import (
     JediApplicationFamily,
@@ -56,6 +57,10 @@ class JediVariationalSpec(BaseModel):
     task_id: str
     application_family: Literal["variational"] = "variational"
     executable: JediExecutableSpec
+    candidate_id: str | None = None
+    graph_version_id: int | None = None
+    session_id: str | None = None
+    audit_refs: list[str] = Field(default_factory=list)
     cost_type: JediCostType = "4D-Var"
     window_begin: str = "2020-01-01T00:00:00Z"
     window_length: str = "PT6H"
@@ -81,6 +86,10 @@ class JediLocalEnsembleDASpec(BaseModel):
     task_id: str
     application_family: Literal["local_ensemble_da"] = "local_ensemble_da"
     executable: JediExecutableSpec
+    candidate_id: str | None = None
+    graph_version_id: int | None = None
+    session_id: str | None = None
+    audit_refs: list[str] = Field(default_factory=list)
     window_begin: str = "2020-01-01T00:00:00Z"
     window_length: str = "PT6H"
     geometry: dict[str, Any] = Field(default_factory=lambda: {"resolution": "toy"})
@@ -112,6 +121,10 @@ class JediHofXSpec(BaseModel):
     task_id: str
     application_family: Literal["hofx"] = "hofx"
     executable: JediExecutableSpec
+    candidate_id: str | None = None
+    graph_version_id: int | None = None
+    session_id: str | None = None
+    audit_refs: list[str] = Field(default_factory=list)
     geometry: dict[str, Any] = Field(default_factory=lambda: {"resolution": "toy"})
     state_path: str | None = None
     observation_paths: list[str] = Field(default_factory=list)
@@ -126,6 +139,10 @@ class JediForecastSpec(BaseModel):
     task_id: str
     application_family: Literal["forecast"] = "forecast"
     executable: JediExecutableSpec
+    candidate_id: str | None = None
+    graph_version_id: int | None = None
+    session_id: str | None = None
+    audit_refs: list[str] = Field(default_factory=list)
     geometry: dict[str, Any] = Field(default_factory=lambda: {"resolution": "toy"})
     initial_condition_path: str | None = None
     model: dict[str, Any] = Field(default_factory=dict)
@@ -170,6 +187,10 @@ class JediRunPlan(BaseModel):
     run_id: str
     application_family: JediApplicationFamily
     execution_mode: JediExecutionMode
+    candidate_id: str | None = None
+    graph_version_id: int | None = None
+    session_id: str | None = None
+    audit_refs: list[str] = Field(default_factory=list)
     command: list[str] = Field(default_factory=list)
     working_directory: str
     config_path: str
@@ -243,6 +264,11 @@ class JediValidationReport(BaseModel):
     prerequisite_evidence: dict[str, list[str]] = Field(default_factory=dict)
     provenance_refs: list[str] = Field(default_factory=list)
     checkpoint_refs: list[str] = Field(default_factory=list)
+    candidate_id: str | None = None
+    graph_version_id: int | None = None
+    session_id: str | None = None
+    session_events: list[SessionEvent] = Field(default_factory=list)
+    audit_refs: list[str] = Field(default_factory=list)
 
 
 class JediEvidenceWarning(BaseModel):
@@ -262,6 +288,11 @@ class JediEvidenceBundle(BaseModel):
     summary: JediDiagnosticSummary | None = None
     evidence_files: list[str] = Field(default_factory=list)
     warnings: list[JediEvidenceWarning] = Field(default_factory=list)
+    candidate_id: str | None = None
+    graph_version_id: int | None = None
+    session_id: str | None = None
+    session_events: list[SessionEvent] = Field(default_factory=list)
+    audit_refs: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

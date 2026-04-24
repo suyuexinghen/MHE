@@ -8,11 +8,13 @@ from metaharness.sdk.manifest import ComponentManifest
 from metaharness.sdk.runtime import ComponentRuntime
 from metaharness_ext.jedi.capabilities import CAP_JEDI_CASE_COMPILE
 from metaharness_ext.jedi.contracts import (
+    JediEnvironmentReport,
     JediExecutableSpec,
     JediLocalEnsembleDASpec,
     JediVariationalSpec,
 )
 from metaharness_ext.jedi.slots import JEDI_GATEWAY_SLOT
+from metaharness_ext.jedi.smoke_policy import JediSmokePolicyComponent
 from metaharness_ext.jedi.types import JediExecutionMode
 
 
@@ -48,6 +50,10 @@ class JediGatewayComponent(HarnessComponent):
         subject_id: str | None = None,
         credentials: dict[str, str] | None = None,
         claims: dict[str, str] | None = None,
+        candidate_id: str | None = None,
+        graph_version_id: int | None = None,
+        session_id: str | None = None,
+        audit_refs: list[str] | None = None,
     ) -> JediVariationalSpec:
         self._enforce_ingress_policy(
             subject_id=subject_id,
@@ -56,6 +62,10 @@ class JediGatewayComponent(HarnessComponent):
         )
         return JediVariationalSpec(
             task_id=task_id,
+            candidate_id=candidate_id,
+            graph_version_id=graph_version_id,
+            session_id=session_id,
+            audit_refs=list(audit_refs or []),
             executable=JediExecutableSpec(
                 binary_name=binary_name,
                 launcher=launcher,
@@ -74,6 +84,42 @@ class JediGatewayComponent(HarnessComponent):
             scientific_check=scientific_check,
         )
 
+    def issue_smoke_task(
+        self,
+        environment: JediEnvironmentReport,
+        *,
+        task_id: str = "jedi-smoke-task-1",
+        execution_mode: JediExecutionMode = "validate_only",
+        background_path: str | None = None,
+        observation_paths: list[str] | None = None,
+        ensemble_paths: list[str] | None = None,
+    ) -> JediVariationalSpec | JediLocalEnsembleDASpec:
+        policy = JediSmokePolicyComponent().select_baseline(environment)
+        if not policy.ready:
+            raise ValueError(policy.reason)
+        if policy.recommended_family == "local_ensemble_da":
+            if not ensemble_paths:
+                raise ValueError("local_ensemble_da smoke baseline requires ensemble_paths")
+            return self.issue_local_ensemble_task(
+                task_id=task_id,
+                execution_mode=execution_mode,
+                binary_name=policy.recommended_binary or "qgLETKF.x",
+                ensemble_paths=list(ensemble_paths),
+                background_path=background_path,
+                observation_paths=list(observation_paths or []),
+            )
+        if policy.recommended_family not in {None, "variational", "hofx"}:
+            raise NotImplementedError(
+                f"Smoke task issuance is not implemented for {policy.recommended_family}"
+            )
+        return self.issue_task(
+            task_id=task_id,
+            execution_mode=execution_mode,
+            binary_name=policy.recommended_binary or "qg4DVar.x",
+            background_path=background_path,
+            observation_paths=list(observation_paths or []),
+        )
+
     def issue_local_ensemble_task(
         self,
         *,
@@ -90,6 +136,10 @@ class JediGatewayComponent(HarnessComponent):
         subject_id: str | None = None,
         credentials: dict[str, str] | None = None,
         claims: dict[str, str] | None = None,
+        candidate_id: str | None = None,
+        graph_version_id: int | None = None,
+        session_id: str | None = None,
+        audit_refs: list[str] | None = None,
     ) -> JediLocalEnsembleDASpec:
         self._enforce_ingress_policy(
             subject_id=subject_id,
@@ -98,6 +148,10 @@ class JediGatewayComponent(HarnessComponent):
         )
         return JediLocalEnsembleDASpec(
             task_id=task_id,
+            candidate_id=candidate_id,
+            graph_version_id=graph_version_id,
+            session_id=session_id,
+            audit_refs=list(audit_refs or []),
             executable=JediExecutableSpec(
                 binary_name=binary_name,
                 launcher=launcher,

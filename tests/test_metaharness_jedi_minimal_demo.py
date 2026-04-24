@@ -5,15 +5,20 @@ import pytest
 from metaharness.config.xml_parser import parse_graph_xml
 from metaharness.core.connection_engine import ConnectionEngine
 from metaharness.core.graph_versions import GraphVersionStore
-from metaharness.core.models import PendingConnectionSet
+from metaharness.core.models import PendingConnectionSet, SessionEventType
+from metaharness.observability.events import InMemorySessionStore
+from metaharness.provenance import AuditLog, ProvGraph
 from metaharness.sdk.loader import declare_component, load_manifest
 from metaharness.sdk.manifest import ComponentManifest, ComponentType, ContractSpec
 from metaharness.sdk.registry import ComponentRegistry
 from metaharness.sdk.runtime import ComponentRuntime
 from metaharness_ext.jedi.config_compiler import JediConfigCompilerComponent
 from metaharness_ext.jedi.environment import JediEnvironmentProbeComponent
+from metaharness_ext.jedi.evidence import build_evidence_bundle
 from metaharness_ext.jedi.executor import JediExecutorComponent
 from metaharness_ext.jedi.gateway import JediGatewayComponent
+from metaharness_ext.jedi.governance import JediGovernanceAdapter
+from metaharness_ext.jedi.policy import JediEvidencePolicy
 from metaharness_ext.jedi.validator import JediValidatorComponent
 
 JEDI_COMPONENTS = [
@@ -280,6 +285,10 @@ async def test_jedi_real_run_happy_path_runs(
         execution_mode="real_run",
         binary_name="qg4DVar.x",
         background_path=str(background),
+        candidate_id="candidate-real-1",
+        graph_version_id=9,
+        session_id="runtime-session-1",
+        audit_refs=["audit-record:real-run-1"],
     )
 
     def fake_which(name: str) -> str | None:
@@ -333,8 +342,165 @@ async def test_jedi_real_run_happy_path_runs(
     assert any(path.endswith("analysis.out") for path in artifact.output_files)
     assert any(path.endswith("departures.json") for path in artifact.diagnostic_files)
     assert any(path.endswith("reference.json") for path in artifact.reference_files)
+    assert artifact.result_summary["candidate_id"] == "candidate-real-1"
+    assert artifact.result_summary["graph_version_id"] == 9
+    assert artifact.result_summary["session_id"] == "runtime-session-1"
+    assert artifact.result_summary["audit_refs"] == ["audit-record:real-run-1"]
     assert validation.passed is True
     assert validation.status == "executed"
+    assert validation.candidate_id == "candidate-real-1"
+    assert validation.graph_version_id == 9
+    assert validation.session_id == "runtime-session-1"
+    assert validation.audit_refs == ["audit-record:real-run-1"]
+
+
+@pytest.mark.asyncio
+async def test_jedi_orchestration_happy_path_wires_runtime_evidence_policy_and_governance(
+    examples_dir: Path, monkeypatch, tmp_path: Path
+) -> None:
+    manifest_dir = examples_dir / "manifests" / "jedi"
+    graphs_dir = examples_dir / "graphs"
+    registry = _build_registry(manifest_dir)
+    engine = ConnectionEngine(registry, GraphVersionStore())
+    snapshot = parse_graph_xml(graphs_dir / "jedi-minimal.xml")
+    candidate, report = engine.stage(
+        PendingConnectionSet(nodes=snapshot.nodes, edges=snapshot.edges)
+    )
+    version = engine.commit("jedi-orchestration-happy", candidate, report)
+
+    gateway = JediGatewayComponent()
+    environment = JediEnvironmentProbeComponent()
+    compiler = JediConfigCompilerComponent()
+    executor = JediExecutorComponent()
+    validator = JediValidatorComponent()
+    policy = JediEvidencePolicy()
+    governance = JediGovernanceAdapter()
+    session_store = InMemorySessionStore()
+    audit_log = AuditLog()
+    provenance_graph = ProvGraph()
+    await executor.activate(ComponentRuntime(storage_path=tmp_path))
+
+    workspace = tmp_path / "jedi-workspace"
+    (workspace / "testinput").mkdir(parents=True)
+    background = workspace / "background.nc"
+    observations = workspace / "obs.ioda"
+    background.write_text("background")
+    observations.write_text("observations")
+
+    task = gateway.issue_task(
+        task_id="jedi-orchestration-1",
+        execution_mode="real_run",
+        binary_name="qg4DVar.x",
+        background_path=str(background),
+        observation_paths=[str(observations)],
+        working_directory=str(workspace),
+        scientific_check="rms_improves",
+        candidate_id="candidate-orchestration-1",
+        graph_version_id=version,
+        session_id="jedi-orchestration-session",
+        audit_refs=["audit-record:orchestration-seed"],
+    )
+
+    def fake_which(name: str) -> str | None:
+        if name == "ldd":
+            return "/usr/bin/ldd"
+        if name == "qg4DVar.x":
+            return "/usr/bin/qg4DVar.x"
+        return None
+
+    class _LddResult:
+        returncode = 0
+        stdout = ""
+
+    monkeypatch.setattr("metaharness_ext.jedi.environment.shutil.which", fake_which)
+    monkeypatch.setattr(
+        "metaharness_ext.jedi.environment.subprocess.run",
+        lambda *args, **kwargs: _LddResult(),
+    )
+
+    environment_report = environment.probe(task)
+    smoke_task = gateway.issue_smoke_task(
+        environment_report,
+        task_id="jedi-smoke-orchestration-1",
+        execution_mode="validate_only",
+        background_path=str(background),
+        observation_paths=[str(observations)],
+    )
+    plan = compiler.build_plan(task)
+
+    monkeypatch.setattr(
+        "metaharness_ext.jedi.executor.JediExecutorComponent._resolve_binary",
+        lambda self, binary_name: f"/usr/bin/{Path(binary_name).name}",
+    )
+
+    def fake_run(command, *, cwd, text, capture_output, check, timeout):
+        (cwd / "analysis.out").write_text("analysis")
+        (cwd / "departures.json").write_text(
+            '{"rms_observation_minus_analysis": 0.5, "rms_observation_minus_background": 1.2}'
+        )
+        (cwd / "reference.json").write_text('{"baseline": "orchestration-reference"}')
+        return type(
+            "_OrchestrationCompletedProcess",
+            (),
+            {"returncode": 0, "stdout": "run ok", "stderr": ""},
+        )()
+
+    monkeypatch.setattr("metaharness_ext.jedi.executor.subprocess.run", fake_run)
+
+    artifact = executor.execute_plan(plan, environment_report=environment_report)
+    validation = validator.validate_run(artifact)
+    bundle = build_evidence_bundle(artifact, validation)
+    policy_report = policy.evaluate(bundle)
+    governance_refs = governance.emit_runtime_evidence(
+        bundle,
+        policy_report,
+        session_store=session_store,
+        audit_log=audit_log,
+        provenance_graph=provenance_graph,
+    )
+    candidate_record = governance.build_candidate_record(bundle, policy_report)
+
+    assert report.valid is True
+    assert version == 1
+    assert smoke_task.application_family == "variational"
+    assert smoke_task.executable.binary_name == "qg4DVar.x"
+    assert environment_report.binary_available is True
+    assert environment_report.workspace_root == str(workspace)
+    assert environment_report.workspace_testinput_present is True
+    assert environment_report.data_prerequisites_ready is True
+    assert environment_report.ready_prerequisites == [
+        "workspace testinput",
+        "ctest -R get_ or equivalent observation data preparation",
+        "ctest -R qg_get_data or equivalent QG data preparation",
+    ]
+    assert plan.execution_mode == "real_run"
+    assert artifact.status == "completed"
+    assert artifact.result_summary["checkpoint_refs"] == [
+        "checkpoint://jedi/prerequisite/workspace-testinput",
+        "checkpoint://jedi/prerequisite/ctest-r-get-or-equivalent-observation-data-preparation",
+        "checkpoint://jedi/prerequisite/ctest-r-qg-get-data-or-equivalent-qg-data-preparation",
+    ]
+    assert validation.passed is True
+    assert validation.status == "executed"
+    assert validation.policy_decision == "allow"
+    assert validation.summary_metrics["primary_output"].endswith("analysis.out")
+    assert validation.summary_metrics["rms_observation_minus_analysis"] == 0.5
+    assert validation.summary_metrics["rms_observation_minus_background"] == 1.2
+    assert bundle.validation is validation
+    assert policy_report.passed is True
+    assert policy_report.decision == "allow"
+    assert candidate_record.promoted is True
+    assert candidate_record.candidate_id == "candidate-orchestration-1"
+    assert [event.event_type for event in session_store.get_events("jedi-orchestration-session")] == [
+        SessionEventType.CANDIDATE_VALIDATED,
+        SessionEventType.SAFETY_GATE_EVALUATED,
+    ]
+    assert len(audit_log.by_kind("session.candidate_validated")) == 1
+    assert len(audit_log.by_kind("session.safety_gate_evaluated")) == 1
+    assert len(audit_log.by_kind("jedi.governance_handoff")) == 1
+    assert "graph-candidate:candidate-orchestration-1" in provenance_graph.to_dict()["entities"]
+    assert all(ref.startswith("audit-record:") for ref in governance_refs["audit_refs"])
+    assert "graph-version:1" in governance_refs["provenance_refs"]
 
 
 @pytest.mark.asyncio

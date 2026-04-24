@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from metaharness.core.models import SessionEventType
+from metaharness.observability.events import make_session_event
 from metaharness.sdk.api import HarnessAPI
 from metaharness.sdk.base import HarnessComponent
 from metaharness.sdk.runtime import ComponentRuntime
@@ -49,6 +51,10 @@ class JediValidatorComponent(HarnessComponent):
         )
         provenance_refs = self._coerce_string_list(artifact.result_summary.get("provenance_refs"))
         checkpoint_refs = self._coerce_string_list(artifact.result_summary.get("checkpoint_refs"))
+        audit_refs = self._coerce_string_list(artifact.result_summary.get("audit_refs"))
+        candidate_id = self._coerce_optional_string(artifact.result_summary.get("candidate_id"))
+        graph_version_id = self._coerce_optional_int(artifact.result_summary.get("graph_version_id"))
+        session_id = self._coerce_optional_string(artifact.result_summary.get("session_id")) or artifact.task_id
 
         def build_report(
             *,
@@ -56,6 +62,15 @@ class JediValidatorComponent(HarnessComponent):
             status: str,
             summary_metrics: dict[str, float | str] | None = None,
         ) -> JediValidationReport:
+            policy_decision = self._policy_decision_for_status(status)
+            session_events = self._build_session_events(
+                artifact=artifact,
+                session_id=session_id,
+                candidate_id=candidate_id,
+                graph_version_id=graph_version_id,
+                policy_decision=policy_decision,
+                blocking_reasons=self._blocking_reasons_for_status(status, messages),
+            )
             return JediValidationReport(
                 task_id=artifact.task_id,
                 run_id=artifact.run_id,
@@ -65,10 +80,15 @@ class JediValidatorComponent(HarnessComponent):
                 summary_metrics=summary_metrics or {},
                 evidence_files=evidence_files,
                 blocking_reasons=self._blocking_reasons_for_status(status, messages),
-                policy_decision=self._policy_decision_for_status(status),
+                policy_decision=policy_decision,
                 prerequisite_evidence=prerequisite_evidence,
                 provenance_refs=provenance_refs,
                 checkpoint_refs=checkpoint_refs,
+                candidate_id=candidate_id or artifact.run_id,
+                graph_version_id=graph_version_id,
+                session_id=session_id,
+                session_events=session_events,
+                audit_refs=audit_refs,
             )
 
         if artifact.status == "unavailable":
@@ -231,6 +251,11 @@ class JediValidatorComponent(HarnessComponent):
             prerequisite_evidence=dict(report.prerequisite_evidence),
             provenance_refs=list(report.provenance_refs),
             checkpoint_refs=list(report.checkpoint_refs),
+            candidate_id=report.candidate_id,
+            graph_version_id=report.graph_version_id,
+            session_id=report.session_id,
+            session_events=list(report.session_events),
+            audit_refs=list(report.audit_refs),
         )
 
     def _has_rms_improvement(self, result_summary: dict[str, object]) -> bool:
@@ -254,6 +279,42 @@ class JediValidatorComponent(HarnessComponent):
             return "reject"
         return "defer"
 
+    def _build_session_events(
+        self,
+        *,
+        artifact: JediRunArtifact,
+        session_id: str,
+        candidate_id: str | None,
+        graph_version_id: int | None,
+        policy_decision: str,
+        blocking_reasons: list[str],
+    ) -> list:
+        payload = {
+            "run_id": artifact.run_id,
+            "status": policy_decision,
+            "execution_mode": artifact.execution_mode,
+            "blocking_reasons": list(blocking_reasons),
+        }
+        validated_event = make_session_event(
+            session_id,
+            SessionEventType.CANDIDATE_VALIDATED,
+            graph_version=graph_version_id,
+            candidate_id=candidate_id or artifact.run_id,
+            payload=payload,
+        )
+        if policy_decision == "reject":
+            return [
+                validated_event,
+                make_session_event(
+                    session_id,
+                    SessionEventType.CANDIDATE_REJECTED,
+                    graph_version=graph_version_id,
+                    candidate_id=candidate_id or artifact.run_id,
+                    payload=payload,
+                ),
+            ]
+        return [validated_event]
+
     def _coerce_prerequisite_evidence(self, value: object) -> dict[str, list[str]]:
         if not isinstance(value, dict):
             return {}
@@ -268,3 +329,9 @@ class JediValidatorComponent(HarnessComponent):
         if not isinstance(value, list):
             return []
         return [item for item in value if isinstance(item, str)]
+
+    def _coerce_optional_string(self, value: object) -> str | None:
+        return value if isinstance(value, str) and value else None
+
+    def _coerce_optional_int(self, value: object) -> int | None:
+        return value if isinstance(value, int) else None

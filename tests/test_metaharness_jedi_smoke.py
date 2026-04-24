@@ -7,9 +7,14 @@ import pytest
 
 from metaharness.sdk.runtime import ComponentRuntime
 from metaharness_ext.jedi.config_compiler import JediConfigCompilerComponent
-from metaharness_ext.jedi.contracts import JediExecutableSpec, JediVariationalSpec
+from metaharness_ext.jedi.contracts import (
+    JediEnvironmentReport,
+    JediExecutableSpec,
+    JediVariationalSpec,
+)
 from metaharness_ext.jedi.environment import JediEnvironmentProbeComponent
 from metaharness_ext.jedi.executor import JediExecutorComponent
+from metaharness_ext.jedi.gateway import JediGatewayComponent
 from metaharness_ext.jedi.validator import JediValidatorComponent
 
 
@@ -29,6 +34,47 @@ def _build_spec(tmp_path: Path, *, execution_mode: str = "real_run") -> JediVari
         background_path=str(background),
         output={"filename": "analysis.out"},
     )
+
+
+def test_jedi_gateway_issues_smoke_task_only_when_environment_ready() -> None:
+    gateway = JediGatewayComponent()
+    environment = JediEnvironmentProbeComponent().probe(
+        JediVariationalSpec(
+            task_id="task-smoke-ready",
+            executable=JediExecutableSpec(binary_name="qg4DVar.x", execution_mode="validate_only"),
+        )
+    )
+    environment.binary_available = True
+    environment.shared_libraries_resolved = True
+    environment.required_paths_present = True
+    environment.workspace_testinput_present = True
+    environment.data_prerequisites_ready = True
+    environment.smoke_candidate = "variational"
+    environment.smoke_ready = True
+
+    task = gateway.issue_smoke_task(environment, background_path="/tmp/background.nc")
+
+    assert task.application_family == "variational"
+    assert task.executable.binary_name == "qg4DVar.x"
+
+
+def test_jedi_gateway_rejects_smoke_task_when_environment_not_ready() -> None:
+    gateway = JediGatewayComponent()
+    environment = JediEnvironmentReport(
+        binary_available=False,
+        launcher_available=True,
+        shared_libraries_resolved=True,
+        required_paths_present=True,
+        workspace_testinput_present=True,
+        data_paths_present=True,
+        data_prerequisites_ready=True,
+        smoke_candidate="variational",
+        smoke_ready=False,
+        messages=["JEDI binary not found: qg4DVar.x"],
+    )
+
+    with pytest.raises(ValueError, match="Environment not smoke-ready"):
+        gateway.issue_smoke_task(environment, background_path="/tmp/background.nc")
 
 
 def test_jedi_environment_marks_smoke_ready_when_runtime_prereqs_exist(

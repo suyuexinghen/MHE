@@ -76,6 +76,11 @@ def build_evidence_bundle(
         summary=summary,
         evidence_files=evidence_files,
         warnings=warnings,
+        candidate_id=(validation.candidate_id if validation is not None else None) or run.run_id,
+        graph_version_id=validation.graph_version_id if validation is not None else None,
+        session_id=(validation.session_id if validation is not None else None) or run.task_id,
+        session_events=list(validation.session_events) if validation is not None else [],
+        audit_refs=list(validation.audit_refs) if validation is not None else [],
         metadata={
             "status": run.status,
             "return_code": run.return_code,

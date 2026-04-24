@@ -65,6 +65,25 @@ def test_jedi_compiler_variational_yaml_is_stable() -> None:
     assert "3DFGAT" not in plan_one.config_text
 
 
+def test_jedi_compiler_threads_orchestration_ids_into_plan() -> None:
+    compiler = JediConfigCompilerComponent()
+    spec = JediVariationalSpec(
+        task_id="var-ids",
+        executable=JediExecutableSpec(binary_name="qg4DVar.x", execution_mode="real_run"),
+        candidate_id="candidate-42",
+        graph_version_id=7,
+        session_id="session-abc",
+        audit_refs=["audit-record:123"],
+    )
+
+    plan = compiler.build_plan(spec)
+
+    assert plan.candidate_id == "candidate-42"
+    assert plan.graph_version_id == 7
+    assert plan.session_id == "session-abc"
+    assert plan.audit_refs == ["audit-record:123"]
+
+
 def test_jedi_compiler_variational_real_run_declares_expected_evidence() -> None:
     compiler = JediConfigCompilerComponent()
     spec = JediVariationalSpec(
