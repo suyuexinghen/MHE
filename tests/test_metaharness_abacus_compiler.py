@@ -28,6 +28,12 @@ def test_abacus_compiler_builds_scf_plan() -> None:
     assert plan.expected_outputs == ["OUT.ABACUS/"]
     assert plan.expected_logs == ["running_scf.log"]
     assert plan.required_runtime_paths == []
+    assert plan.control_files.input_content == plan.input_content
+    assert plan.control_files.structure_content == plan.structure_content
+    assert plan.workspace_layout.working_directory == plan.working_directory
+    assert plan.workspace_layout.output_root == plan.output_root
+    assert plan.runtime_assets.all_paths() == []
+    assert plan.lifecycle_state.compiled is True
     assert "calculation scf" in plan.input_content
 
 
@@ -47,7 +53,10 @@ def test_abacus_compiler_builds_nscf_plan() -> None:
     assert plan.output_root == "OUT.ABACUS"
     assert plan.expected_logs == ["running_nscf.log", "running_scf.log"]
     assert plan.required_runtime_paths == ["/tmp/charge-density.cube"]
+    assert plan.runtime_assets.charge_density_path == "/tmp/charge-density.cube"
+    assert plan.runtime_assets.restart_inputs == []
     assert plan.kpoints_content is not None
+    assert plan.control_files.kpoints_name == "KPT"
     assert "calculation nscf" in plan.input_content
     assert "charge_density_path /tmp/charge-density.cube" in plan.input_content
 
@@ -67,6 +76,7 @@ def test_abacus_compiler_builds_relax_plan() -> None:
     assert plan.output_root == "OUT.ABACUS"
     assert plan.expected_logs == ["running_relax.log", "running_scf.log"]
     assert plan.required_runtime_paths == ["/tmp/restart.stru"]
+    assert plan.runtime_assets.restart_inputs == ["/tmp/restart.stru"]
     assert "calculation relax" in plan.input_content
     assert "relax_nmax 10" in plan.input_content
     assert "restart_file_path /tmp/restart.stru" in plan.input_content
@@ -118,6 +128,7 @@ def test_abacus_compiler_builds_md_dp_plan() -> None:
     assert plan.application_family == "md"
     assert plan.esolver_type == "dp"
     assert plan.pot_file == "/tmp/model.pb"
+    assert plan.runtime_assets.pot_file == "/tmp/model.pb"
     assert plan.required_runtime_paths == ["/tmp/model.pb"]
     assert plan.environment_prerequisites == ["deeppmd_support"]
     assert "pot_file /tmp/model.pb" in plan.input_content

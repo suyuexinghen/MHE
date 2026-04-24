@@ -14,6 +14,11 @@ def test_abacus_validator_accepts_nscf_evidence() -> None:
         status="completed",
         working_directory="/tmp",
         prepared_inputs=["INPUT", "STRU", "KPT"],
+        control_file_paths={
+            "input_file": "INPUT",
+            "structure_file": "STRU",
+            "kpoints_file": "KPT",
+        },
         output_root="/tmp/OUT.ABACUS",
         output_files=["/tmp/OUT.ABACUS", "/tmp/OUT.ABACUS/result.dat"],
         diagnostic_files=["/tmp/OUT.ABACUS/running_nscf.log"],
@@ -26,6 +31,7 @@ def test_abacus_validator_accepts_nscf_evidence() -> None:
     assert report.status == "executed"
     assert report.blocks_promotion is False
     assert report.governance_state == "defer"
+    assert artifact.control_file_paths.kpoints_file == "KPT"
     assert report.scored_evidence is not None
     assert report.scored_evidence.attributes["governance_state"] == "defer"
     assert f"abacus://run/{artifact.task_id}/{artifact.run_id}" in report.evidence_refs

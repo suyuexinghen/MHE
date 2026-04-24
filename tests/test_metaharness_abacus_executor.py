@@ -28,6 +28,9 @@ def test_abacus_executor_resolves_binary_and_builds_command() -> None:
     assert artifact.application_family == "scf"
     assert artifact.return_code == 0
     assert artifact.status == "completed"
+    assert artifact.control_file_paths.input_file is not None
+    assert artifact.workspace_layout.working_directory == str(Path("/tmp/abacus_test"))
+    assert artifact.artifact_groups.output_files == artifact.output_files
     assert artifact.prepared_inputs
     assert any("INPUT" in p for p in artifact.prepared_inputs)
     assert any("STRU" in p for p in artifact.prepared_inputs)
@@ -106,6 +109,7 @@ def test_abacus_executor_writes_kpt_when_present() -> None:
     artifact = executor.execute_plan(plan)
 
     assert artifact.status == "completed"
+    assert artifact.control_file_paths.kpoints_file is not None
     assert any("KPT" in p for p in artifact.prepared_inputs)
 
 
@@ -127,6 +131,8 @@ def test_abacus_executor_artifact_includes_stdout_stderr_paths() -> None:
 
     assert artifact.stdout_path is not None
     assert artifact.stderr_path is not None
+    assert artifact.workspace_layout.stdout_path == artifact.stdout_path
+    assert artifact.workspace_layout.stderr_path == artifact.stderr_path
     assert Path(artifact.stdout_path).exists()
     assert Path(artifact.stderr_path).exists()
 
@@ -161,3 +167,7 @@ def test_abacus_executor_discovers_diagnostics_and_structures(tmp_path: Path, mo
     assert any(Path(path).name == "running_md.log" for path in artifact.diagnostic_files)
     assert any(Path(path).name == "MD_dump" for path in artifact.output_files)
     assert any(Path(path).name.startswith("STRU_MD") for path in artifact.structure_files)
+    assert artifact.artifact_groups.diagnostic_files == artifact.diagnostic_files
+    assert artifact.artifact_groups.output_files == artifact.output_files
+    assert artifact.artifact_groups.structure_files == artifact.structure_files
+    assert artifact.lifecycle_state.evidence_discovered is True

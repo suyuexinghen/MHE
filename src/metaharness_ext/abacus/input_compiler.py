@@ -5,13 +5,18 @@ from metaharness.sdk.base import HarnessComponent
 from metaharness.sdk.runtime import ComponentRuntime
 from metaharness_ext.abacus.capabilities import CAP_ABACUS_CASE_COMPILE
 from metaharness_ext.abacus.contracts import (
+    AbacusControlFiles,
     AbacusEnvironmentReport,
     AbacusExperimentSpec,
+    AbacusLifecycleState,
     AbacusMdSpec,
     AbacusNscfSpec,
+    AbacusOutputExpectations,
     AbacusRelaxSpec,
     AbacusRunPlan,
+    AbacusRuntimeAssets,
     AbacusScfSpec,
+    AbacusWorkspaceLayout,
 )
 from metaharness_ext.abacus.slots import ABACUS_INPUT_COMPILER_SLOT
 
@@ -119,6 +124,21 @@ class AbacusInputCompilerComponent(HarnessComponent):
         run_id = f"run-{spec.task_id}"
         working_directory = spec.working_directory or f"./abacus_runs/{spec.task_id}/{run_id}"
         output_root = f"OUT.{spec.suffix}"
+        control_files = AbacusControlFiles(
+            input_content=self._render_input(spec),
+            structure_content=spec.structure.content,
+            kpoints_name="KPT" if spec.kpoints else None,
+            kpoints_content=spec.kpoints.content if spec.kpoints else None,
+        )
+        runtime_assets = self._build_runtime_assets(spec, required_runtime_paths)
+        workspace_layout = AbacusWorkspaceLayout(
+            working_directory=working_directory,
+            output_root=output_root,
+        )
+        output_expectations = AbacusOutputExpectations(
+            expected_outputs=[f"{output_root}/"],
+            expected_logs=expected_logs,
+        )
 
         return AbacusRunPlan(
             task_id=spec.task_id,
@@ -126,9 +146,14 @@ class AbacusInputCompilerComponent(HarnessComponent):
             application_family=application_family,
             command=[],
             working_directory=working_directory,
-            input_content=self._render_input(spec),
-            structure_content=spec.structure.content,
-            kpoints_content=spec.kpoints.content if spec.kpoints else None,
+            input_content=control_files.input_content,
+            structure_content=control_files.structure_content,
+            kpoints_content=control_files.kpoints_content,
+            control_files=control_files,
+            runtime_assets=runtime_assets,
+            workspace_layout=workspace_layout,
+            output_expectations=output_expectations,
+            lifecycle_state=AbacusLifecycleState(compiled=True),
             suffix=spec.suffix,
             esolver_type=spec.esolver_type,
             pot_file=spec.pot_file,
@@ -147,6 +172,32 @@ class AbacusInputCompilerComponent(HarnessComponent):
             expected_logs=expected_logs,
             required_runtime_paths=required_runtime_paths,
             executable=spec.executable,
+        )
+
+    def _build_runtime_assets(
+        self,
+        spec: AbacusExperimentSpec,
+        required_runtime_paths: list[str],
+    ) -> AbacusRuntimeAssets:
+        restart_inputs: list[str] = []
+        charge_density_path: str | None = None
+
+        if isinstance(spec, AbacusNscfSpec):
+            charge_density_path = spec.charge_density_path
+            if spec.restart_file_path:
+                restart_inputs.append(spec.restart_file_path)
+        if isinstance(spec, AbacusRelaxSpec):
+            restart_path = spec.relax_controls.get("restart_file_path")
+            if isinstance(restart_path, str) and restart_path:
+                restart_inputs.append(restart_path)
+
+        return AbacusRuntimeAssets(
+            explicit_required_paths=list(spec.required_paths),
+            pseudo_files=list(spec.pseudo_files),
+            orbital_files=list(spec.orbital_files),
+            restart_inputs=restart_inputs,
+            charge_density_path=charge_density_path,
+            pot_file=spec.pot_file,
         )
 
     def _render_input(self, spec: AbacusExperimentSpec) -> str:

@@ -13,7 +13,14 @@ from metaharness_ext.abacus.capabilities import (
     CAP_ABACUS_RELAX_RUN,
     CAP_ABACUS_SCF_RUN,
 )
-from metaharness_ext.abacus.contracts import AbacusRunArtifact, AbacusRunPlan
+from metaharness_ext.abacus.contracts import (
+    AbacusArtifactGroups,
+    AbacusLifecycleState,
+    AbacusMaterializedControlFiles,
+    AbacusRunArtifact,
+    AbacusRunPlan,
+    AbacusWorkspaceLayout,
+)
 from metaharness_ext.abacus.slots import ABACUS_EXECUTOR_SLOT
 
 
@@ -37,7 +44,7 @@ class AbacusExecutorComponent(HarnessComponent):
         run_dir = self._resolve_run_dir(plan)
         run_dir.mkdir(parents=True, exist_ok=True)
 
-        prepared_inputs = self._write_inputs(plan, run_dir)
+        prepared_inputs, control_file_paths = self._write_inputs(plan, run_dir)
 
         resolved_binary = self._resolve_binary(plan.executable.binary_name)
         if resolved_binary is None:
@@ -64,7 +71,12 @@ class AbacusExecutorComponent(HarnessComponent):
                 return_code=None,
                 status="unavailable",
                 prepared_inputs=prepared_inputs,
+                control_file_paths=control_file_paths,
                 evidence_refs=evidence_refs,
+                lifecycle_state=AbacusLifecycleState(
+                    compiled=True,
+                    workspace_materialized=True,
+                ),
                 result_summary={"fallback_reason": "binary_not_found", "exit_code": None},
             )
 
@@ -95,7 +107,12 @@ class AbacusExecutorComponent(HarnessComponent):
                     return_code=None,
                     status="unavailable",
                     prepared_inputs=prepared_inputs,
+                    control_file_paths=control_file_paths,
                     evidence_refs=evidence_refs,
+                    lifecycle_state=AbacusLifecycleState(
+                        compiled=True,
+                        workspace_materialized=True,
+                    ),
                     result_summary={"fallback_reason": "launcher_not_found", "exit_code": None},
                 )
 
@@ -132,7 +149,12 @@ class AbacusExecutorComponent(HarnessComponent):
                 return_code=None,
                 status="failed",
                 prepared_inputs=prepared_inputs,
+                control_file_paths=control_file_paths,
                 evidence_refs=evidence_refs,
+                lifecycle_state=AbacusLifecycleState(
+                    compiled=True,
+                    workspace_materialized=True,
+                ),
                 result_summary={"fallback_reason": "command_timeout", "exit_code": None},
             )
 
@@ -166,11 +188,18 @@ class AbacusExecutorComponent(HarnessComponent):
             return_code=result.returncode,
             status=status,
             prepared_inputs=prepared_inputs,
+            control_file_paths=control_file_paths,
             output_root=str(output_root) if output_root.exists() else None,
             output_files=output_files,
             diagnostic_files=diagnostic_files,
             structure_files=structure_files,
             evidence_refs=evidence_refs,
+            lifecycle_state=AbacusLifecycleState(
+                compiled=True,
+                workspace_materialized=True,
+                executed=result.returncode == 0,
+                evidence_discovered=bool(output_files or diagnostic_files or structure_files),
+            ),
             result_summary={
                 "fallback_reason": None,
                 "exit_code": result.returncode,
@@ -190,22 +219,36 @@ class AbacusExecutorComponent(HarnessComponent):
             run_dir = Path(plan.working_directory).expanduser()
         return run_dir
 
-    def _write_inputs(self, plan: AbacusRunPlan, run_dir: Path) -> list[str]:
+    def _write_inputs(
+        self,
+        plan: AbacusRunPlan,
+        run_dir: Path,
+    ) -> tuple[list[str], AbacusMaterializedControlFiles]:
         prepared: list[str] = []
-        input_path = run_dir / "INPUT"
+        control_files = plan.control_files
+        input_name = control_files.input_name if control_files is not None else "INPUT"
+        structure_name = control_files.structure_name if control_files is not None else "STRU"
+        kpoints_name = control_files.kpoints_name if control_files is not None else None
+
+        input_path = run_dir / input_name
         input_path.write_text(plan.input_content)
         prepared.append(str(input_path))
 
-        stru_path = run_dir / "STRU"
+        stru_path = run_dir / structure_name
         stru_path.write_text(plan.structure_content)
         prepared.append(str(stru_path))
 
+        kpt_path: Path | None = None
         if plan.kpoints_content:
-            kpt_path = run_dir / "KPT"
+            kpt_path = run_dir / (kpoints_name or "KPT")
             kpt_path.write_text(plan.kpoints_content)
             prepared.append(str(kpt_path))
 
-        return prepared
+        return prepared, AbacusMaterializedControlFiles(
+            input_file=str(input_path),
+            structure_file=str(stru_path),
+            kpoints_file=str(kpt_path) if kpt_path is not None else None,
+        )
 
     def _resolve_binary(self, binary_name: str) -> str | None:
         candidate = Path(binary_name).expanduser()
@@ -331,11 +374,13 @@ class AbacusExecutorComponent(HarnessComponent):
         return_code: int | None,
         status: str,
         prepared_inputs: list[str],
+        control_file_paths: AbacusMaterializedControlFiles,
         output_root: str | None = None,
         output_files: list[str] | None = None,
         diagnostic_files: list[str] | None = None,
         structure_files: list[str] | None = None,
         evidence_refs: list[str] | None = None,
+        lifecycle_state: AbacusLifecycleState | None = None,
         result_summary: dict[str, object],
     ) -> AbacusRunArtifact:
         return AbacusRunArtifact(
@@ -347,6 +392,19 @@ class AbacusExecutorComponent(HarnessComponent):
             stdout_path=stdout_path,
             stderr_path=stderr_path,
             prepared_inputs=prepared_inputs,
+            control_file_paths=control_file_paths,
+            workspace_layout=AbacusWorkspaceLayout(
+                working_directory=str(run_dir),
+                output_root=output_root,
+                stdout_path=stdout_path,
+                stderr_path=stderr_path,
+            ),
+            artifact_groups=AbacusArtifactGroups(
+                output_files=output_files or [],
+                diagnostic_files=diagnostic_files or [],
+                structure_files=structure_files or [],
+            ),
+            lifecycle_state=lifecycle_state or AbacusLifecycleState(),
             output_root=output_root,
             output_files=output_files or [],
             diagnostic_files=diagnostic_files or [],

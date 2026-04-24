@@ -36,16 +36,20 @@ class AbacusValidatorComponent(HarnessComponent):
         messages: list[str] = []
         issues: list[ValidationIssue] = []
         fallback_reason = artifact.result_summary.get("fallback_reason")
+        output_files = list(artifact.artifact_groups.output_files)
+        diagnostic_files = list(artifact.artifact_groups.diagnostic_files)
+        structure_files = list(artifact.artifact_groups.structure_files)
+        prepared_inputs = artifact.control_file_paths.as_list()
         evidence_files = [
             path
             for path in [
-                artifact.stdout_path,
-                artifact.stderr_path,
-                artifact.output_root,
-                *artifact.prepared_inputs,
-                *artifact.output_files,
-                *artifact.diagnostic_files,
-                *artifact.structure_files,
+                artifact.workspace_layout.stdout_path,
+                artifact.workspace_layout.stderr_path,
+                artifact.workspace_layout.output_root,
+                *prepared_inputs,
+                *output_files,
+                *diagnostic_files,
+                *structure_files,
             ]
             if path is not None
         ]
@@ -285,14 +289,16 @@ class AbacusValidatorComponent(HarnessComponent):
 
         out_dirs = [
             p
-            for p in [artifact.output_root, *artifact.output_files]
+            for p in [artifact.workspace_layout.output_root, *artifact.artifact_groups.output_files]
             if p is not None and Path(p).name.startswith("OUT.")
         ]
         if not out_dirs:
             missing.append("OUT.<suffix>/ directory")
 
         if family == "scf":
-            log_evidence = any("running_scf.log" in Path(p).name for p in artifact.diagnostic_files)
+            log_evidence = any(
+                "running_scf.log" in Path(p).name for p in artifact.artifact_groups.diagnostic_files
+            )
             if not log_evidence and out_dirs:
                 out_path = Path(out_dirs[0])
                 if out_path.exists() and any(out_path.rglob("running_scf.log")):
@@ -303,7 +309,7 @@ class AbacusValidatorComponent(HarnessComponent):
         elif family == "nscf":
             nscf_log_evidence = any(
                 Path(p).name in {"running_nscf.log", "running_scf.log"}
-                for p in artifact.diagnostic_files
+                for p in artifact.artifact_groups.diagnostic_files
             )
             if not nscf_log_evidence:
                 missing.append("NSCF log evidence (running_nscf.log or running_scf.log)")
@@ -311,7 +317,10 @@ class AbacusValidatorComponent(HarnessComponent):
         elif family == "relax":
             structure_evidence = any(
                 Path(p).name.startswith("STRU") or Path(p).suffix == ".cif"
-                for p in [*artifact.output_files, *artifact.structure_files]
+                for p in [
+                    *artifact.artifact_groups.output_files,
+                    *artifact.artifact_groups.structure_files,
+                ]
             )
             if not structure_evidence and out_dirs:
                 out_path = Path(out_dirs[0])
@@ -323,7 +332,7 @@ class AbacusValidatorComponent(HarnessComponent):
         elif family == "md":
             md_evidence = any(
                 Path(p).name.startswith(("MD_dump", "Restart_md", "STRU_MD"))
-                for p in artifact.output_files
+                for p in artifact.artifact_groups.output_files
             )
             if not md_evidence and out_dirs:
                 out_path = Path(out_dirs[0])

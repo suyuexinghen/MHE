@@ -51,6 +51,9 @@ def test_abacus_environment_checks_nscf_required_paths(tmp_path: Path, monkeypat
 
     assert report.abacus_available is True
     assert report.required_paths_present is False
+    assert report.required_path_groups.charge_density_path == str(charge)
+    assert report.required_path_groups.restart_inputs == [str(missing_restart)]
+    assert report.missing_path_groups.restart_inputs == [str(missing_restart)]
     assert any(str(missing_restart) in message for message in report.messages)
 
 
@@ -75,6 +78,8 @@ def test_abacus_environment_checks_relax_restart_path(tmp_path: Path, monkeypatc
 
     assert report.abacus_available is True
     assert report.required_paths_present is False
+    assert report.required_path_groups.restart_inputs == [str(missing_restart)]
+    assert report.missing_path_groups.restart_inputs == [str(missing_restart)]
     assert any(str(missing_restart) in message for message in report.messages)
 
 
@@ -185,4 +190,6 @@ def test_abacus_environment_reports_missing_md_dp_pot_file_path(
     report = probe.probe(spec)
 
     assert report.required_paths_present is False
+    assert report.required_path_groups.pot_file == str(missing_pot)
+    assert report.missing_path_groups.pot_file == str(missing_pot)
     assert str(missing_pot) in report.missing_required_paths

@@ -14,6 +14,7 @@ from metaharness_ext.abacus.contracts import (
     AbacusMdSpec,
     AbacusNscfSpec,
     AbacusRelaxSpec,
+    AbacusRuntimeAssets,
 )
 from metaharness_ext.abacus.slots import ABACUS_ENVIRONMENT_SLOT
 
@@ -86,14 +87,13 @@ class AbacusEnvironmentProbeComponent(HarnessComponent):
             deeppmd_support_detected = "deepmd" in lowered_info or "dp" in lowered_info
             gpu_support_detected = "cuda" in lowered_info or "gpu" in lowered_info
 
-        required_paths_present = True
-        missing_required_paths: list[str] = []
-        for path_str in self._required_paths(spec):
+        required_path_groups = self._required_path_groups(spec)
+        missing_path_groups = self._missing_path_groups(required_path_groups)
+        required_paths_present = not bool(missing_path_groups.all_paths())
+        missing_required_paths = list(missing_path_groups.all_paths())
+        for path_str in missing_required_paths:
             path = Path(path_str).expanduser()
-            if not path.exists():
-                required_paths_present = False
-                missing_required_paths.append(str(path))
-                messages.append(f"Missing required path: {path}")
+            messages.append(f"Missing required path: {path}")
 
         if spec.working_directory is not None:
             workdir = Path(spec.working_directory).expanduser()
@@ -142,6 +142,8 @@ class AbacusEnvironmentProbeComponent(HarnessComponent):
             deeppmd_support_detected=deeppmd_support_detected,
             gpu_support_detected=gpu_support_detected,
             required_paths_present=required_paths_present,
+            required_path_groups=required_path_groups,
+            missing_path_groups=missing_path_groups,
             missing_required_paths=missing_required_paths,
             environment_prerequisites=environment_prerequisites,
             missing_prerequisites=list(dict.fromkeys(missing_prerequisites)),
@@ -201,29 +203,53 @@ class AbacusEnvironmentProbeComponent(HarnessComponent):
             pass
         return None
 
-    def _required_paths(self, spec: AbacusExperimentSpec) -> list[str]:
-        paths: list[str] = []
-        paths.extend(spec.required_paths)
+    def _required_path_groups(self, spec: AbacusExperimentSpec) -> AbacusRuntimeAssets:
+        restart_inputs: list[str] = []
+        charge_density_path: str | None = None
 
-        if isinstance(spec, AbacusMdSpec) and spec.esolver_type == "dp":
-            if spec.pot_file:
-                paths.append(spec.pot_file)
-            return paths
-
-        paths.extend(spec.pseudo_files)
-        paths.extend(spec.orbital_files)
-        if spec.pot_file:
-            paths.append(spec.pot_file)
         if isinstance(spec, AbacusNscfSpec):
-            if spec.charge_density_path:
-                paths.append(spec.charge_density_path)
+            charge_density_path = spec.charge_density_path
             if spec.restart_file_path:
-                paths.append(spec.restart_file_path)
+                restart_inputs.append(spec.restart_file_path)
         if isinstance(spec, AbacusRelaxSpec):
             restart_path = spec.relax_controls.get("restart_file_path")
             if isinstance(restart_path, str) and restart_path:
-                paths.append(restart_path)
-        return paths
+                restart_inputs.append(restart_path)
+
+        return AbacusRuntimeAssets(
+            explicit_required_paths=list(spec.required_paths),
+            pseudo_files=list(spec.pseudo_files),
+            orbital_files=list(spec.orbital_files),
+            restart_inputs=restart_inputs,
+            charge_density_path=charge_density_path,
+            pot_file=spec.pot_file,
+        )
+
+    def _missing_path_groups(self, assets: AbacusRuntimeAssets) -> AbacusRuntimeAssets:
+        def missing(paths: list[str]) -> list[str]:
+            result: list[str] = []
+            for path_str in paths:
+                path = Path(path_str).expanduser()
+                if not path.exists():
+                    result.append(str(path))
+            return result
+
+        charge_density_path = assets.charge_density_path
+        if charge_density_path is not None and Path(charge_density_path).expanduser().exists():
+            charge_density_path = None
+
+        pot_file = assets.pot_file
+        if pot_file is not None and Path(pot_file).expanduser().exists():
+            pot_file = None
+
+        return AbacusRuntimeAssets(
+            explicit_required_paths=missing(assets.explicit_required_paths),
+            pseudo_files=missing(assets.pseudo_files),
+            orbital_files=missing(assets.orbital_files),
+            restart_inputs=missing(assets.restart_inputs),
+            charge_density_path=charge_density_path,
+            pot_file=pot_file,
+        )
 
     def _environment_prerequisites(self, spec: AbacusExperimentSpec) -> list[str]:
         if isinstance(spec, AbacusMdSpec) and spec.esolver_type == "dp":

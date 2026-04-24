@@ -19,6 +19,10 @@ AbacusValidationStatus = Literal[
 ]
 
 
+def _dedupe_paths(paths: list[str]) -> list[str]:
+    return list(dict.fromkeys(path for path in paths if path))
+
+
 class AbacusExecutableSpec(BaseModel):
     binary_name: str = "abacus"
     launcher: AbacusLauncher = "direct"
@@ -51,6 +55,71 @@ class AbacusStructureSpec(BaseModel):
 class AbacusKPointSpec(BaseModel):
     content: str = ""
     format: Literal["kpt"] = "kpt"
+
+
+class AbacusControlFiles(BaseModel):
+    input_name: str = "INPUT"
+    input_content: str = ""
+    structure_name: str = "STRU"
+    structure_content: str = ""
+    kpoints_name: str | None = None
+    kpoints_content: str | None = None
+
+
+class AbacusMaterializedControlFiles(BaseModel):
+    input_file: str | None = None
+    structure_file: str | None = None
+    kpoints_file: str | None = None
+
+    def as_list(self) -> list[str]:
+        return [path for path in [self.input_file, self.structure_file, self.kpoints_file] if path]
+
+
+class AbacusRuntimeAssets(BaseModel):
+    explicit_required_paths: list[str] = Field(default_factory=list)
+    pseudo_files: list[str] = Field(default_factory=list)
+    orbital_files: list[str] = Field(default_factory=list)
+    restart_inputs: list[str] = Field(default_factory=list)
+    charge_density_path: str | None = None
+    pot_file: str | None = None
+
+    def all_paths(self) -> list[str]:
+        return _dedupe_paths(
+            [
+                *self.explicit_required_paths,
+                *self.pseudo_files,
+                *self.orbital_files,
+                *self.restart_inputs,
+                *([self.charge_density_path] if self.charge_density_path else []),
+                *([self.pot_file] if self.pot_file else []),
+            ]
+        )
+
+
+class AbacusWorkspaceLayout(BaseModel):
+    working_directory: str
+    output_root: str | None = None
+    stdout_path: str | None = None
+    stderr_path: str | None = None
+
+
+class AbacusOutputExpectations(BaseModel):
+    expected_outputs: list[str] = Field(default_factory=list)
+    expected_logs: list[str] = Field(default_factory=list)
+
+
+class AbacusLifecycleState(BaseModel):
+    environment_probed: bool = False
+    compiled: bool = False
+    workspace_materialized: bool = False
+    executed: bool = False
+    evidence_discovered: bool = False
+
+
+class AbacusArtifactGroups(BaseModel):
+    output_files: list[str] = Field(default_factory=list)
+    diagnostic_files: list[str] = Field(default_factory=list)
+    structure_files: list[str] = Field(default_factory=list)
 
 
 class AbacusScfSpec(BaseModel):
@@ -201,6 +270,8 @@ class AbacusEnvironmentReport(BaseModel):
     deeppmd_support_detected: bool | None = None
     gpu_support_detected: bool | None = None
     required_paths_present: bool = False
+    required_path_groups: AbacusRuntimeAssets = Field(default_factory=AbacusRuntimeAssets)
+    missing_path_groups: AbacusRuntimeAssets = Field(default_factory=AbacusRuntimeAssets)
     missing_required_paths: list[str] = Field(default_factory=list)
     environment_prerequisites: list[str] = Field(default_factory=list)
     missing_prerequisites: list[str] = Field(default_factory=list)
@@ -217,6 +288,11 @@ class AbacusRunPlan(BaseModel):
     input_content: str = ""
     structure_content: str = ""
     kpoints_content: str | None = None
+    control_files: AbacusControlFiles | None = None
+    runtime_assets: AbacusRuntimeAssets | None = None
+    workspace_layout: AbacusWorkspaceLayout | None = None
+    output_expectations: AbacusOutputExpectations | None = None
+    lifecycle_state: AbacusLifecycleState = Field(default_factory=AbacusLifecycleState)
     suffix: str = "ABACUS"
     esolver_type: AbacusESolverType = "ksdft"
     pot_file: str | None = None
@@ -228,6 +304,41 @@ class AbacusRunPlan(BaseModel):
     required_runtime_paths: list[str] = Field(default_factory=list)
     executable: AbacusExecutableSpec = Field(default_factory=AbacusExecutableSpec)
 
+    @model_validator(mode="after")
+    def align_nested_fields(self) -> "AbacusRunPlan":
+        if self.control_files is None:
+            self.control_files = AbacusControlFiles(
+                input_content=self.input_content,
+                structure_content=self.structure_content,
+                kpoints_name="KPT" if self.kpoints_content is not None else None,
+                kpoints_content=self.kpoints_content,
+            )
+        if self.runtime_assets is None:
+            self.runtime_assets = AbacusRuntimeAssets(
+                explicit_required_paths=list(self.required_runtime_paths),
+                pot_file=self.pot_file,
+            )
+        if self.workspace_layout is None:
+            self.workspace_layout = AbacusWorkspaceLayout(
+                working_directory=self.working_directory,
+                output_root=self.output_root,
+            )
+        if self.output_expectations is None:
+            self.output_expectations = AbacusOutputExpectations(
+                expected_outputs=list(self.expected_outputs),
+                expected_logs=list(self.expected_logs),
+            )
+        self.input_content = self.control_files.input_content
+        self.structure_content = self.control_files.structure_content
+        self.kpoints_content = self.control_files.kpoints_content
+        self.working_directory = self.workspace_layout.working_directory
+        self.output_root = self.workspace_layout.output_root
+        self.expected_outputs = list(self.output_expectations.expected_outputs)
+        self.expected_logs = list(self.output_expectations.expected_logs)
+        self.required_runtime_paths = self.runtime_assets.all_paths()
+        self.pot_file = self.runtime_assets.pot_file
+        return self
+
 
 class AbacusRunArtifact(BaseModel):
     task_id: str
@@ -238,6 +349,10 @@ class AbacusRunArtifact(BaseModel):
     stdout_path: str | None = None
     stderr_path: str | None = None
     prepared_inputs: list[str] = Field(default_factory=list)
+    control_file_paths: AbacusMaterializedControlFiles | None = None
+    workspace_layout: AbacusWorkspaceLayout | None = None
+    artifact_groups: AbacusArtifactGroups | None = None
+    lifecycle_state: AbacusLifecycleState = Field(default_factory=AbacusLifecycleState)
     output_root: str | None = None
     output_files: list[str] = Field(default_factory=list)
     diagnostic_files: list[str] = Field(default_factory=list)
@@ -246,6 +361,61 @@ class AbacusRunArtifact(BaseModel):
     working_directory: str
     status: Literal["planned", "completed", "failed", "unavailable"] = "planned"
     result_summary: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def align_nested_fields(self) -> "AbacusRunArtifact":
+        if self.control_file_paths is None:
+            input_file = next(
+                (
+                    path
+                    for path in self.prepared_inputs
+                    if path.endswith("/INPUT") or path.endswith("INPUT")
+                ),
+                None,
+            )
+            structure_file = next(
+                (
+                    path
+                    for path in self.prepared_inputs
+                    if path.endswith("/STRU") or path.endswith("STRU")
+                ),
+                None,
+            )
+            kpoints_file = next(
+                (
+                    path
+                    for path in self.prepared_inputs
+                    if path.endswith("/KPT") or path.endswith("KPT")
+                ),
+                None,
+            )
+            self.control_file_paths = AbacusMaterializedControlFiles(
+                input_file=input_file,
+                structure_file=structure_file,
+                kpoints_file=kpoints_file,
+            )
+        if self.workspace_layout is None:
+            self.workspace_layout = AbacusWorkspaceLayout(
+                working_directory=self.working_directory,
+                output_root=self.output_root,
+                stdout_path=self.stdout_path,
+                stderr_path=self.stderr_path,
+            )
+        if self.artifact_groups is None:
+            self.artifact_groups = AbacusArtifactGroups(
+                output_files=list(self.output_files),
+                diagnostic_files=list(self.diagnostic_files),
+                structure_files=list(self.structure_files),
+            )
+        self.prepared_inputs = self.control_file_paths.as_list()
+        self.working_directory = self.workspace_layout.working_directory
+        self.output_root = self.workspace_layout.output_root
+        self.stdout_path = self.workspace_layout.stdout_path
+        self.stderr_path = self.workspace_layout.stderr_path
+        self.output_files = list(self.artifact_groups.output_files)
+        self.diagnostic_files = list(self.artifact_groups.diagnostic_files)
+        self.structure_files = list(self.artifact_groups.structure_files)
+        return self
 
 
 class AbacusValidationReport(BaseModel):
