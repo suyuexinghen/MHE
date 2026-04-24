@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from metaharness_ext.abacus.contracts import (
     AbacusExecutableSpec,
     AbacusKPointSpec,
@@ -65,7 +67,7 @@ def test_abacus_environment_checks_relax_restart_path(tmp_path: Path, monkeypatc
         task_id="task-relax",
         executable=AbacusExecutableSpec(binary_name=str(binary)),
         structure=AbacusStructureSpec(content="ATOMIC_SPECIES\nSi 28.0 Si.upf\n"),
-        relax_controls={"restart_file_path": str(missing_restart)},
+        restart_file_path=str(missing_restart),
     )
     probe = AbacusEnvironmentProbeComponent()
 
@@ -81,6 +83,44 @@ def test_abacus_environment_checks_relax_restart_path(tmp_path: Path, monkeypatc
     assert report.required_path_groups.restart_inputs == [str(missing_restart)]
     assert report.missing_path_groups.restart_inputs == [str(missing_restart)]
     assert any(str(missing_restart) in message for message in report.messages)
+
+
+def test_abacus_environment_accepts_relax_restart_promoted_from_legacy_controls(
+    tmp_path: Path, monkeypatch
+) -> None:
+    binary = tmp_path / "abacus"
+    binary.write_text("binary")
+    missing_restart = tmp_path / "relax-legacy.restart"
+    spec = AbacusRelaxSpec(
+        task_id="task-relax-legacy",
+        executable=AbacusExecutableSpec(binary_name=str(binary)),
+        structure=AbacusStructureSpec(content="ATOMIC_SPECIES\nSi 28.0 Si.upf\n"),
+        relax_controls={"restart_file_path": str(missing_restart), "relax_nmax": 3},
+    )
+    probe = AbacusEnvironmentProbeComponent()
+
+    monkeypatch.setattr("metaharness_ext.abacus.environment.shutil.which", lambda name: None)
+    monkeypatch.setattr(probe, "_probe_version", lambda binary_path: "abacus 1.0")
+    monkeypatch.setattr(probe, "_probe_info", lambda binary_path: "cpu build")
+    monkeypatch.setattr(probe, "_probe_check_input", lambda binary_path: "ok")
+
+    report = probe.probe(spec)
+
+    assert spec.restart_file_path == str(missing_restart)
+    assert "restart_file_path" not in spec.relax_controls
+    assert report.required_paths_present is False
+    assert report.required_path_groups.restart_inputs == [str(missing_restart)]
+    assert report.missing_path_groups.restart_inputs == [str(missing_restart)]
+
+
+def test_abacus_relax_rejects_non_string_restart_file_path() -> None:
+    with pytest.raises(ValueError, match=r"relax_controls\.restart_file_path must be a string"):
+        AbacusRelaxSpec(
+            task_id="task-relax-nonstring-restart",
+            executable=AbacusExecutableSpec(binary_name="abacus"),
+            structure=AbacusStructureSpec(content="ATOMIC_SPECIES\nSi 28.0 Si.upf\n"),
+            relax_controls={"restart_file_path": 7, "relax_nmax": 3},
+        )
 
 
 def test_abacus_environment_accepts_md_dp_with_deepmd_support(tmp_path: Path, monkeypatch) -> None:

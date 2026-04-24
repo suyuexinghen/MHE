@@ -84,10 +84,7 @@ class AbacusInputCompilerComponent(HarnessComponent):
         spec: AbacusRelaxSpec,
         environment: AbacusEnvironmentReport | None,
     ) -> AbacusRunPlan:
-        restart_path = spec.relax_controls.get("restart_file_path")
-        required_runtime_paths = (
-            [restart_path] if isinstance(restart_path, str) and restart_path else []
-        )
+        required_runtime_paths = [spec.restart_file_path] if spec.restart_file_path else []
         return self._build_plan(
             spec,
             environment=environment,
@@ -186,10 +183,8 @@ class AbacusInputCompilerComponent(HarnessComponent):
             charge_density_path = spec.charge_density_path
             if spec.restart_file_path:
                 restart_inputs.append(spec.restart_file_path)
-        if isinstance(spec, AbacusRelaxSpec):
-            restart_path = spec.relax_controls.get("restart_file_path")
-            if isinstance(restart_path, str) and restart_path:
-                restart_inputs.append(restart_path)
+        if isinstance(spec, AbacusRelaxSpec) and spec.restart_file_path:
+            restart_inputs.append(spec.restart_file_path)
 
         return AbacusRuntimeAssets(
             explicit_required_paths=list(spec.required_paths),
@@ -220,6 +215,8 @@ class AbacusInputCompilerComponent(HarnessComponent):
         if isinstance(spec, AbacusRelaxSpec):
             for key, value in spec.relax_controls.items():
                 lines.append(f"{key} {value}")
+            if spec.restart_file_path:
+                lines.append(f"restart_file_path {spec.restart_file_path}")
 
         if spec.pot_file:
             lines.append(f"pot_file {spec.pot_file}")

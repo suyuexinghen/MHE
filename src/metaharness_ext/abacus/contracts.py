@@ -200,6 +200,7 @@ class AbacusRelaxSpec(BaseModel):
     pseudo_files: list[str] = Field(default_factory=list)
     orbital_files: list[str] = Field(default_factory=list)
     pot_file: str | None = None
+    restart_file_path: str | None = None
     relax_controls: dict[str, Any] = Field(default_factory=dict)
     required_paths: list[str] = Field(default_factory=list)
     working_directory: str | None = None
@@ -214,6 +215,17 @@ class AbacusRelaxSpec(BaseModel):
             raise ValueError("esolver_type=dp is not supported in Phase 1 (relax baseline)")
         if self.basis_type == "lcao" and not self.orbital_files:
             raise ValueError("basis_type=lcao requires orbital_files")
+
+        restart_path = self.relax_controls.get("restart_file_path")
+        if restart_path is not None and not isinstance(restart_path, str):
+            raise ValueError("relax_controls.restart_file_path must be a string")
+        if self.restart_file_path and restart_path and self.restart_file_path != restart_path:
+            raise ValueError("restart_file_path does not match relax_controls.restart_file_path")
+        if self.restart_file_path is None and isinstance(restart_path, str) and restart_path:
+            self.restart_file_path = restart_path
+        self.relax_controls = {
+            key: value for key, value in self.relax_controls.items() if key != "restart_file_path"
+        }
         return self
 
 

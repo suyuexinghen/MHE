@@ -308,11 +308,15 @@ class AbacusValidatorComponent(HarnessComponent):
 
         elif family == "nscf":
             nscf_log_evidence = any(
-                Path(p).name in {"running_nscf.log", "running_scf.log"}
+                Path(p).name == "running_nscf.log"
                 for p in artifact.artifact_groups.diagnostic_files
             )
+            if not nscf_log_evidence and out_dirs:
+                out_path = Path(out_dirs[0])
+                if out_path.exists() and any(out_path.rglob("running_nscf.log")):
+                    nscf_log_evidence = True
             if not nscf_log_evidence:
-                missing.append("NSCF log evidence (running_nscf.log or running_scf.log)")
+                missing.append("NSCF log evidence (running_nscf.log)")
 
         elif family == "relax":
             structure_evidence = any(

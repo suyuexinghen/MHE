@@ -56,7 +56,38 @@ def test_abacus_validator_rejects_nscf_without_log_evidence() -> None:
 
     assert report.passed is False
     assert report.status == "validation_failed"
-    assert any("NSCF log evidence" in item for item in report.missing_evidence)
+    assert any("NSCF log evidence (running_nscf.log)" == item for item in report.missing_evidence)
+
+
+
+def test_abacus_validator_rejects_nscf_with_only_scf_log_evidence() -> None:
+    artifact = AbacusRunArtifact(
+        task_id="task-nscf",
+        run_id="run-nscf",
+        application_family="nscf",
+        return_code=0,
+        status="completed",
+        working_directory="/tmp",
+        prepared_inputs=["INPUT", "STRU", "KPT"],
+        output_root="/tmp/OUT.ABACUS",
+        output_files=["/tmp/OUT.ABACUS", "/tmp/OUT.ABACUS/result.dat"],
+        diagnostic_files=["/tmp/OUT.ABACUS/running_scf.log"],
+    )
+
+    validator = AbacusValidatorComponent()
+    report = validator.validate_run(artifact)
+
+    assert report.passed is False
+    assert report.status == "validation_failed"
+    assert report.blocks_promotion is True
+    assert report.governance_state == "blocked"
+    assert report.scored_evidence is not None
+    assert report.scored_evidence.attributes["governance_state"] == "blocked"
+    assert report.missing_evidence == ["NSCF log evidence (running_nscf.log)"]
+    assert any(issue.blocks_promotion for issue in report.issues)
+    assert any(
+        issue.category == ValidationIssueCategory.PROMOTION_BLOCKER for issue in report.issues
+    )
 
 
 def test_abacus_validator_accepts_relax_structure_evidence(tmp_path: Path) -> None:
@@ -286,6 +317,31 @@ def test_abacus_validator_rejects_md_without_artifact_evidence() -> None:
     assert any(
         issue.category == ValidationIssueCategory.PROMOTION_BLOCKER for issue in report.issues
     )
+
+
+def test_abacus_validator_rejects_md_with_only_non_characteristic_artifacts() -> None:
+    artifact = AbacusRunArtifact(
+        task_id="task-md-logs-only",
+        run_id="run-md-logs-only",
+        application_family="md",
+        return_code=0,
+        status="completed",
+        working_directory="/tmp",
+        prepared_inputs=["INPUT", "STRU"],
+        output_root="/tmp/OUT.ABACUS",
+        output_files=["/tmp/OUT.ABACUS", "/tmp/OUT.ABACUS/energy.dat"],
+        diagnostic_files=["/tmp/OUT.ABACUS/running_md.log"],
+        structure_files=[],
+    )
+
+    report = AbacusValidatorComponent().validate_run(artifact)
+
+    assert report.passed is False
+    assert report.status == "validation_failed"
+    assert report.blocks_promotion is True
+    assert report.missing_evidence == ["MD evidence (MD_dump, Restart_md, STRU_MD*)"]
+    assert "/tmp/OUT.ABACUS/energy.dat" in report.evidence_files
+    assert "/tmp/OUT.ABACUS/running_md.log" in report.evidence_files
 
 
 def test_abacus_validator_keeps_prerequisite_rejection_evidence_linked() -> None:

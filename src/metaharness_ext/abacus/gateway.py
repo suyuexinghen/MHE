@@ -67,6 +67,7 @@ class AbacusGatewayComponent(HarnessComponent):
         if family == "relax":
             return AbacusRelaxSpec(
                 **common_kwargs,
+                restart_file_path=restart_file_path,
                 relax_controls=relax_controls or {},
             )
         if family == "md":

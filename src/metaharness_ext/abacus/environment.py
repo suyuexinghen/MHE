@@ -211,10 +211,8 @@ class AbacusEnvironmentProbeComponent(HarnessComponent):
             charge_density_path = spec.charge_density_path
             if spec.restart_file_path:
                 restart_inputs.append(spec.restart_file_path)
-        if isinstance(spec, AbacusRelaxSpec):
-            restart_path = spec.relax_controls.get("restart_file_path")
-            if isinstance(restart_path, str) and restart_path:
-                restart_inputs.append(restart_path)
+        if isinstance(spec, AbacusRelaxSpec) and spec.restart_file_path:
+            restart_inputs.append(spec.restart_file_path)
 
         return AbacusRuntimeAssets(
             explicit_required_paths=list(spec.required_paths),

@@ -66,7 +66,8 @@ def test_abacus_compiler_builds_relax_plan() -> None:
         task_id="task-relax",
         executable=AbacusExecutableSpec(binary_name="abacus"),
         structure=AbacusStructureSpec(content="ATOMIC_SPECIES\nSi 28.0 Si.upf\n"),
-        relax_controls={"relax_nmax": 10, "restart_file_path": "/tmp/restart.stru"},
+        restart_file_path="/tmp/restart.stru",
+        relax_controls={"relax_nmax": 10},
     )
 
     compiler = AbacusInputCompilerComponent()
@@ -80,6 +81,24 @@ def test_abacus_compiler_builds_relax_plan() -> None:
     assert "calculation relax" in plan.input_content
     assert "relax_nmax 10" in plan.input_content
     assert "restart_file_path /tmp/restart.stru" in plan.input_content
+
+
+def test_abacus_compiler_promotes_relax_restart_from_legacy_controls() -> None:
+    spec = AbacusRelaxSpec(
+        task_id="task-relax-legacy",
+        executable=AbacusExecutableSpec(binary_name="abacus"),
+        structure=AbacusStructureSpec(content="ATOMIC_SPECIES\nSi 28.0 Si.upf\n"),
+        relax_controls={"relax_nmax": 10, "restart_file_path": "/tmp/restart.stru"},
+    )
+
+    assert spec.restart_file_path == "/tmp/restart.stru"
+    assert "restart_file_path" not in spec.relax_controls
+
+    plan = AbacusInputCompilerComponent().compile(spec)
+
+    assert plan.required_runtime_paths == ["/tmp/restart.stru"]
+    assert plan.runtime_assets.restart_inputs == ["/tmp/restart.stru"]
+    assert plan.input_content.count("restart_file_path /tmp/restart.stru") == 1
 
 
 def test_abacus_compiler_builds_md_plan() -> None:
@@ -111,6 +130,24 @@ def test_abacus_nscf_requires_prerequisite_reference() -> None:
             structure=AbacusStructureSpec(content="ATOMIC_SPECIES\nSi 28.0 Si.upf\n"),
             kpoints=AbacusKPointSpec(content="K_POINTS\n1\n0.0 0.0 0.0 1\n"),
         )
+
+
+def test_abacus_compiler_builds_nscf_plan_with_restart_only_prerequisite() -> None:
+    spec = AbacusNscfSpec(
+        task_id="task-nscf-restart-only",
+        executable=AbacusExecutableSpec(binary_name="abacus"),
+        structure=AbacusStructureSpec(content="ATOMIC_SPECIES\nSi 28.0 Si.upf\n"),
+        kpoints=AbacusKPointSpec(content="K_POINTS\n1\n0.0 0.0 0.0 1\n"),
+        restart_file_path="/tmp/restart.stru",
+    )
+
+    plan = AbacusInputCompilerComponent().compile(spec)
+
+    assert plan.required_runtime_paths == ["/tmp/restart.stru"]
+    assert plan.runtime_assets.restart_inputs == ["/tmp/restart.stru"]
+    assert plan.runtime_assets.charge_density_path is None
+    assert "restart_file_path /tmp/restart.stru" in plan.input_content
+    assert "charge_density_path" not in plan.input_content
 
 
 def test_abacus_compiler_builds_md_dp_plan() -> None:
@@ -226,7 +263,19 @@ def test_abacus_compiler_uses_default_working_directory_when_missing() -> None:
     )
 
 
-def test_abacus_md_rejects_lcao_baseline() -> None:
+def test_abacus_relax_rejects_conflicting_restart_paths() -> None:
+    with pytest.raises(
+        ValueError, match="restart_file_path does not match relax_controls.restart_file_path"
+    ):
+        AbacusRelaxSpec(
+            task_id="task-relax-conflict",
+            executable=AbacusExecutableSpec(binary_name="abacus"),
+            structure=AbacusStructureSpec(content="ATOMIC_SPECIES\nSi 28.0 Si.upf\n"),
+            restart_file_path="/tmp/new.restart",
+            relax_controls={"restart_file_path": "/tmp/old.restart"},
+        )
+
+
     with pytest.raises(ValueError, match="basis_type=lcao is not supported for MD"):
         AbacusMdSpec(
             task_id="task-md-lcao",
