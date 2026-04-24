@@ -106,6 +106,7 @@ class AbacusInputCompilerComponent(HarnessComponent):
             esolver_type=spec.esolver_type,
             pot_file=spec.pot_file,
             environment_prerequisites=self._environment_prerequisites(spec),
+            environment_evidence_refs=[f"abacus://environment/{spec.task_id}"],
             output_root=output_root,
             expected_outputs=[f"{output_root}/"],
             expected_logs=expected_logs,

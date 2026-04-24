@@ -4,6 +4,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from metaharness.core.models import ScoredEvidence, ValidationIssue
+
 AbacusApplicationFamily = Literal["scf", "nscf", "relax", "md"]
 AbacusBasisType = Literal["pw", "lcao"]
 AbacusLauncher = Literal["direct", "mpirun", "mpiexec", "srun"]
@@ -203,6 +205,7 @@ class AbacusEnvironmentReport(BaseModel):
     environment_prerequisites: list[str] = Field(default_factory=list)
     missing_prerequisites: list[str] = Field(default_factory=list)
     messages: list[str] = Field(default_factory=list)
+    evidence_refs: list[str] = Field(default_factory=list)
 
 
 class AbacusRunPlan(BaseModel):
@@ -218,6 +221,7 @@ class AbacusRunPlan(BaseModel):
     esolver_type: AbacusESolverType = "ksdft"
     pot_file: str | None = None
     environment_prerequisites: list[str] = Field(default_factory=list)
+    environment_evidence_refs: list[str] = Field(default_factory=list)
     output_root: str | None = None
     expected_outputs: list[str] = Field(default_factory=list)
     expected_logs: list[str] = Field(default_factory=list)
@@ -238,6 +242,7 @@ class AbacusRunArtifact(BaseModel):
     output_files: list[str] = Field(default_factory=list)
     diagnostic_files: list[str] = Field(default_factory=list)
     structure_files: list[str] = Field(default_factory=list)
+    evidence_refs: list[str] = Field(default_factory=list)
     working_directory: str
     status: Literal["planned", "completed", "failed", "unavailable"] = "planned"
     result_summary: dict[str, Any] = Field(default_factory=dict)
@@ -249,6 +254,11 @@ class AbacusValidationReport(BaseModel):
     passed: bool = False
     status: AbacusValidationStatus = "validation_failed"
     messages: list[str] = Field(default_factory=list)
-    summary_metrics: dict[str, float | str] = Field(default_factory=dict)
+    summary_metrics: dict[str, float | str | bool] = Field(default_factory=dict)
     evidence_files: list[str] = Field(default_factory=list)
+    evidence_refs: list[str] = Field(default_factory=list)
     missing_evidence: list[str] = Field(default_factory=list)
+    issues: list[ValidationIssue] = Field(default_factory=list)
+    blocks_promotion: bool = False
+    governance_state: Literal["ready", "defer", "blocked"] = "defer"
+    scored_evidence: ScoredEvidence | None = None

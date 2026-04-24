@@ -1,17 +1,20 @@
 # 05. ABACUS Roadmap
 
-> 状态：proposed | 面向 `metaharness_ext.abacus` 的正式执行路线图
+> 状态：merged current baseline | 以 `metaharness_ext.abacus` 当前实现与 `abacus-engine-wiki` 为准整理的执行路线图
 
 ## 5.1 推荐执行顺序
 
-建议执行顺序如下：
+当前更可靠的路线基线不是旧的“pure proposed”状态，而是：Phase 0–Phase 4 的 family workflow 已经基本落地，接下来的工作重心转向治理面对齐与文档真值同步。
+
+建议按以下顺序理解和执行：
 
 ```text
-Phase 0: Environment Probe + SCF Minimal Baseline
-  -> Phase 1: NSCF / Relax Baseline
-    -> Phase 2: MD Baseline
-      -> Phase 3: ABACUS+DeePMD Mode
-        -> Phase 4: Examples / Study / Governance Hardening
+Phase 0: Environment Probe + SCF Minimal Baseline      [已完成]
+  -> Phase 1: NSCF / Relax Baseline                    [已完成]
+    -> Phase 2: MD Baseline                            [已完成]
+      -> Phase 3: ABACUS+DeePMD Mode                   [已完成]
+        -> Phase 4: Examples / Study / Governance Hardening [已完成首批交付，继续做治理面对齐]
+          -> Current Hardening: Governance Alignment + Blueprint/Wiki Truthfulness
 ```
 
 关键点：
@@ -19,30 +22,31 @@ Phase 0: Environment Probe + SCF Minimal Baseline
 - 先解决 environment 与输入边界
 - 先用 SCF 打通最小闭环
 - 再进入 relax / MD 等更复杂 family
-- 最后再把 DPMD-in-ABACUS 纳入统一执行与验证语义
+- 再把 DPMD-in-ABACUS 纳入统一执行与验证语义
+- 当前最后一段工作不再是“再造 pipeline”，而是让已实现能力与 strengthened MHE 的 governance / evidence 主路径对齐
 
-通用验收标准：每个 Phase 完成后，相关测试与 lint 必须保持零回归。
+通用验收标准：每个阶段完成后，相关测试、manifest、文档必须保持零回归，并且已实现能力不能继续被写成纯 future plan。
 
 ---
 
 ## 5.2 Phase 0：Environment Probe + SCF Minimal Baseline
 
-### 5.2.1 目标
+### 5.2.1 状态
 
-交付一个“可以检查 ABACUS 环境、生成 `INPUT/STRU/KPT`、完成最小 SCF 运行并返回结构化结果”的最小可用链路。
+已完成。
 
-### 5.2.2 任务
+### 5.2.2 已交付内容
 
-1. 新增 `metaharness_ext.abacus` 包骨架与 manifests
-2. 新增最小 `gateway.py`
-3. 在 `contracts.py` 中引入 ABACUS family-aware contracts
-4. 新增 `environment.py`，实现 `--version` / `--info` / `--check-input` probe
-5. 新增 `input_compiler.py`
-6. 新增 `executor.py`，支持 direct 与最小 launcher 运行
-7. 新增 `validator.py`
-8. 新增 ABACUS 定向测试
+1. `metaharness_ext.abacus` 包骨架与 manifests
+2. 最小 `gateway.py`
+3. family-aware contracts
+4. `environment.py` 中的 `--version` / `--info` / `--check-input` probe
+5. `input_compiler.py`
+6. `executor.py` 的 direct / launcher 执行基础
+7. `validator.py`
+8. ABACUS 定向测试
 
-### 5.2.3 验收标准
+### 5.2.3 保持的验收标准
 
 - 能从 typed spec 生成稳定 `INPUT/STRU/KPT`
 - 能明确报告 binary / launcher / required path 缺失
@@ -53,19 +57,19 @@ Phase 0: Environment Probe + SCF Minimal Baseline
 
 ## 5.3 Phase 1：NSCF / Relax Baseline
 
-### 5.3.1 目标
+### 5.3.1 状态
 
-把最小 SCF 基线扩展到更常见的后续电子结构与结构优化路径。
+已完成。
 
-### 5.3.2 任务
+### 5.3.2 已交付内容
 
-1. 新增 `AbacusNscfSpec` 与 `AbacusRelaxSpec`
-2. 扩展 compiler 与 family-aware 约束
-3. 扩展 artifact 发现逻辑
-4. 在 validator 中加入 final structure 规则
-5. 新增相关测试
+1. `AbacusNscfSpec` 与 `AbacusRelaxSpec`
+2. compiler 与 family-aware 约束扩展
+3. artifact 发现逻辑扩展
+4. validator 中的 final structure 规则
+5. 对应测试
 
-### 5.3.3 验收标准
+### 5.3.3 保持的验收标准
 
 - `nscf` / `relax` 进入同一套 typed workflow
 - `relax` 成功不只看 return code
@@ -75,21 +79,21 @@ Phase 0: Environment Probe + SCF Minimal Baseline
 
 ## 5.4 Phase 2：MD Baseline
 
-### 5.4.1 目标
+### 5.4.1 状态
 
-把 ABACUS extension 扩展到受控 MD 路径。
+已完成。
 
-### 5.4.2 任务
+### 5.4.2 已交付内容
 
-1. 定义 `AbacusMdSpec`
-2. 支持 MD 关键参数的受控 compiler
-3. 收集 `MD_dump`、`Restart_md.dat`、`STRU_MD_*`
-4. 加入 restart-aware validator 语义
-5. 新增 MD baseline 测试
+1. `AbacusMdSpec`
+2. 受控 MD compiler 路径
+3. `MD_dump`、`Restart_md*`、`STRU_MD*` artifact 收集
+4. restart-aware validator 语义
+5. MD baseline 测试
 
-### 5.4.3 验收标准
+### 5.4.3 保持的验收标准
 
-- MD 成为首版正式支持 family
+- MD 成为正式支持 family
 - restart / dump artifact 可被结构化收集
 - validator 能给出稳定最小成功判定
 
@@ -97,72 +101,126 @@ Phase 0: Environment Probe + SCF Minimal Baseline
 
 ## 5.5 Phase 3：ABACUS+DeePMD Mode
 
-### 5.5.1 目标
+### 5.5.1 状态
 
-把 `calculation=md + esolver_type=dp + pot_file` 的模式纳入同一套 ABACUS extension。
+已完成。
 
-### 5.5.2 任务
+### 5.5.2 已交付内容
 
-1. 在 `AbacusMdSpec` 中引入 DPMD-specific typed fields
-2. environment probe 中识别 DeePMD support
+1. `AbacusMdSpec` 中的 `esolver_type=dp` + `pot_file` typed boundary
+2. environment probe 中的 DeePMD support prerequisite 检查
 3. compiler 中显式渲染 `pot_file`
-4. validator 中增加 DPMD mode 的前提与成功规则
-5. 新增该模式测试
+4. validator 中对 `md + dp` prerequisite 的阻断语义
+5. 相关测试
 
-### 5.5.3 验收标准
+### 5.5.3 保持的验收标准
 
 - DPMD-in-ABACUS 明确属于 ABACUS mode
 - 缺少 DeePMD support 时失败语义清晰
 - `pot_file` 与 mode-specific 约束进入 typed boundary
+- support unknown 时按保守策略阻断
 
 ---
 
 ## 5.6 Phase 4：Examples / Study / Governance Hardening
 
-### 5.6.1 目标
+### 5.6.1 状态
 
-把系统从“设计与最小 baseline 可行”推进到“可演示、可扩展、可治理”。
+已完成首批交付，当前剩余工作聚焦于治理面对齐，而不是再创建基础示例或 family workflow。
 
-### 5.6.2 任务
+### 5.6.2 已交付内容
 
-1. 新增 example manifests 与 graph
-2. 增加更真实的 artifact / diagnostics 测试
-3. 评估 future study / mutation axes
-4. 明确 launcher/HPC/policy gate 边界
-5. 如需要，新增 implementation plan 文档
+1. example manifests
+2. `examples/graphs/abacus-minimal.xml`
+3. 更真实的 artifact / diagnostics 测试
+4. Phase 2/3/4 文档同步
+5. validator 作为 protected governance component 的当前定位
 
-### 5.6.3 验收标准
+### 5.6.3 当前剩余硬化项
+
+1. 把 manifest `policy.credentials` / `policy.sandbox` 补齐到 ABACUS manifests
+2. 把 validator 从 extension-local report 提升为 governance-grade output
+3. 让 validation 结果能显式表达 `blocks_promotion`
+4. 引入 canonical `evidence_refs` 与 `ScoredEvidence`
+5. 让 blueprint / roadmap / checklist 与代码现实保持一致
+6. 明确“promotion-ready validation semantics”不等于直接 graph promotion
+
+### 5.6.4 当前验收标准
 
 - 有最小可演示 graph 与 example manifests
 - regression tests 覆盖主要 artifact / validator 分支
-- 后续治理与 study 扩展有清晰入口
+- manifests、validator、evidence surface 与 strengthened MHE 的治理语义兼容
+- 文档不再把现有能力写成纯 future plan
 
 ---
 
-## 5.7 测试路线图
+## 5.7 当前实现后的下一段工作：Governance Alignment
 
-### 首批测试建议
+这一段是当前最真实的 roadmap，而不是新的 family phase。
+
+### 5.7.1 目标
+
+在不重写 ABACUS workflow 的前提下，把 ABACUS extension 的 contract / validator / manifest / evidence surface 对齐到 strengthened MHE 的治理与证据模型。
+
+### 5.7.2 任务
+
+1. 为 `AbacusValidationReport` 增加治理面字段
+2. 让 validator 产出 structured issues / `blocks_promotion`
+3. 让 validator 产出 `ScoredEvidence`
+4. 让 artifact/report 并行保留文件路径与 canonical `evidence_refs`
+5. 为 ABACUS manifests 显式声明 `policy.credentials` / `policy.sandbox`
+6. 增加 governance-oriented regression tests
+7. 同步 `abacus-engine-wiki` 与 merged blueprint/roadmap
+
+### 5.7.3 验收标准
+
+- ABACUS validation 结果不仅能表达 pass/fail，还能表达 governance blocking semantics
+- 执行成功与 promotion approval 的区别在文档与测试中都被明确表达
+- manifests 的策略面是显式的，而不是只靠 `safety` 默认值推断
+- evidence 结构可被 runtime session / audit / provenance 路径稳定消费
+
+---
+
+## 5.8 测试路线图
+
+### 首批保持覆盖的测试
 
 - `MHE/tests/test_metaharness_abacus_manifest.py`
 - `MHE/tests/test_metaharness_abacus_executor.py`
+- `MHE/tests/test_metaharness_abacus_gateway.py`
+- `MHE/tests/test_metaharness_abacus_environment.py`
+- `MHE/tests/test_metaharness_abacus_validator.py`
 - `MHE/tests/test_metaharness_abacus_minimal_demo.py`
 
-### 测试重点
+### 当前新增测试重点
 
-- manifest / component declaration 一致性
-- compiler 输出文件稳定性
-- executor command / workspace 语义
-- validator failure taxonomy
-- family-aware artifact discovery
+- manifest `policy.credentials` / `policy.sandbox` 一致性
+- validator `issues` / `blocks_promotion`
+- successful run 的 `ScoredEvidence` 与 canonical `evidence_refs`
+- prerequisite missing 与 runtime failure 的治理级区分
+- promotion-ready validation does not equal graph promotion
 
 ---
 
-## 5.8 完成标准
+## 5.9 完成标准
 
-本路线的首轮完成标准：
+当前路线的完成标准应更新为：
 
 - ABACUS docs 边界清晰
-- future package skeleton 明确
-- family/mode 命名在 wiki 和 blueprint 中一致
+- blueprint / roadmap / checklist / current code 四者一致
+- family/mode 命名在 wiki 和实现中一致
 - artifact/evidence 语义以 `OUT.<suffix>/` 为中心
 - ABACUS+DeePMD 被清晰建模为 ABACUS mode
+- validator 已具备 promotion-ready validation semantics
+- manifest policy 与 evidence surface 可被 strengthened MHE 的 runtime / policy / provenance 路径消费
+- 已实现能力不再继续被写成纯规划
+
+---
+
+## 5.10 结论
+
+这份 merged roadmap 的作用，不是重新发明 ABACUS 的 phase 顺序，而是把旧路线图重写成与当前代码现实一致的执行真值：
+
+- workflow baseline 已基本完成
+- 当前最关键的后续工作是 governance alignment
+- 后续所有 wiki 和代码同步，应以这一点为准

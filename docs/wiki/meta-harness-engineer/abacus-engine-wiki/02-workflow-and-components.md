@@ -196,6 +196,8 @@ pot_file = <model.pb>
 
 这样可以让 validator 与后续 evidence manager 在不重新扫描目录的情况下消费稳定产物。
 
+这些 artifact 目录视图还应被理解为 runtime evidence handoff 面：ABACUS extension 负责把关键输入、输出、diagnostics 与 prerequisite evidence 稳定组织出来，后续 session event、audit record、provenance link 与 candidate/graph version 锚点则由 strengthened MHE 的统一治理路径继续承接。
+
 ---
 
 ## 2.8 首版最小 happy path

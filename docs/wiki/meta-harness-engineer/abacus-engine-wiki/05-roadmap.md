@@ -144,10 +144,11 @@ Phase 0: Environment Probe + SCF Minimal Baseline
 3. 增加更真实的 artifact / diagnostics 测试
 4. 评估 future study / mutation axis
 5. 明确 launcher / HPC / feature gate 的 policy 边界
-6. 补齐 manifest `policy.credentials` / `policy.sandbox` 的文档语义
+6. 补齐并锁定 manifest `policy.credentials` / `policy.sandbox`
 7. 明确 validator 作为 protected governance component 的边界
-8. 对齐 session / audit / provenance evidence 接口预期
-9. 写清 promotion-ready validation semantics，而不把通过条件等同于直接 graph promotion
+8. 让 validator 输出 `issues`、`blocks_promotion`、`governance_state`、`ScoredEvidence`
+9. 对齐 session / audit / provenance evidence 接口预期与 canonical `evidence_refs`
+10. 写清 promotion-ready validation semantics，而不把通过条件等同于直接 graph promotion
 
 ### 5.6.3 验收标准
 

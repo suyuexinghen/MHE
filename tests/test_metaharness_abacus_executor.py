@@ -31,6 +31,9 @@ def test_abacus_executor_resolves_binary_and_builds_command() -> None:
     assert artifact.prepared_inputs
     assert any("INPUT" in p for p in artifact.prepared_inputs)
     assert any("STRU" in p for p in artifact.prepared_inputs)
+    assert f"abacus://run/{artifact.task_id}/{artifact.run_id}" in artifact.evidence_refs
+    assert "abacus://input/INPUT" in artifact.evidence_refs
+    assert "abacus://input/STRU" in artifact.evidence_refs
 
 
 def test_abacus_executor_reports_missing_binary() -> None:
@@ -52,6 +55,8 @@ def test_abacus_executor_reports_missing_binary() -> None:
     assert artifact.status == "unavailable"
     assert artifact.return_code is None
     assert artifact.result_summary.get("fallback_reason") == "binary_not_found"
+    assert f"abacus://run/{artifact.task_id}/{artifact.run_id}" in artifact.evidence_refs
+    assert "abacus://input/INPUT" in artifact.evidence_refs
 
 
 def test_abacus_executor_reports_missing_launcher(monkeypatch) -> None:
@@ -80,6 +85,7 @@ def test_abacus_executor_reports_missing_launcher(monkeypatch) -> None:
     assert artifact.status == "unavailable"
     assert artifact.return_code is None
     assert artifact.result_summary.get("fallback_reason") == "launcher_not_found"
+    assert f"abacus://run/{artifact.task_id}/{artifact.run_id}" in artifact.evidence_refs
 
 
 def test_abacus_executor_writes_kpt_when_present() -> None:

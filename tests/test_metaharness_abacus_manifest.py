@@ -35,6 +35,9 @@ EXPECTED_MANIFESTS = {
             CAP_ABACUS_MD_RUN,
             CAP_ABACUS_VALIDATE,
         ],
+        "sandbox_tier": "workspace-write",
+        "requires_subject": False,
+        "allow_inline_credentials": True,
     },
     "gateway.json": {
         "name": "abacus_gateway",
@@ -42,6 +45,9 @@ EXPECTED_MANIFESTS = {
         "slot": ABACUS_GATEWAY_SLOT,
         "output": "task",
         "capabilities": [CAP_ABACUS_CASE_COMPILE],
+        "sandbox_tier": "workspace-write",
+        "requires_subject": False,
+        "allow_inline_credentials": True,
     },
     "environment.json": {
         "name": "abacus_environment",
@@ -49,6 +55,9 @@ EXPECTED_MANIFESTS = {
         "slot": ABACUS_ENVIRONMENT_SLOT,
         "output": "environment",
         "capabilities": [CAP_ABACUS_ENV_PROBE],
+        "sandbox_tier": "read-only",
+        "requires_subject": False,
+        "allow_inline_credentials": True,
     },
     "input_compiler.json": {
         "name": "abacus_input_compiler",
@@ -56,6 +65,9 @@ EXPECTED_MANIFESTS = {
         "slot": ABACUS_INPUT_COMPILER_SLOT,
         "output": "plan",
         "capabilities": [CAP_ABACUS_CASE_COMPILE],
+        "sandbox_tier": "workspace-write",
+        "requires_subject": False,
+        "allow_inline_credentials": True,
     },
     "executor.json": {
         "name": "abacus_executor",
@@ -68,6 +80,9 @@ EXPECTED_MANIFESTS = {
             CAP_ABACUS_RELAX_RUN,
             CAP_ABACUS_MD_RUN,
         ],
+        "sandbox_tier": "workspace-write",
+        "requires_subject": False,
+        "allow_inline_credentials": True,
     },
     "validator.json": {
         "name": "abacus_validator",
@@ -75,6 +90,10 @@ EXPECTED_MANIFESTS = {
         "slot": ABACUS_VALIDATOR_SLOT,
         "output": "validation",
         "capabilities": [CAP_ABACUS_VALIDATE],
+        "sandbox_tier": "read-only",
+        "protected": True,
+        "requires_subject": False,
+        "allow_inline_credentials": True,
     },
 }
 
@@ -97,6 +116,14 @@ def test_metaharness_abacus_manifests_are_valid() -> None:
         if "output" in expected:
             assert manifest.contracts.outputs[0].name == expected["output"]
         assert sorted(manifest.all_provided_capabilities()) == sorted(expected["capabilities"])
+        assert manifest.policy.sandbox.tier == expected["sandbox_tier"]
+        assert manifest.policy.credentials.requires_subject == expected["requires_subject"]
+        assert (
+            manifest.policy.credentials.allow_inline_credentials
+            == expected["allow_inline_credentials"]
+        )
+        if "protected" in expected:
+            assert manifest.safety.protected is expected["protected"]
 
 
 def test_metaharness_abacus_manifest_entries_are_importable() -> None:

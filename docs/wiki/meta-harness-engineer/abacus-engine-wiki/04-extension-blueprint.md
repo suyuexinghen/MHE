@@ -104,6 +104,8 @@ AbacusGateway
 - 将 artifacts 统一映射到稳定判定
 - 按 family 给出最小成功规则
 - 给出可审计 `evidence_files`
+- 并行输出 canonical `evidence_refs`
+- 输出 `issues`、`blocks_promotion`、`governance_state` 与 `ScoredEvidence`
 - 作为 protected governance component 参与 promotion blocker 判断，而不是普通 helper
 - 将 validator 结果与 policy review / promotion authority 协作起来，支持 allow / defer / reject 风格的后续治理决策
 

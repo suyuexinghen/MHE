@@ -43,6 +43,9 @@ def test_abacus_minimal_scf_chain_with_missing_binary() -> None:
     report = validator.validate_run(artifact)
     assert report.passed is False
     assert report.status == "environment_invalid"
+    assert report.blocks_promotion is True
+    assert report.governance_state == "blocked"
+    assert report.scored_evidence is not None
 
 
 def test_abacus_minimal_scf_chain_with_real_echo_binary() -> None:
@@ -206,6 +209,9 @@ def test_abacus_minimal_relax_chain_with_stubbed_structure_evidence(
     report = validator.validate_run(artifact)
     assert report.passed is True
     assert report.status == "executed"
+    assert report.blocks_promotion is False
+    assert report.governance_state == "defer"
+    assert report.scored_evidence is not None
 
 
 def test_abacus_minimal_md_chain_with_stubbed_artifact_evidence(
@@ -324,6 +330,7 @@ def test_abacus_minimal_md_dp_chain_blocks_when_deepmd_support_unknown(
         application_family="md",
         status="unavailable",
         working_directory=str(tmp_path / "md-dp-blocked-run"),
+        evidence_refs=list(env_report.evidence_refs),
         result_summary={
             "fallback_reason": "missing_prerequisites",
             "missing_prerequisites": env_report.missing_prerequisites,
@@ -335,6 +342,9 @@ def test_abacus_minimal_md_dp_chain_blocks_when_deepmd_support_unknown(
     report = validator.validate_run(artifact)
     assert report.passed is False
     assert report.status == "environment_invalid"
+    assert report.blocks_promotion is True
+    assert report.governance_state == "blocked"
+    assert any(ref.startswith("abacus://environment/") for ref in report.evidence_refs)
 
 
 def test_abacus_minimal_graph_shape_matches_phase4_story() -> None:

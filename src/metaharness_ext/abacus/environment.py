@@ -108,6 +108,20 @@ class AbacusEnvironmentProbeComponent(HarnessComponent):
             missing_prerequisites.append("deeppmd_support")
             messages.append("DeePMD support is required for md + esolver_type=dp")
 
+        evidence_refs = [
+            f"abacus://environment/{spec.task_id}",
+        ]
+        if abacus_path:
+            evidence_refs.append(f"abacus://binary/{Path(abacus_path).name}")
+        if launcher_path:
+            evidence_refs.append(f"abacus://launcher/{Path(launcher_path).name}")
+        evidence_refs.extend(
+            f"abacus://missing-path/{Path(path).name}" for path in missing_required_paths
+        )
+        evidence_refs.extend(
+            f"abacus://missing-prerequisite/{item}" for item in dict.fromkeys(missing_prerequisites)
+        )
+
         return AbacusEnvironmentReport(
             abacus_available=abacus_available,
             abacus_path=abacus_path,
@@ -132,6 +146,7 @@ class AbacusEnvironmentProbeComponent(HarnessComponent):
             environment_prerequisites=environment_prerequisites,
             missing_prerequisites=list(dict.fromkeys(missing_prerequisites)),
             messages=messages,
+            evidence_refs=list(dict.fromkeys(evidence_refs)),
         )
 
     def _resolve_binary(self, binary_name: str) -> str | None:

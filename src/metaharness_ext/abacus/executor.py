@@ -46,6 +46,15 @@ class AbacusExecutorComponent(HarnessComponent):
                 stdout_text="",
                 stderr_text=f"ABACUS binary not found: {plan.executable.binary_name}",
             )
+            evidence_refs = self._build_evidence_refs(
+                plan,
+                run_dir=run_dir,
+                output_root=run_dir / (plan.output_root or f"OUT.{plan.suffix}"),
+                output_files=[],
+                diagnostic_files=[],
+                structure_files=[],
+                prepared_inputs=prepared_inputs,
+            )
             return self._build_artifact(
                 plan,
                 run_dir=run_dir,
@@ -55,6 +64,7 @@ class AbacusExecutorComponent(HarnessComponent):
                 return_code=None,
                 status="unavailable",
                 prepared_inputs=prepared_inputs,
+                evidence_refs=evidence_refs,
                 result_summary={"fallback_reason": "binary_not_found", "exit_code": None},
             )
 
@@ -67,6 +77,15 @@ class AbacusExecutorComponent(HarnessComponent):
                     stdout_text="",
                     stderr_text=f"Launcher not found: {plan.executable.launcher}",
                 )
+                evidence_refs = self._build_evidence_refs(
+                    plan,
+                    run_dir=run_dir,
+                    output_root=run_dir / (plan.output_root or f"OUT.{plan.suffix}"),
+                    output_files=[],
+                    diagnostic_files=[],
+                    structure_files=[],
+                    prepared_inputs=prepared_inputs,
+                )
                 return self._build_artifact(
                     plan,
                     run_dir=run_dir,
@@ -76,6 +95,7 @@ class AbacusExecutorComponent(HarnessComponent):
                     return_code=None,
                     status="unavailable",
                     prepared_inputs=prepared_inputs,
+                    evidence_refs=evidence_refs,
                     result_summary={"fallback_reason": "launcher_not_found", "exit_code": None},
                 )
 
@@ -94,6 +114,15 @@ class AbacusExecutorComponent(HarnessComponent):
                 stdout_text=stdout_text,
                 stderr_text=stderr_text,
             )
+            evidence_refs = self._build_evidence_refs(
+                plan,
+                run_dir=run_dir,
+                output_root=run_dir / (plan.output_root or f"OUT.{plan.suffix}"),
+                output_files=[],
+                diagnostic_files=[],
+                structure_files=[],
+                prepared_inputs=prepared_inputs,
+            )
             return self._build_artifact(
                 plan,
                 run_dir=run_dir,
@@ -103,6 +132,7 @@ class AbacusExecutorComponent(HarnessComponent):
                 return_code=None,
                 status="failed",
                 prepared_inputs=prepared_inputs,
+                evidence_refs=evidence_refs,
                 result_summary={"fallback_reason": "command_timeout", "exit_code": None},
             )
 
@@ -117,6 +147,15 @@ class AbacusExecutorComponent(HarnessComponent):
         output_files = self._discover_outputs(run_dir, plan)
         diagnostic_files = self._discover_diagnostics(run_dir, plan)
         structure_files = self._discover_structure_files(run_dir, output_root)
+        evidence_refs = self._build_evidence_refs(
+            plan,
+            run_dir=run_dir,
+            output_root=output_root,
+            output_files=output_files,
+            diagnostic_files=diagnostic_files,
+            structure_files=structure_files,
+            prepared_inputs=prepared_inputs,
+        )
 
         return self._build_artifact(
             plan,
@@ -131,12 +170,15 @@ class AbacusExecutorComponent(HarnessComponent):
             output_files=output_files,
             diagnostic_files=diagnostic_files,
             structure_files=structure_files,
+            evidence_refs=evidence_refs,
             result_summary={
                 "fallback_reason": None,
                 "exit_code": result.returncode,
                 "esolver_type": plan.esolver_type,
                 "pot_file": plan.pot_file,
                 "environment_prerequisites": plan.environment_prerequisites,
+                "missing_prerequisites": [],
+                "output_root": str(output_root) if output_root.exists() else None,
             },
         )
 
@@ -253,6 +295,31 @@ class AbacusExecutorComponent(HarnessComponent):
                         structure_files.append(str(path))
         return structure_files
 
+    def _build_evidence_refs(
+        self,
+        plan: AbacusRunPlan,
+        *,
+        run_dir: Path,
+        output_root: Path,
+        output_files: list[str],
+        diagnostic_files: list[str],
+        structure_files: list[str],
+        prepared_inputs: list[str],
+    ) -> list[str]:
+        refs = [
+            f"abacus://run/{plan.task_id}/{plan.run_id}",
+            f"abacus://run/{plan.task_id}/{plan.run_id}/family/{plan.application_family}",
+            f"abacus://run/{plan.task_id}/{plan.run_id}/workdir/{run_dir.name}",
+            *plan.environment_evidence_refs,
+        ]
+        if output_root.exists():
+            refs.append(f"abacus://run/{plan.task_id}/{plan.run_id}/output-root/{output_root.name}")
+        refs.extend(f"abacus://input/{Path(path).name}" for path in prepared_inputs)
+        refs.extend(f"abacus://output/{Path(path).name}" for path in output_files)
+        refs.extend(f"abacus://diagnostic/{Path(path).name}" for path in diagnostic_files)
+        refs.extend(f"abacus://structure/{Path(path).name}" for path in structure_files)
+        return list(dict.fromkeys(refs))
+
     def _build_artifact(
         self,
         plan: AbacusRunPlan,
@@ -268,6 +335,7 @@ class AbacusExecutorComponent(HarnessComponent):
         output_files: list[str] | None = None,
         diagnostic_files: list[str] | None = None,
         structure_files: list[str] | None = None,
+        evidence_refs: list[str] | None = None,
         result_summary: dict[str, object],
     ) -> AbacusRunArtifact:
         return AbacusRunArtifact(
@@ -283,6 +351,7 @@ class AbacusExecutorComponent(HarnessComponent):
             output_files=output_files or [],
             diagnostic_files=diagnostic_files or [],
             structure_files=structure_files or [],
+            evidence_refs=evidence_refs or [],
             working_directory=str(run_dir),
             status=status,  # type: ignore[arg-type]
             result_summary=result_summary,

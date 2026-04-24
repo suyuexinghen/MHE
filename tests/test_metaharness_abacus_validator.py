@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from metaharness.core.models import ValidationIssueCategory
 from metaharness_ext.abacus.contracts import AbacusRunArtifact
 from metaharness_ext.abacus.validator import AbacusValidatorComponent
 
@@ -23,6 +24,11 @@ def test_abacus_validator_accepts_nscf_evidence() -> None:
 
     assert report.passed is True
     assert report.status == "executed"
+    assert report.blocks_promotion is False
+    assert report.governance_state == "defer"
+    assert report.scored_evidence is not None
+    assert report.scored_evidence.attributes["governance_state"] == "defer"
+    assert f"abacus://run/{artifact.task_id}/{artifact.run_id}" in report.evidence_refs
 
 
 def test_abacus_validator_rejects_nscf_without_log_evidence() -> None:
@@ -197,6 +203,12 @@ def test_abacus_validator_accepts_md_dp_evidence() -> None:
 
     assert report.passed is True
     assert report.status == "executed"
+    assert report.blocks_promotion is False
+    assert report.governance_state == "defer"
+    assert report.scored_evidence is not None
+    assert report.scored_evidence.attributes["governance_state"] == "defer"
+    assert report.summary_metrics["esolver_type"] == "dp"
+    assert any(ref.startswith("abacus://run/task-md-dp/run-md-dp") for ref in report.evidence_refs)
 
 
 def test_abacus_validator_blocks_md_dp_missing_prerequisite() -> None:
@@ -222,7 +234,13 @@ def test_abacus_validator_blocks_md_dp_missing_prerequisite() -> None:
 
     assert report.passed is False
     assert report.status == "environment_invalid"
+    assert report.blocks_promotion is True
+    assert report.governance_state == "blocked"
     assert any("deeppmd_support" in item for item in report.missing_evidence)
+    assert any(issue.blocks_promotion for issue in report.issues)
+    assert any(
+        issue.category == ValidationIssueCategory.PROMOTION_BLOCKER for issue in report.issues
+    )
 
 
 def test_abacus_validator_rejects_md_without_artifact_evidence() -> None:
@@ -244,8 +262,14 @@ def test_abacus_validator_rejects_md_without_artifact_evidence() -> None:
 
     assert report.passed is False
     assert report.status == "validation_failed"
+    assert report.blocks_promotion is True
+    assert report.governance_state == "blocked"
     assert any("MD evidence" in item for item in report.missing_evidence)
     assert any("completed but evidence insufficient" in message for message in report.messages)
+    assert any(issue.blocks_promotion for issue in report.issues)
+    assert any(
+        issue.category == ValidationIssueCategory.PROMOTION_BLOCKER for issue in report.issues
+    )
 
 
 def test_abacus_validator_keeps_prerequisite_rejection_evidence_linked() -> None:
