@@ -122,6 +122,52 @@ def test_abacus_compiler_builds_md_plan() -> None:
     assert "md_dt 1.0" in plan.input_content
 
 
+def test_abacus_compiler_renders_params_deterministically() -> None:
+    compiler = AbacusInputCompilerComponent()
+    structure = AbacusStructureSpec(content="ATOMIC_SPECIES\nSi 28.0 Si.upf\n")
+    forward = AbacusMdSpec(
+        task_id="task-md-forward",
+        executable=AbacusExecutableSpec(binary_name="abacus"),
+        structure=structure,
+        params={"md_nstep": 5, "md_dt": 1.0},
+    )
+    reverse = AbacusMdSpec(
+        task_id="task-md-reverse",
+        executable=AbacusExecutableSpec(binary_name="abacus"),
+        structure=structure,
+        params={"md_dt": 1.0, "md_nstep": 5},
+    )
+
+    forward_input = compiler.compile(forward).input_content
+    reverse_input = compiler.compile(reverse).input_content
+
+    assert forward_input == reverse_input
+    assert forward_input.index("md_dt 1.0") < forward_input.index("md_nstep 5")
+
+
+def test_abacus_compiler_renders_relax_controls_deterministically() -> None:
+    compiler = AbacusInputCompilerComponent()
+    structure = AbacusStructureSpec(content="ATOMIC_SPECIES\nSi 28.0 Si.upf\n")
+    forward = AbacusRelaxSpec(
+        task_id="task-relax-forward",
+        executable=AbacusExecutableSpec(binary_name="abacus"),
+        structure=structure,
+        relax_controls={"relax_nmax": 10, "force_thr": 0.01},
+    )
+    reverse = AbacusRelaxSpec(
+        task_id="task-relax-reverse",
+        executable=AbacusExecutableSpec(binary_name="abacus"),
+        structure=structure,
+        relax_controls={"force_thr": 0.01, "relax_nmax": 10},
+    )
+
+    forward_input = compiler.compile(forward).input_content
+    reverse_input = compiler.compile(reverse).input_content
+
+    assert forward_input == reverse_input
+    assert forward_input.index("force_thr 0.01") < forward_input.index("relax_nmax 10")
+
+
 def test_abacus_nscf_requires_prerequisite_reference() -> None:
     with pytest.raises(ValueError, match="charge_density_path or restart_file_path"):
         AbacusNscfSpec(
@@ -274,7 +320,6 @@ def test_abacus_relax_rejects_conflicting_restart_paths() -> None:
             restart_file_path="/tmp/new.restart",
             relax_controls={"restart_file_path": "/tmp/old.restart"},
         )
-
 
     with pytest.raises(ValueError, match="basis_type=lcao is not supported for MD"):
         AbacusMdSpec(

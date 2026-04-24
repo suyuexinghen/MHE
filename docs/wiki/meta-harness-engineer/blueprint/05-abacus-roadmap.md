@@ -168,7 +168,7 @@ Phase 0: Environment Probe + SCF Minimal Baseline      [已完成]
 2. 同步 `abacus-engine-wiki` 与 merged blueprint / roadmap / handoff
 3. 保持 blueprint、roadmap、handoff 文档对 nested lifecycle object model 的表述一致
 4. 明确 promotion-ready validation semantics 与 graph promotion authority 的边界
-5. 收紧仍偏宽松的 evidence / prerequisite 语义，并补齐对应边界测试
+5. 收紧新增 evidence / prerequisite 语义，并补齐对应边界测试；NSCF restart-only、relax restart typing 与 MD 缺特征产物已覆盖，不应再列为 open todo
 6. 持续把 remaining work 表述限定在真实未完成项，避免把已落地能力写回 future plan
 
 ### 5.7.3 验收标准

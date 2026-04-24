@@ -203,7 +203,7 @@ class AbacusInputCompilerComponent(HarnessComponent):
         lines.append(f"basis_type {spec.basis_type}")
         lines.append(f"esolver_type {spec.esolver_type}")
 
-        for key, value in spec.params.items():
+        for key, value in sorted(spec.params.items()):
             lines.append(f"{key} {value}")
 
         if isinstance(spec, AbacusNscfSpec):
@@ -213,7 +213,7 @@ class AbacusInputCompilerComponent(HarnessComponent):
                 lines.append(f"restart_file_path {spec.restart_file_path}")
 
         if isinstance(spec, AbacusRelaxSpec):
-            for key, value in spec.relax_controls.items():
+            for key, value in sorted(spec.relax_controls.items()):
                 lines.append(f"{key} {value}")
             if spec.restart_file_path:
                 lines.append(f"restart_file_path {spec.restart_file_path}")

@@ -102,7 +102,7 @@ AbacusGateway
 - 规范化 request
 - 选择 family
 - 拒绝超出当前支持边界的组合
-- 后续需要把 manifest credential / subject / claim 边界写得更明确
+- manifest `policy.credentials` / `policy.sandbox` 已显式进入当前声明面；credential subject / claim 边界后续仍需随宿主策略细化
 
 ### Environment Probe
 - `abacus --version`
@@ -129,7 +129,7 @@ AbacusGateway
 - 收集 stdout/stderr
 - 发现 `OUT.<suffix>/` 与关键产物
 - 将 prepared inputs、workspace 布局、output root 与 family-aware artifact groups 汇总成稳定 run artifact 对象
-- 后续需要更显式对齐 manifest `policy.sandbox` 与稳定 evidence anchors
+- 当前 artifact/evidence anchors 已覆盖稳定本地证据；后续剩余重点是与宿主 provenance / audit 消费路径继续压实
 
 ### Validator
 - 区分 `environment_invalid` / `input_invalid` / `runtime_failed` / `validation_failed` / `executed`
@@ -178,8 +178,8 @@ MHE/tests/test_metaharness_abacus_validator.py
 
 因此后续重点已经不是“创建骨架”，而是：
 
-- 补齐 governance-facing contract/report/evidence surface
-- 把 manifest policy 从隐含语义变成显式声明
+- 保持 governance-facing contract/report/evidence surface 与实现、测试、文档同步
+- 持续压实 manifest policy 与宿主策略/审计消费路径的对接边界
 - 让 blueprint / roadmap / checklist 与当前代码现实重新对齐
 
 ---
@@ -223,12 +223,14 @@ ABACUS contracts 当前应满足：
 - 先覆盖已落地 family/mode 的稳定字段
 - 后续治理对齐优先采用共享 MHE 类型，而不是发明 ABACUS 私有治理模型
 
-后续本轮实现应把 `AbacusValidationReport` / `AbacusRunArtifact` 补齐为可承载：
+当前 `AbacusValidationReport` / `AbacusRunArtifact` 已能承载：
 
 - `ValidationIssue`
 - `blocks_promotion`
 - `ScoredEvidence`
 - canonical `evidence_refs`
+
+后续工作应聚焦这些治理字段与宿主 runtime / policy / provenance 路径的持续一致性，而不是把它们重新列为未实现 contract。
 
 ---
 
@@ -257,14 +259,14 @@ ABACUS extension 的 evidence surface 仍然应围绕 `OUT.<suffix>/` 组织。
 family-aware success 规则：
 
 - `scf`: `OUT.<suffix>/` 存在且关键日志/输出存在
-- `nscf`: 输出存在且相关前提满足
+- `nscf`: `OUT.<suffix>/` 存在且严格要求 `running_nscf.log` 证据
 - `relax`: final structure evidence 存在
 - `md`: `MD_dump` / `Restart_md*` / `STRU_MD*` 等证据存在
 - `md + dp`: 额外要求 DeePMD prerequisite 满足
 
-但当前蓝图要求进一步补齐：
+当前蓝图要求保持：
 
-- validator 结果要能表达 `blocks_promotion`
+- validator 结果能表达 `blocks_promotion`
 - evidence 不只保留文件路径，还要能导出 canonical `evidence_refs`
 - 成功执行不自动等于 graph promotion；它只代表当前 evidence baseline 成立
 - 本地 artifact/report 结构需要能被 session / audit / provenance 稳定消费

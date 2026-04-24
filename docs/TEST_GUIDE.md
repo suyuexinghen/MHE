@@ -16,6 +16,39 @@
   lifecycle states.
 
   ---
+  ABACUS directed test tier
+
+  The ABACUS extension has a focused directed suite that does not require a local
+  ABACUS binary. Environment and execution behavior is covered with typed specs,
+  patched probes, structured artifacts, and evidence-first validator fixtures.
+
+  Run the full ABACUS directed suite from the repository root:
+  PYTHONPATH=MHE/src pytest MHE/tests/test_metaharness_abacus_*.py -q
+
+  Focused ABACUS files:
+  PYTHONPATH=MHE/src pytest \
+    MHE/tests/test_metaharness_abacus_manifest.py \
+    MHE/tests/test_metaharness_abacus_gateway.py \
+    MHE/tests/test_metaharness_abacus_environment.py \
+    MHE/tests/test_metaharness_abacus_compiler.py \
+    MHE/tests/test_metaharness_abacus_executor.py \
+    MHE/tests/test_metaharness_abacus_validator.py \
+    MHE/tests/test_metaharness_abacus_minimal_demo.py
+
+  Coverage focus:
+  - explicit manifest policy.sandbox / policy.credentials semantics
+  - typed SCF / NSCF / relax / MD task boundaries
+  - relax restart compatibility through typed restart_file_path
+  - deterministic INPUT rendering for params and relax controls
+  - required runtime asset grouping for pseudo, orbital, restart,
+    charge-density, and pot_file inputs
+  - family-aware executor artifact discovery under OUT.<suffix>/
+  - evidence-first validator behavior, including strict NSCF running_nscf.log
+    evidence and MD characteristic artifacts
+  - protected validator governance outputs: issues, blocks_promotion,
+    governance_state, ScoredEvidence, and canonical evidence_refs
+
+  ---
   2. Validate Graph XML Files
 
   Structural validation only (checks XML shape):

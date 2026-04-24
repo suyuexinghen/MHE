@@ -59,7 +59,6 @@ def test_abacus_validator_rejects_nscf_without_log_evidence() -> None:
     assert any("NSCF log evidence (running_nscf.log)" == item for item in report.missing_evidence)
 
 
-
 def test_abacus_validator_rejects_nscf_with_only_scf_log_evidence() -> None:
     artifact = AbacusRunArtifact(
         task_id="task-nscf",
