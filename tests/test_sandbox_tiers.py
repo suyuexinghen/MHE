@@ -11,8 +11,14 @@ from metaharness.safety.sandbox_tiers import (
     SandboxTier,
     firecracker_adapter,
     gvisor_adapter,
+    parse_sandbox_tier,
     v8_wasm_adapter,
 )
+
+
+def test_parse_sandbox_tier_accepts_workspace_write_aliases() -> None:
+    assert parse_sandbox_tier("workspace-write") == SandboxTier.V8_WASM
+    assert parse_sandbox_tier("workspace_write") == SandboxTier.V8_WASM
 
 
 def test_default_adapters_have_expected_tiers() -> None:

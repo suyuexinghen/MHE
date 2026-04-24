@@ -36,6 +36,8 @@ _SANDBOX_TIER_ALIASES: dict[str, SandboxTier] = {
     "v8": SandboxTier.V8_WASM,
     "wasm": SandboxTier.V8_WASM,
     "v8_wasm": SandboxTier.V8_WASM,
+    "workspace-write": SandboxTier.V8_WASM,
+    "workspace_write": SandboxTier.V8_WASM,
     "gvisor": SandboxTier.GVISOR,
     "firecracker": SandboxTier.FIRECRACKER,
 }
