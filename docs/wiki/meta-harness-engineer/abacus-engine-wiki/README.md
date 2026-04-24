@@ -35,6 +35,8 @@
 
 这意味着首版会优先采取 **"typed spec -> workspace files -> launcher/executable -> structured artifacts"** 路线，而不是把 ABACUS 视为一个大而全的自由文本运行器。
 
+在当前 strengthened MHE 语义下，ABACUS 扩展也不再只是 file-driven workflow 的受控封装。它的输出还需要进入统一的 promotion-reviewed candidate path，并对齐 manifest policy declaration、protected governance boundary，以及 session / audit / provenance evidence flow。换言之，ABACUS local validator 可以给出工程与证据判断，但 active graph promotion authority 仍属于 runtime-level governance path。
+
 ---
 
 ## 首版环境假设
@@ -69,6 +71,24 @@
 
 ---
 
+## 当前状态
+
+当前实现已完成：
+
+- Phase 0：SCF baseline
+- Phase 1：NSCF / relax baseline
+- Phase 2：MD baseline
+- Phase 3：`md + dp` typed baseline
+
+当前主线进入：
+
+- Phase 4：examples / graph / regression hardening
+
+同时，本目录需要与 strengthened MHE 的 governance / evidence 基线继续对齐，尤其是 promotion authority、protected validator / policy boundary、manifest credential / sandbox policy，以及 session / audit / provenance evidence integration 的叙述。
+## 阅读前提与当前文档缺口
+
+阅读本目录时，建议同时带着 strengthened MHE 的统一治理语义来理解。尤其是 `03` / `04` / `05` / `06` 中涉及 validator、policy、evidence、roadmap 的段落，需要按 promotion / protected boundary / runtime evidence integration 的视角吸收，而不能只按 extension-local pipeline 理解。
+
 ## 阅读建议
 
 ### 如果你想先理解 ABACUS 为什么适合接入 MHE
@@ -95,7 +115,7 @@
 
 ## 与其他 wiki 的关系
 
-- 与 [meta-harness-wiki](../meta-harness-wiki/README.md) 的关系：后者描述通用 `Meta-Harness SDK / Runtime / ConnectionEngine`；本目录描述其上的 `ABACUS` 域扩展方案。
+- 与 [meta-harness-wiki](../meta-harness-wiki/README.md) 的关系：后者描述通用 `Meta-Harness SDK / Runtime / ConnectionEngine`；本目录描述其上的 `ABACUS` 域扩展方案。当前关系还应补充一点：ABACUS 的 promotion-ready outcome、evidence refs 与 policy review 应依赖 runtime-level promotion / evidence authority，而不是只停留在 extension-local validator 决策。
 - 与 [deepmd-engine-wiki](../deepmd-engine-wiki/README.md) 的关系：两者都采用 `gateway -> environment -> compiler -> executor -> validator` 的受控扩展模式，但 DeepMD 偏向 `JSON + workspace`，ABACUS 偏向 `INPUT/STRU/KPT + workspace + launcher`。
 - 与 [jedi-engine-wiki](../jedi-engine-wiki/README.md) 的关系：两者都更适合包装“声明式配置 + 外部 executable”的稳定控制面；JEDI 偏向 `YAML + MPI executable`，ABACUS 偏向固定文件名工作目录 + launcher 驱动。
 - 与 [nektar-engine-wiki](../nektar-engine-wiki/README.md) 的关系：两者都是真实数值执行后端，但 Nektar 的控制面是 session plan / XML，ABACUS 的控制面是工作目录输入文件集。

@@ -42,6 +42,24 @@ class AbacusValidatorComponent(HarnessComponent):
             if path is not None
         ]
 
+        missing_prerequisites = artifact.result_summary.get("missing_prerequisites")
+        if missing_prerequisites:
+            missing_list = [str(item) for item in missing_prerequisites]
+            messages.append(
+                "ABACUS run blocked by missing environment prerequisites: "
+                + ", ".join(missing_list)
+                + "."
+            )
+            return AbacusValidationReport(
+                task_id=artifact.task_id,
+                run_id=artifact.run_id,
+                passed=False,
+                status="environment_invalid",
+                messages=messages,
+                evidence_files=evidence_files,
+                missing_evidence=missing_list,
+            )
+
         if artifact.status == "unavailable" and fallback_reason:
             messages.append(f"ABACUS run unavailable: {fallback_reason}.")
             return AbacusValidationReport(

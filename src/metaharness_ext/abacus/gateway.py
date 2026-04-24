@@ -45,6 +45,7 @@ class AbacusGatewayComponent(HarnessComponent):
         charge_density_path: str | None = None,
         restart_file_path: str | None = None,
         relax_controls: dict[str, Any] | None = None,
+        pot_file: str | None = None,
     ) -> AbacusExperimentSpec:
         common_kwargs = {
             "task_id": task_id,
@@ -55,6 +56,7 @@ class AbacusGatewayComponent(HarnessComponent):
             "esolver_type": esolver_type,
             "suffix": suffix,
             "working_directory": working_directory,
+            "pot_file": pot_file,
         }
         if family == "nscf":
             return AbacusNscfSpec(

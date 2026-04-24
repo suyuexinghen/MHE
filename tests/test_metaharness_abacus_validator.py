@@ -121,6 +121,110 @@ def test_abacus_validator_accepts_md_artifact_evidence(tmp_path: Path) -> None:
     assert report.status == "executed"
 
 
+def test_abacus_validator_accepts_md_restart_artifact_evidence(tmp_path: Path) -> None:
+    output_root = tmp_path / "OUT.ABACUS"
+    output_root.mkdir()
+    restart = output_root / "Restart_md.0"
+    restart.write_text("restart")
+
+    artifact = AbacusRunArtifact(
+        task_id="task-md",
+        run_id="run-md",
+        application_family="md",
+        return_code=0,
+        status="completed",
+        working_directory=str(tmp_path),
+        prepared_inputs=["INPUT", "STRU"],
+        output_root=str(output_root),
+        output_files=[str(output_root), str(restart)],
+        diagnostic_files=[],
+    )
+
+    validator = AbacusValidatorComponent()
+    report = validator.validate_run(artifact)
+
+    assert report.passed is True
+    assert report.status == "executed"
+
+
+def test_abacus_validator_accepts_md_structure_artifact_evidence(tmp_path: Path) -> None:
+    output_root = tmp_path / "OUT.ABACUS"
+    output_root.mkdir()
+    structure = output_root / "STRU_MD_0"
+    structure.write_text("structure")
+
+    artifact = AbacusRunArtifact(
+        task_id="task-md",
+        run_id="run-md",
+        application_family="md",
+        return_code=0,
+        status="completed",
+        working_directory=str(tmp_path),
+        prepared_inputs=["INPUT", "STRU"],
+        output_root=str(output_root),
+        output_files=[str(output_root), str(structure)],
+        diagnostic_files=[],
+    )
+
+    validator = AbacusValidatorComponent()
+    report = validator.validate_run(artifact)
+
+    assert report.passed is True
+    assert report.status == "executed"
+
+
+def test_abacus_validator_accepts_md_dp_evidence() -> None:
+    artifact = AbacusRunArtifact(
+        task_id="task-md-dp",
+        run_id="run-md-dp",
+        application_family="md",
+        return_code=0,
+        status="completed",
+        working_directory="/tmp",
+        prepared_inputs=["INPUT", "STRU"],
+        output_root="/tmp/OUT.ABACUS",
+        output_files=["/tmp/OUT.ABACUS", "/tmp/OUT.ABACUS/MD_dump"],
+        diagnostic_files=[],
+        result_summary={
+            "esolver_type": "dp",
+            "pot_file": "/tmp/model.pb",
+            "environment_prerequisites": ["deeppmd_support"],
+        },
+    )
+
+    validator = AbacusValidatorComponent()
+    report = validator.validate_run(artifact)
+
+    assert report.passed is True
+    assert report.status == "executed"
+
+
+def test_abacus_validator_blocks_md_dp_missing_prerequisite() -> None:
+    artifact = AbacusRunArtifact(
+        task_id="task-md-dp",
+        run_id="run-md-dp",
+        application_family="md",
+        return_code=0,
+        status="completed",
+        working_directory="/tmp",
+        prepared_inputs=["INPUT", "STRU"],
+        output_root="/tmp/OUT.ABACUS",
+        output_files=["/tmp/OUT.ABACUS", "/tmp/OUT.ABACUS/MD_dump"],
+        diagnostic_files=[],
+        result_summary={
+            "esolver_type": "dp",
+            "missing_prerequisites": ["deeppmd_support"],
+        },
+    )
+
+    validator = AbacusValidatorComponent()
+    report = validator.validate_run(artifact)
+
+    assert report.passed is False
+    assert report.status == "environment_invalid"
+    assert any("deeppmd_support" in item for item in report.missing_evidence)
+
+
 def test_abacus_validator_rejects_md_without_artifact_evidence() -> None:
     artifact = AbacusRunArtifact(
         task_id="task-md",
@@ -141,3 +245,31 @@ def test_abacus_validator_rejects_md_without_artifact_evidence() -> None:
     assert report.passed is False
     assert report.status == "validation_failed"
     assert any("MD evidence" in item for item in report.missing_evidence)
+    assert any("completed but evidence insufficient" in message for message in report.messages)
+
+
+def test_abacus_validator_keeps_prerequisite_rejection_evidence_linked() -> None:
+    artifact = AbacusRunArtifact(
+        task_id="task-md-dp",
+        run_id="run-md-dp",
+        application_family="md",
+        return_code=0,
+        status="completed",
+        working_directory="/tmp",
+        prepared_inputs=["INPUT", "STRU"],
+        output_root="/tmp/OUT.ABACUS",
+        output_files=["/tmp/OUT.ABACUS", "/tmp/OUT.ABACUS/MD_dump"],
+        diagnostic_files=["/tmp/OUT.ABACUS/running_md.log"],
+        result_summary={
+            "esolver_type": "dp",
+            "missing_prerequisites": ["deeppmd_support"],
+        },
+    )
+
+    report = AbacusValidatorComponent().validate_run(artifact)
+
+    assert report.passed is False
+    assert report.status == "environment_invalid"
+    assert "/tmp/OUT.ABACUS/MD_dump" in report.evidence_files
+    assert "/tmp/OUT.ABACUS/running_md.log" in report.evidence_files
+    assert report.missing_evidence == ["deeppmd_support"]

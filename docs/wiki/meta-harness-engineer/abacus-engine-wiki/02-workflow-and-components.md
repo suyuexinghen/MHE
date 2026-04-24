@@ -14,6 +14,10 @@ AbacusGateway
 
 这条链的目标是把 ABACUS 的固定工作目录模型纳入 MHE，而不是把它抽象成任意命令执行器。
 
+### 与 MHE promotion path 的关系
+
+这条组件链的输出，首先服务于 ABACUS extension 内部的 environment / execution / validation 语义，但最终并不自行决定 graph promotion。按照当前 strengthened MHE 语义，ABACUS 组件链产出的 artifact、validation report 与 evidence refs，应作为 `HarnessRuntime.commit_graph()` 之后统一 candidate promotion path 的上游输入；是否进入 active graph，仍由 runtime-level promotion authority、policy review 与 protected governance boundary 共同决定。
+
 ---
 
 ## 2.2 组件职责
@@ -26,6 +30,7 @@ AbacusGateway
 - 规范化 `AbacusRunSpec` 及 family-aware variants
 - 决定执行 family：`scf` / `nscf` / `relax` / `md`
 - 约束 `basis_type`、`launcher`、`esolver_type` 的首版合法组合
+- 在进入 compiler / executor 前收紧 manifest 声明输入边界，尤其是 credential subject / claim、required paths 与 launcher / binary 请求不能越过 manifest policy surface
 
 ### `AbacusEnvironmentProbe`
 
@@ -41,6 +46,7 @@ AbacusGateway
   - `KPT`（按模式可选）
   - 伪势 / 轨道文件（按 basis / mode 可选）
   - DPMD `pot_file`
+- 将环境探测结果保留为 prerequisites evidence：它不仅决定“能不能跑”，也为后续 validator / policy review 提供前提满足、缺失项与保守阻断的证据基础
 
 ### `AbacusInputCompiler`
 
@@ -62,6 +68,7 @@ AbacusGateway
 - 收集 stdout / stderr / return code
 - 发现 `OUT.<suffix>/` 与关键输出文件
 - 在 MD 模式下收集 restart / trajectory / 结构演化证据
+- 执行时遵守 manifest / runtime policy surface 中已经声明的 launcher、binary、sandbox tier 与 workspace 边界，而不是在 executor 内部额外扩权
 
 ### `AbacusValidator`
 
@@ -71,6 +78,8 @@ AbacusGateway
 - 区分 `environment_invalid`、`input_invalid`、`runtime_failed`、`validation_failed`、`executed`
 - 按 family 判断最小成功条件
 - 对 DPMD mode 做额外条件检查
+- 作为 governance component 处于 protected boundary，不能被隐式绕过或退化成可选 helper
+- 把关键失败提升为 promotion-blocking evidence 候选，并与 policy review 协作区分“没跑起来”“跑了但证据不足”“工程上通过但仍需治理审核”
 
 ---
 
@@ -206,3 +215,5 @@ SCF (direct or launcher-driven)
 - SCF 是最小且最通用的基础路径
 - 它能验证 file-driven compiler、launcher 语义和 `OUT.<suffix>/` artifact surface
 - 为后续 `nscf` / `relax` / `md` 提供最稳定的基线
+
+但从 workspace / artifact 成功到 active graph promotion 之间，仍有统一治理门。也就是说，happy path 的终点应理解为 promotion-ready candidate outcome：ABACUS 已产出足够工程证据与最小验证结论，但是否晋升到 active graph，仍要经过 runtime-level promotion authority、policy 审核与 protected governance boundary 的共同裁决。

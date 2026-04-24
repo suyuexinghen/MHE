@@ -102,8 +102,28 @@ def test_abacus_nscf_requires_prerequisite_reference() -> None:
         )
 
 
-def test_abacus_md_rejects_dp_baseline() -> None:
-    with pytest.raises(ValueError, match="esolver_type=dp is not supported in Phase 2"):
+def test_abacus_compiler_builds_md_dp_plan() -> None:
+    spec = AbacusMdSpec(
+        task_id="task-md-dp",
+        executable=AbacusExecutableSpec(binary_name="abacus"),
+        structure=AbacusStructureSpec(content="ATOMIC_SPECIES\nSi 28.0 Si.upf\n"),
+        esolver_type="dp",
+        pot_file="/tmp/model.pb",
+    )
+
+    compiler = AbacusInputCompilerComponent()
+    plan = compiler.compile(spec)
+
+    assert plan.application_family == "md"
+    assert plan.esolver_type == "dp"
+    assert plan.pot_file == "/tmp/model.pb"
+    assert plan.required_runtime_paths == ["/tmp/model.pb"]
+    assert plan.environment_prerequisites == ["deeppmd_support"]
+    assert "pot_file /tmp/model.pb" in plan.input_content
+
+
+def test_abacus_md_dp_requires_pot_file() -> None:
+    with pytest.raises(ValueError, match="esolver_type=dp requires pot_file"):
         AbacusMdSpec(
             task_id="task-md-dp",
             executable=AbacusExecutableSpec(binary_name="abacus"),
@@ -113,7 +133,7 @@ def test_abacus_md_rejects_dp_baseline() -> None:
 
 
 def test_abacus_md_rejects_lcao_baseline() -> None:
-    with pytest.raises(ValueError, match="basis_type=lcao is not supported in Phase 2"):
+    with pytest.raises(ValueError, match="basis_type=lcao is not supported for MD"):
         AbacusMdSpec(
             task_id="task-md-lcao",
             executable=AbacusExecutableSpec(binary_name="abacus"),

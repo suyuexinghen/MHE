@@ -1,0 +1,15 @@
+<Harness version="0.1.0" graphVersion="1" schemaVersion="1.1">
+  <Components>
+    <Component id="abacus_gateway.primary" type="AbacusGateway" impl="metaharness_ext.abacus.gateway" version="0.1.0" />
+    <Component id="abacus_environment.primary" type="AbacusEnvironmentProbe" impl="metaharness_ext.abacus.environment" version="0.1.0" />
+    <Component id="abacus_input_compiler.primary" type="AbacusInputCompiler" impl="metaharness_ext.abacus.input_compiler" version="0.1.0" />
+    <Component id="abacus_executor.primary" type="AbacusExecutor" impl="metaharness_ext.abacus.executor" version="0.1.0" />
+    <Component id="abacus_validator.primary" type="AbacusValidator" impl="metaharness_ext.abacus.validator" version="0.1.0" protected="true" />
+  </Components>
+  <Connections>
+    <Connection id="c1" from="abacus_gateway.primary.task" to="abacus_environment.primary.task" payload="AbacusExperimentSpec" mode="sync" policy="required" />
+    <Connection id="c2" from="abacus_gateway.primary.task" to="abacus_input_compiler.primary.task" payload="AbacusExperimentSpec" mode="sync" policy="required" />
+    <Connection id="c3" from="abacus_input_compiler.primary.plan" to="abacus_executor.primary.plan" payload="AbacusRunPlan" mode="sync" policy="required" />
+    <Connection id="c4" from="abacus_executor.primary.run" to="abacus_validator.primary.run" payload="AbacusRunArtifact" mode="sync" policy="required" />
+  </Connections>
+</Harness>

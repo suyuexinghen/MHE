@@ -131,7 +131,13 @@ class AbacusExecutorComponent(HarnessComponent):
             output_files=output_files,
             diagnostic_files=diagnostic_files,
             structure_files=structure_files,
-            result_summary={"fallback_reason": None, "exit_code": result.returncode},
+            result_summary={
+                "fallback_reason": None,
+                "exit_code": result.returncode,
+                "esolver_type": plan.esolver_type,
+                "pot_file": plan.pot_file,
+                "environment_prerequisites": plan.environment_prerequisites,
+            },
         )
 
     def _resolve_run_dir(self, plan: AbacusRunPlan) -> Path:

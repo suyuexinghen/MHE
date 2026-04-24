@@ -123,3 +123,35 @@ def test_abacus_executor_artifact_includes_stdout_stderr_paths() -> None:
     assert artifact.stderr_path is not None
     assert Path(artifact.stdout_path).exists()
     assert Path(artifact.stderr_path).exists()
+
+
+def test_abacus_executor_discovers_diagnostics_and_structures(tmp_path: Path, monkeypatch) -> None:
+    executor = AbacusExecutorComponent()
+    plan = AbacusRunPlan(
+        task_id="task-md",
+        run_id="run-md",
+        application_family="md",
+        command=[],
+        working_directory=str(tmp_path / "abacus_test"),
+        input_content="INPUT_PARAMETERS\nsuffix ABACUS\ncalculation md\n",
+        structure_content="ATOMIC_SPECIES\nSi 28.0 Si.upf\n",
+        suffix="ABACUS",
+        expected_logs=["running_md.log"],
+        executable=AbacusExecutableSpec(binary_name="echo", launcher="direct"),
+    )
+
+    def fake_run(command, *, cwd, capture_output, text, check, timeout):
+        out_dir = cwd / "OUT.ABACUS"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (cwd / "running_md.log").write_text("log")
+        (out_dir / "MD_dump").write_text("dump")
+        (out_dir / "STRU_MD_0").write_text("structure")
+        return type("_CompletedProcess", (), {"returncode": 0, "stdout": "ok", "stderr": ""})()
+
+    monkeypatch.setattr("metaharness_ext.abacus.executor.subprocess.run", fake_run)
+
+    artifact = executor.execute_plan(plan)
+
+    assert any(Path(path).name == "running_md.log" for path in artifact.diagnostic_files)
+    assert any(Path(path).name == "MD_dump" for path in artifact.output_files)
+    assert any(Path(path).name.startswith("STRU_MD") for path in artifact.structure_files)

@@ -1,5 +1,7 @@
 # 04. ABACUS 扩展蓝图
 
+> 状态注记（2026-04）：Phase 3（`md + esolver_type=dp` typed baseline）已落地；当前已交付的 Phase 4 主要覆盖 example manifests、`abacus-minimal.xml` 与回归/治理加固，study 仍保留为后续扩展面。
+
 ## 4.1 目标
 
 `metaharness_ext.abacus` 的目标，不是重写 ABACUS，也不是把它包装成黑盒命令执行器，而是把 ABACUS 的稳定控制面以 **受控、可声明、可验证、可审计** 的方式接入 MHE。
@@ -101,9 +103,9 @@ AbacusGateway
 
 ---
 
-## 4.4 未来包结构
+## 4.4 包结构
 
-推荐未来代码骨架：
+当前仓库中已落地的骨架如下（最初设计中的 `slots.py` 未纳入当前交付范围）：
 
 ```text
 MHE/src/metaharness_ext/abacus/
@@ -123,7 +125,7 @@ MHE/src/metaharness_ext/abacus/
 └── validator.json
 ```
 
-并配套：
+当前已配套：
 
 ```text
 MHE/examples/manifests/abacus/
@@ -168,7 +170,8 @@ esolver_type = dp
 pot_file = model.pb
 ```
 
-因此它应由 `metaharness_ext.abacus` 承担，并受以下规则约束：
+因此它应由 `metaharness_ext.abacus` 承担，并受以下规则约束。该 typed baseline 已在当前实现中落地，且对 DeePMD support 采用保守策略：若 `abacus --info` 无法明确确认支持，则按环境前提不足阻断执行。
+
 
 - environment probe 要确认 ABACUS 构建具备 DeePMD support
 - compiler 要显式渲染 `pot_file`

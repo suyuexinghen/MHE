@@ -77,33 +77,36 @@ class AbacusEnvironmentProbeComponent(HarnessComponent):
             if not launcher_available:
                 messages.append(f"Launcher not found: {requested_launcher}")
 
-        deeppmd_support_detected = False
-        gpu_support_detected = False
+        deeppmd_probe_supported = info_probe_supported
+        deeppmd_probe_succeeded = info_probe_succeeded
+        deeppmd_support_detected: bool | None = None
+        gpu_support_detected: bool | None = None
         if info_probe_succeeded and info_output:
-            deeppmd_support_detected = (
-                "deepmd" in info_output.lower() or "dp" in info_output.lower()
-            )
-            gpu_support_detected = "cuda" in info_output.lower() or "gpu" in info_output.lower()
+            lowered_info = info_output.lower()
+            deeppmd_support_detected = "deepmd" in lowered_info or "dp" in lowered_info
+            gpu_support_detected = "cuda" in lowered_info or "gpu" in lowered_info
 
         required_paths_present = True
+        missing_required_paths: list[str] = []
         for path_str in self._required_paths(spec):
             path = Path(path_str).expanduser()
             if not path.exists():
                 required_paths_present = False
+                missing_required_paths.append(str(path))
                 messages.append(f"Missing required path: {path}")
 
         if spec.working_directory is not None:
             workdir = Path(spec.working_directory).expanduser()
             if workdir.exists() and not workdir.is_dir():
                 required_paths_present = False
+                missing_required_paths.append(str(workdir))
                 messages.append(f"Working directory is not a directory: {workdir}")
 
-        if (
-            isinstance(spec, AbacusMdSpec)
-            and spec.esolver_type == "dp"
-            and not deeppmd_support_detected
-        ):
-            messages.append("DeePMD support not detected but esolver_type=dp requested")
+        environment_prerequisites = self._environment_prerequisites(spec)
+        missing_prerequisites: list[str] = []
+        if "deeppmd_support" in environment_prerequisites and deeppmd_support_detected is not True:
+            missing_prerequisites.append("deeppmd_support")
+            messages.append("DeePMD support is required for md + esolver_type=dp")
 
         return AbacusEnvironmentReport(
             abacus_available=abacus_available,
@@ -120,9 +123,14 @@ class AbacusEnvironmentProbeComponent(HarnessComponent):
             requested_launcher=requested_launcher,
             launcher_available=launcher_available,
             launcher_path=launcher_path,
+            deeppmd_probe_supported=deeppmd_probe_supported,
+            deeppmd_probe_succeeded=deeppmd_probe_succeeded,
             deeppmd_support_detected=deeppmd_support_detected,
             gpu_support_detected=gpu_support_detected,
             required_paths_present=required_paths_present,
+            missing_required_paths=missing_required_paths,
+            environment_prerequisites=environment_prerequisites,
+            missing_prerequisites=list(dict.fromkeys(missing_prerequisites)),
             messages=messages,
         )
 
@@ -181,6 +189,12 @@ class AbacusEnvironmentProbeComponent(HarnessComponent):
     def _required_paths(self, spec: AbacusExperimentSpec) -> list[str]:
         paths: list[str] = []
         paths.extend(spec.required_paths)
+
+        if isinstance(spec, AbacusMdSpec) and spec.esolver_type == "dp":
+            if spec.pot_file:
+                paths.append(spec.pot_file)
+            return paths
+
         paths.extend(spec.pseudo_files)
         paths.extend(spec.orbital_files)
         if spec.pot_file:
@@ -195,3 +209,8 @@ class AbacusEnvironmentProbeComponent(HarnessComponent):
             if isinstance(restart_path, str) and restart_path:
                 paths.append(restart_path)
         return paths
+
+    def _environment_prerequisites(self, spec: AbacusExperimentSpec) -> list[str]:
+        if isinstance(spec, AbacusMdSpec) and spec.esolver_type == "dp":
+            return ["deeppmd_support"]
+        return []

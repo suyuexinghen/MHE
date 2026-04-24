@@ -2,7 +2,7 @@
 
 > 目的：给新的 Claude Code 对话窗口提供一份可直接接力开发的工作指导文档。
 > 范围：`MHE/src/metaharness_ext/abacus/` 与对应测试 / wiki。
-> 状态基线：Phase 0 已完成，Phase 1（NSCF / relax baseline）已完成并通过定向测试；Phase 2（MD baseline）已完成并通过 ABACUS 定向测试，下一步进入 Phase 3。
+> 状态基线：Phase 0 已完成，Phase 1（NSCF / relax baseline）已完成并通过定向测试；Phase 2（MD baseline）与 Phase 3（`md + dp` typed baseline）已完成并通过 ABACUS 定向测试，下一步进入 Phase 4。
 
 ---
 
@@ -22,7 +22,7 @@
 
 下一阶段应进入：
 
-- **Phase 3**：MD + DP / typed hardening
+- **Phase 4**：Examples / Study / Governance Hardening
 
 ---
 
@@ -100,7 +100,7 @@ ABACUS extension 已存在完整包骨架：
 - `AbacusScfSpec`
 - `AbacusNscfSpec`
 - `AbacusRelaxSpec`
-- `AbacusMdSpec`（已定义但未进入真实 Phase 2 实现）
+- `AbacusMdSpec`（已支持 `md + ksdft` 与 `md + dp` 的受控组合）
 - `AbacusEnvironmentReport`
 - `AbacusRunPlan`
 - `AbacusRunArtifact`
@@ -118,7 +118,7 @@ ABACUS extension 已存在完整包骨架：
 - `nscf` 需要 `charge_density_path` 或 `restart_file_path`
 - `nscf` 强制要求 `kpoints`
 - `relax` 使用 `relax_controls`
-- `dp` 暂未开放到 Phase 1 工作流
+- `md + dp` 要求 `pot_file`，并在 DeePMD support 不明确时按保守策略阻断
 
 ### 3.2 gateway
 
@@ -134,10 +134,12 @@ ABACUS extension 已存在完整包骨架：
   - `family="scf"`
   - `family="nscf"`
   - `family="relax"`
+  - `family="md"`
 - 可传入：
   - `charge_density_path`
   - `restart_file_path`
   - `relax_controls`
+  - `pot_file`
 
 ### 3.3 environment
 
@@ -153,10 +155,12 @@ ABACUS extension 已存在完整包骨架：
   - `--version`
   - `--info`
   - `--check-input`
-- `required_paths_present` 已按 family 做路径扩展：
+- `required_paths_present` 已按 family / mode 做路径扩展：
   - NSCF：charge / restart prerequisite
   - relax：读取 `relax_controls["restart_file_path"]`
-- `deeppmd_support_detected` 与 `gpu_support_detected` 已有探测占位
+  - `md + dp`：要求 `pot_file`
+- `deeppmd_probe_supported` / `deeppmd_probe_succeeded` / `deeppmd_support_detected` 已进入环境报告
+- `md + dp` 在 DeePMD support 为 `false` 或 `unknown` 时按前提不足处理
 
 ### 3.4 input compiler
 
@@ -170,15 +174,18 @@ ABACUS extension 已存在完整包骨架：
   - `_compile_scf(...)`
   - `_compile_nscf(...)`
   - `_compile_relax(...)`
+  - `_compile_md(...)`
 - 已统一由 `_build_plan(...)` 生成：
   - `output_root`
   - `expected_outputs`
   - `expected_logs`
   - `required_runtime_paths`
+  - `environment_prerequisites`
 - `_render_input(...)` 已支持：
   - 基础字段
   - NSCF 的 `charge_density_path` / `restart_file_path`
   - relax 的 `relax_controls`
+  - `pot_file`
 
 ### 3.5 executor
 
@@ -196,7 +203,8 @@ ABACUS extension 已存在完整包骨架：
   - `output_files`
   - `diagnostic_files`
   - `structure_files`
-- 对 `OUT.<suffix>/` 及结构文件证据有更强支持
+- 通过 `result_summary` 保留 `esolver_type`、`pot_file`、environment prerequisite 等运行上下文
+- 对 `OUT.<suffix>/`、MD artifacts 及 family-specific 证据有更强支持
 
 ### 3.6 validator
 
@@ -223,6 +231,12 @@ ABACUS extension 已存在完整包骨架：
 - `relax`
   - 需要 `OUT.<suffix>/`
   - 需要最终结构证据：`STRU*` 或 `.cif`
+- `md`
+  - 需要 `OUT.<suffix>/`
+  - 需要至少一类 MD 特征证据：`MD_dump*` / `Restart_md*` / `STRU_MD*`
+- `md + dp`
+  - 继续复用 MD artifact evidence
+  - 若缺少 `deeppmd_support` 等 environment prerequisite，则优先归类为 `environment_invalid`
 - 不再仅依赖 `return_code == 0`
 
 ---
@@ -233,6 +247,7 @@ ABACUS extension 已存在完整包骨架：
 
 - `MHE/tests/test_metaharness_abacus_manifest.py`
 - `MHE/tests/test_metaharness_abacus_executor.py`
+- `MHE/tests/test_metaharness_abacus_gateway.py`
 - `MHE/tests/test_metaharness_abacus_minimal_demo.py`
 - `MHE/tests/test_metaharness_abacus_compiler.py`
 - `MHE/tests/test_metaharness_abacus_environment.py`
@@ -248,7 +263,7 @@ pytest MHE/tests/test_metaharness_abacus_*.py
 
 最近结果：
 
-- `27 passed`
+- `46 passed`
 
 ---
 

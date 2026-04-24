@@ -71,11 +71,14 @@ class AbacusInputCompilerComponent(HarnessComponent):
         )
 
     def _compile_md(self, spec: AbacusMdSpec) -> AbacusRunPlan:
+        required_runtime_paths = (
+            [spec.pot_file] if spec.esolver_type == "dp" and spec.pot_file else []
+        )
         return self._build_plan(
             spec,
             application_family="md",
             expected_logs=["running_md.log"],
-            required_runtime_paths=[],
+            required_runtime_paths=required_runtime_paths,
         )
 
     def _build_plan(
@@ -100,6 +103,9 @@ class AbacusInputCompilerComponent(HarnessComponent):
             structure_content=spec.structure.content,
             kpoints_content=spec.kpoints.content if spec.kpoints else None,
             suffix=spec.suffix,
+            esolver_type=spec.esolver_type,
+            pot_file=spec.pot_file,
+            environment_prerequisites=self._environment_prerequisites(spec),
             output_root=output_root,
             expected_outputs=[f"{output_root}/"],
             expected_logs=expected_logs,
@@ -132,3 +138,8 @@ class AbacusInputCompilerComponent(HarnessComponent):
             lines.append(f"pot_file {spec.pot_file}")
 
         return "\n".join(lines) + "\n"
+
+    def _environment_prerequisites(self, spec: AbacusExperimentSpec) -> list[str]:
+        if isinstance(spec, AbacusMdSpec) and spec.esolver_type == "dp":
+            return ["deeppmd_support"]
+        return []

@@ -246,3 +246,105 @@ def test_abacus_minimal_md_chain_with_stubbed_artifact_evidence(
     report = validator.validate_run(artifact)
     assert report.passed is True
     assert report.status == "executed"
+
+
+def test_abacus_minimal_md_dp_chain_with_stubbed_artifact_evidence(
+    tmp_path: Path, monkeypatch
+) -> None:
+    pot_file = tmp_path / "model.pb"
+    pot_file.write_text("model")
+    spec = AbacusMdSpec(
+        task_id="demo-md-dp-1",
+        executable=AbacusExecutableSpec(binary_name="echo"),
+        structure=AbacusStructureSpec(content="ATOMIC_SPECIES\nSi 28.0 Si.upf\n"),
+        esolver_type="dp",
+        pot_file=str(pot_file),
+        params={"md_nstep": 3},
+        working_directory=str(tmp_path / "md-dp-run"),
+    )
+
+    probe = AbacusEnvironmentProbeComponent()
+    monkeypatch.setattr(probe, "_probe_version", lambda binary_path: "abacus 1.0")
+    monkeypatch.setattr(probe, "_probe_info", lambda binary_path: "DeepMD enabled build")
+    monkeypatch.setattr(probe, "_probe_check_input", lambda binary_path: "ok")
+    env_report = probe.probe(spec)
+    assert env_report.deeppmd_support_detected is True
+    assert env_report.missing_prerequisites == []
+
+    compiler = AbacusInputCompilerComponent()
+    plan = compiler.compile(spec)
+    assert plan.application_family == "md"
+    assert plan.esolver_type == "dp"
+
+    executor = AbacusExecutorComponent()
+
+    def fake_run_dp(command, *, cwd, capture_output, text, check, timeout):
+        out_dir = cwd / "OUT.ABACUS"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "MD_dump").write_text("trajectory")
+        return type("_CompletedProcess", (), {"returncode": 0, "stdout": "ok", "stderr": ""})()
+
+    monkeypatch.setattr("metaharness_ext.abacus.executor.subprocess.run", fake_run_dp)
+
+    artifact = executor.execute_plan(plan)
+    artifact.result_summary["missing_prerequisites"] = env_report.missing_prerequisites
+    assert artifact.status == "completed"
+
+    validator = AbacusValidatorComponent()
+    report = validator.validate_run(artifact)
+    assert report.passed is True
+    assert report.status == "executed"
+
+
+def test_abacus_minimal_md_dp_chain_blocks_when_deepmd_support_unknown(
+    tmp_path: Path, monkeypatch
+) -> None:
+    pot_file = tmp_path / "model.pb"
+    pot_file.write_text("model")
+    spec = AbacusMdSpec(
+        task_id="demo-md-dp-2",
+        executable=AbacusExecutableSpec(binary_name="echo"),
+        structure=AbacusStructureSpec(content="ATOMIC_SPECIES\nSi 28.0 Si.upf\n"),
+        esolver_type="dp",
+        pot_file=str(pot_file),
+        working_directory=str(tmp_path / "md-dp-blocked-run"),
+    )
+
+    probe = AbacusEnvironmentProbeComponent()
+    monkeypatch.setattr(probe, "_probe_version", lambda binary_path: "abacus 1.0")
+    monkeypatch.setattr(probe, "_probe_info", lambda binary_path: None)
+    monkeypatch.setattr(probe, "_probe_check_input", lambda binary_path: "ok")
+    env_report = probe.probe(spec)
+    assert env_report.deeppmd_support_detected is None
+    assert env_report.missing_prerequisites == ["deeppmd_support"]
+
+    artifact = AbacusRunArtifact(
+        task_id=spec.task_id,
+        run_id=f"run-{spec.task_id}",
+        application_family="md",
+        status="unavailable",
+        working_directory=str(tmp_path / "md-dp-blocked-run"),
+        result_summary={
+            "fallback_reason": "missing_prerequisites",
+            "missing_prerequisites": env_report.missing_prerequisites,
+            "esolver_type": "dp",
+        },
+    )
+
+    validator = AbacusValidatorComponent()
+    report = validator.validate_run(artifact)
+    assert report.passed is False
+    assert report.status == "environment_invalid"
+
+
+def test_abacus_minimal_graph_shape_matches_phase4_story() -> None:
+    graph_path = (
+        Path(__file__).resolve().parent.parent / "examples" / "graphs" / "abacus-minimal.xml"
+    )
+    graph = graph_path.read_text()
+
+    assert "abacus_gateway.primary.task" in graph
+    assert "abacus_environment.primary.task" in graph
+    assert "abacus_input_compiler.primary.plan" in graph
+    assert "abacus_executor.primary.run" in graph
+    assert "abacus_validator.primary.run" in graph

@@ -169,10 +169,10 @@ class AbacusMdSpec(BaseModel):
             raise ValueError(f"unsupported basis_type: {self.basis_type}")
         if self.esolver_type not in {"ksdft", "dp"}:
             raise ValueError(f"unsupported esolver_type: {self.esolver_type}")
-        if self.esolver_type == "dp":
-            raise ValueError("esolver_type=dp is not supported in Phase 2 (MD baseline)")
         if self.basis_type == "lcao":
-            raise ValueError("basis_type=lcao is not supported in Phase 2 (MD baseline)")
+            raise ValueError("basis_type=lcao is not supported for MD")
+        if self.esolver_type == "dp" and not self.pot_file:
+            raise ValueError("esolver_type=dp requires pot_file")
         return self
 
 
@@ -194,9 +194,14 @@ class AbacusEnvironmentReport(BaseModel):
     requested_launcher: str | None = None
     launcher_available: bool = False
     launcher_path: str | None = None
-    deeppmd_support_detected: bool = False
-    gpu_support_detected: bool = False
+    deeppmd_probe_supported: bool = False
+    deeppmd_probe_succeeded: bool = False
+    deeppmd_support_detected: bool | None = None
+    gpu_support_detected: bool | None = None
     required_paths_present: bool = False
+    missing_required_paths: list[str] = Field(default_factory=list)
+    environment_prerequisites: list[str] = Field(default_factory=list)
+    missing_prerequisites: list[str] = Field(default_factory=list)
     messages: list[str] = Field(default_factory=list)
 
 
@@ -210,6 +215,9 @@ class AbacusRunPlan(BaseModel):
     structure_content: str = ""
     kpoints_content: str | None = None
     suffix: str = "ABACUS"
+    esolver_type: AbacusESolverType = "ksdft"
+    pot_file: str | None = None
+    environment_prerequisites: list[str] = Field(default_factory=list)
     output_root: str | None = None
     expected_outputs: list[str] = Field(default_factory=list)
     expected_logs: list[str] = Field(default_factory=list)

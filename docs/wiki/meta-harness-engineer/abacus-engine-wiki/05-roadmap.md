@@ -1,5 +1,7 @@
 # 05. ABACUS 路线图
 
+> 状态注记（2026-04）：Phase 0–Phase 3 已完成并落地到 `metaharness_ext.abacus`；当前已交付的 Phase 4 聚焦 examples/graph 与回归治理加固，study 方向仍保留在后续阶段推进。
+
 ## 5.1 推荐执行顺序
 
 建议执行顺序如下：
@@ -105,6 +107,8 @@ Phase 0: Environment Probe + SCF Minimal Baseline
 
 ## 5.5 Phase 3：ABACUS+DeePMD Mode
 
+> 当前状态：已完成。`md + esolver_type=dp + pot_file` 已作为 ABACUS 内部 mode 进入同一套 typed contract / environment / compiler / executor / validator 语义，且在 DeePMD support 无法确认时按环境前提不足保守阻断。
+
 ### 5.5.1 目标
 
 把 `calculation=md + esolver_type=dp + pot_file` 的 ABACUS+DeePMD 路径纳入同一套 ABACUS extension。
@@ -126,6 +130,8 @@ Phase 0: Environment Probe + SCF Minimal Baseline
 ---
 
 ## 5.6 Phase 4：Examples / Study / Governance Hardening
+
+> 当前状态：已完成首批交付。`examples/manifests/abacus/`、`examples/graphs/abacus-minimal.xml`、executor/validator/minimal-demo 回归覆盖已经落地；future study / mutation axis 仍作为后续扩展入口保留。
 
 ### 5.6.1 目标
 
