@@ -12,7 +12,8 @@ from metaharness.config.xml_parser import parse_graph_xml
 from metaharness.core.boot import HarnessRuntime
 from metaharness.core.brain import BrainProvider
 from metaharness.core.event_bus import AFTER_COMMIT_GRAPH, BEFORE_COMMIT_GRAPH, CANDIDATE_REJECTED
-from metaharness.core.models import PendingConnectionSet, SessionEventType, ValidationIssue
+from metaharness.core.graph_versions import CandidateRecord, ExternalCandidateReviewState
+from metaharness.core.models import GraphSnapshot, PendingConnectionSet, SessionEventType, ValidationIssue, ValidationReport
 from metaharness.hotreload import HotSwapOrchestrator
 from metaharness.identity import InMemoryIdentityBoundary
 from metaharness.observability.events import InMemorySessionStore
@@ -309,6 +310,51 @@ def test_commit_graph_rejects_when_policy_vetoes(manifest_dir: Path, graphs_dir:
     candidate_record = runtime.version_manager.candidates[-1]
     assert candidate_record.candidate_id == "policy-reject"
     assert candidate_record.promoted is False
+
+
+def test_review_external_candidate_marks_adopted_state() -> None:
+    runtime = HarnessRuntime(ComponentDiscovery(bundled=Path(".")))
+    candidate = CandidateRecord(
+        candidate_id="external-adopted",
+        snapshot=GraphSnapshot(graph_version=0),
+        report=ValidationReport(valid=True),
+        promoted=True,
+    )
+
+    reviewed = runtime.review_external_candidate(candidate)
+
+    assert candidate.external_review is None
+    assert reviewed.external_review is not None
+    assert reviewed.external_review.state == ExternalCandidateReviewState.ADOPTED
+    assert reviewed.external_review.reason is None
+    assert reviewed.promoted is True
+
+
+def test_review_external_candidate_marks_rejected_state_from_blocking_issues() -> None:
+    runtime = HarnessRuntime(ComponentDiscovery(bundled=Path(".")))
+    candidate = CandidateRecord(
+        candidate_id="external-rejected",
+        snapshot=GraphSnapshot(graph_version=0),
+        report=ValidationReport(
+            valid=False,
+            issues=[
+                ValidationIssue(
+                    code="deepmd_gate_run_status",
+                    message="run failed",
+                    subject="deepmd-task",
+                    blocks_promotion=True,
+                )
+            ],
+        ),
+        promoted=False,
+    )
+
+    reviewed = runtime.review_external_candidate(candidate)
+
+    assert reviewed.external_review is not None
+    assert reviewed.external_review.state == ExternalCandidateReviewState.REJECTED
+    assert reviewed.external_review.reason == "deepmd_gate_run_status:deepmd-task"
+    assert reviewed.external_review.reviewer == "extension_governance"
 
 
 def test_commit_graph_rejects_protected_boundary_rewire_with_evidence(

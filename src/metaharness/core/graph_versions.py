@@ -2,9 +2,27 @@
 
 from __future__ import annotations
 
+from enum import Enum
+
 from pydantic import BaseModel, Field
 
 from metaharness.core.models import GraphSnapshot, GraphState, ValidationReport
+
+
+class ExternalCandidateReviewState(str, Enum):
+    """Runtime review outcome for an externally-produced candidate."""
+
+    ADOPTED = "adopted"
+    REJECTED = "rejected"
+
+
+class ExternalCandidateReview(BaseModel):
+    """Higher-level runtime review state for external candidates."""
+
+    state: ExternalCandidateReviewState
+    reviewer: str = "extension_governance"
+    source: str = "external_candidate_record"
+    reason: str | None = None
 
 
 class CandidateRecord(BaseModel):
@@ -14,6 +32,7 @@ class CandidateRecord(BaseModel):
     snapshot: GraphSnapshot
     report: ValidationReport
     promoted: bool = False
+    external_review: ExternalCandidateReview | None = None
 
 
 class GraphVersionStore(BaseModel):

@@ -19,7 +19,13 @@ from metaharness.core.event_bus import (
     CANDIDATE_REJECTED,
     EventBus,
 )
-from metaharness.core.graph_versions import GraphVersionManager, GraphVersionStore
+from metaharness.core.graph_versions import (
+    CandidateRecord,
+    ExternalCandidateReview,
+    ExternalCandidateReviewState,
+    GraphVersionManager,
+    GraphVersionStore,
+)
 from metaharness.core.lifecycle_tracker import LifecycleTracker
 from metaharness.core.models import PendingConnectionSet, PromotionContext, SessionEventType
 from metaharness.core.mutation import MutationSubmitter
@@ -281,6 +287,102 @@ class HarnessRuntime:
                 continue
             tier = parse_sandbox_tier(declared_tier)
             default_runtime.require_sandbox_tier(tier)
+
+    def review_external_candidate(self, candidate: CandidateRecord) -> CandidateRecord:
+        """Attach runtime review state to an externally-produced candidate."""
+
+        if candidate.external_review is not None:
+            return candidate
+        blocking_issues = [issue for issue in candidate.report.issues if issue.blocks_promotion]
+        reason = (
+            "; ".join(f"{issue.code}:{issue.subject}" for issue in blocking_issues)
+            if blocking_issues
+            else (None if candidate.promoted else "candidate_not_promoted")
+        )
+        return candidate.model_copy(
+            update={
+                "external_review": ExternalCandidateReview(
+                    state=(
+                        ExternalCandidateReviewState.ADOPTED
+                        if candidate.promoted
+                        else ExternalCandidateReviewState.REJECTED
+                    ),
+                    reason=reason,
+                )
+            }
+        )
+
+    def ingest_candidate_record(
+        self,
+        candidate: CandidateRecord,
+        *,
+        emit_runtime_evidence: bool = True,
+    ) -> CandidateRecord:
+        """Record an externally-produced candidate in runtime promotion stores."""
+
+        reviewed_candidate = self.review_external_candidate(candidate)
+        graph_version = reviewed_candidate.snapshot.graph_version
+        promotion = PromotionContext(
+            candidate_id=reviewed_candidate.candidate_id,
+            candidate_snapshot=reviewed_candidate.snapshot,
+            validation_report=reviewed_candidate.report,
+            proposed_graph_version=graph_version,
+            rollback_target=self.version_manager.active_version,
+        )
+        effective_graph_version = graph_version if graph_version > 0 else None
+        review = reviewed_candidate.external_review
+        source = review.source if review is not None else "external_candidate_record"
+        if emit_runtime_evidence:
+            self._append_runtime_evidence(
+                SessionEventType.CANDIDATE_CREATED,
+                promotion,
+                graph_version=effective_graph_version,
+                payload={
+                    "node_ids": [node.component_id for node in reviewed_candidate.snapshot.nodes],
+                    "edge_ids": [edge.connection_id for edge in reviewed_candidate.snapshot.edges],
+                    "rollback_target": self.version_manager.active_version,
+                    "source": source,
+                },
+            )
+            self._append_runtime_evidence(
+                SessionEventType.CANDIDATE_VALIDATED,
+                promotion,
+                graph_version=effective_graph_version,
+                payload=self._serialize_validation_report(promotion),
+            )
+            self._append_runtime_evidence(
+                SessionEventType.SAFETY_GATE_EVALUATED,
+                promotion,
+                graph_version=effective_graph_version,
+                payload={
+                    "allowed": reviewed_candidate.promoted,
+                    "rejected_by": None if reviewed_candidate.promoted else review.reviewer,
+                    "rejected_reason": None if reviewed_candidate.promoted else review.reason,
+                    "results": [],
+                },
+            )
+        self.version_manager.save_candidate(reviewed_candidate)
+        if not reviewed_candidate.promoted:
+            blocking_issues = [issue for issue in reviewed_candidate.report.issues if issue.blocks_promotion]
+            self._append_runtime_evidence(
+                SessionEventType.CANDIDATE_REJECTED,
+                promotion,
+                graph_version=effective_graph_version,
+                payload={
+                    "reason": review.reason,
+                    "blocking_issues": [
+                        issue.model_dump(mode="json") for issue in blocking_issues
+                    ],
+                    "safety": {
+                        "allowed": False,
+                        "rejected_by": review.reviewer,
+                        "rejected_reason": review.reason,
+                        "results": [],
+                    },
+                },
+            )
+            self.event_bus.publish(CANDIDATE_REJECTED, promotion)
+        return reviewed_candidate
 
     def commit_graph(
         self, pending: PendingConnectionSet, *, candidate_id: str = "boot-graph"
