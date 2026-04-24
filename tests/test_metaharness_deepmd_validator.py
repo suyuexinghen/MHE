@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from metaharness.core.models import ValidationIssueCategory
 from metaharness_ext.deepmd.contracts import (
     DeepMDDiagnosticSummary,
     DeepMDRunArtifact,
@@ -54,5 +55,42 @@ def test_deepmd_validator_marks_dpgen_simplify_converged() -> None:
 
     assert report.passed is True
     assert report.status == "converged"
+    assert report.blocks_promotion is False
+    assert report.governance_state == "defer"
     assert report.summary_metrics["candidate_count"] == pytest.approx(0.0)
     assert report.summary_metrics["relabeling_detected"] == "true"
+    assert report.scored_evidence is not None
+    assert report.scored_evidence.score == pytest.approx(1.0)
+    assert report.scored_evidence.convergence is not None
+    assert report.scored_evidence.convergence.converged is True
+    assert any(ref.startswith("deepmd://run/") for ref in report.evidence_refs)
+
+
+def test_deepmd_validator_marks_runtime_failure_as_blocking() -> None:
+    artifact = DeepMDRunArtifact(
+        task_id="deepmd-train-task",
+        run_id="run-failed",
+        application_family="deepmd_train",
+        execution_mode="train",
+        command=["dp", "train", "input.json"],
+        return_code=2,
+        stdout_path="/tmp/train.stdout",
+        stderr_path="/tmp/train.stderr",
+        working_directory="/tmp/deepmd-run",
+        status="failed",
+        result_summary={"exit_code": 2},
+    )
+
+    report = DeepMDValidatorComponent().validate_run(artifact)
+
+    assert report.passed is False
+    assert report.status == "runtime_failed"
+    assert report.blocks_promotion is True
+    assert report.governance_state == "blocked"
+    assert report.issues
+    assert report.issues[0].category == ValidationIssueCategory.READINESS
+    assert report.issues[0].blocks_promotion is True
+    assert report.scored_evidence is not None
+    assert report.scored_evidence.score == pytest.approx(0.0)
+    assert report.scored_evidence.convergence is not None
+    assert report.scored_evidence.convergence.converged is False

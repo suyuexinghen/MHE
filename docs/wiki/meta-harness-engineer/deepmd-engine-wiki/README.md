@@ -108,4 +108,11 @@ DeepMD 扩展的正式实施材料位于 `MHE/docs/wiki/meta-harness-engineer/bl
 - rollout phase 的日常推进说明
 - 逐次迭代的任务清单
 
+如需查看上游软件本体材料，可转到外部 deepmd-kit wiki：
+
+- `README.md`：总导航与定位
+- `03-architecture.md`：上游源码结构、descriptor / fitting / backend 分层
+- `05-developer-guide.md`：上游扩展点与开发者约定
+- `06-faq-troubleshooting.md`：构建 / 运行 / 版本兼容问题清单
+
 本目录只保留 **设计 `metaharness_ext.deepmd` 所必需** 的内容。

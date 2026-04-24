@@ -4,6 +4,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from metaharness.core.graph_versions import CandidateRecord
+from metaharness.core.models import ScoredEvidence, ValidationIssue, ValidationReport
 from metaharness.safety.gates import GateResult
 
 DeepMDApplicationFamily = Literal["deepmd_train", "dpgen_run", "dpgen_simplify", "dpgen_autotest"]
@@ -358,8 +360,13 @@ class DeepMDValidationReport(BaseModel):
         "validation_failed",
     ]
     messages: list[str] = Field(default_factory=list)
-    summary_metrics: dict[str, float | str] = Field(default_factory=dict)
+    summary_metrics: dict[str, float | str | bool] = Field(default_factory=dict)
     evidence_files: list[str] = Field(default_factory=list)
+    evidence_refs: list[str] = Field(default_factory=list)
+    issues: list[ValidationIssue] = Field(default_factory=list)
+    blocks_promotion: bool = False
+    governance_state: Literal["ready", "defer", "blocked"] = "defer"
+    scored_evidence: ScoredEvidence | None = None
 
 
 class DeepMDEvidenceWarning(BaseModel):
@@ -430,6 +437,8 @@ class DeepMDStudyTrial(BaseModel):
     validation: DeepMDValidationReport
     evidence_bundle: DeepMDEvidenceBundle | None = None
     policy_report: DeepMDPolicyReport | None = None
+    core_validation_report: ValidationReport | None = None
+    candidate_record: CandidateRecord | None = None
     metric_value: float | None = None
     passed: bool = False
     messages: list[str] = Field(default_factory=list)

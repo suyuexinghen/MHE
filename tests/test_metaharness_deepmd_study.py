@@ -5,6 +5,9 @@ from pathlib import Path
 
 import pytest
 
+from metaharness.core.graph_versions import CandidateRecord
+from metaharness.core.models import ValidationReport
+
 from metaharness.sdk.runtime import ComponentRuntime
 from metaharness_ext.deepmd.contracts import (
     DeepMDDatasetSpec,
@@ -31,12 +34,14 @@ class _FakeExecutor:
         self.calls: list[int | float] = []
 
     def execute_plan(self, plan):
-        axis_value = plan.input_json.get("training", {}).get("numb_steps")
-        if axis_value is None:
-            axis_value = plan.input_json.get("model", {}).get("descriptor", {}).get("rcut_smth")
-        if axis_value is None:
+        axis_value = plan.input_json.get("model", {}).get("descriptor", {}).get("rcut_smth")
+        if axis_value not in self.values:
+            axis_value = plan.input_json.get("training", {}).get("numb_steps")
+        if axis_value not in self.values:
             axis_value = plan.param_json.get("model_devi_f_trust_lo")
-        if axis_value is None:
+        if axis_value not in self.values:
+            axis_value = plan.param_json.get("model_devi_f_trust_hi")
+        if axis_value not in self.values:
             axis_value = plan.param_json.get("simplify", {}).get("pick_number")
         self.calls.append(axis_value)
         metric = self.values[axis_value]
@@ -148,6 +153,8 @@ async def test_study_minimizes_train_metric(tmp_path: Path) -> None:
     assert [trial.axis_value for trial in report.trials] == [500, 1000, 1500]
     assert report.recommended_value == 1500
     assert report.summary_metrics["best_rmse_e_trn"] == pytest.approx(0.2)
+    assert all(trial.core_validation_report is not None for trial in report.trials)
+    assert all(trial.candidate_record is not None for trial in report.trials)
 
 
 @pytest.mark.asyncio
@@ -195,6 +202,32 @@ async def test_study_maximizes_simplify_pick_number_metric(tmp_path: Path) -> No
     assert executor.calls == [4, 8, 12]
     assert report.recommended_value == 8
     assert report.summary_metrics["best_candidate_count"] == pytest.approx(5.0)
+    assert all(trial.evidence_bundle is not None for trial in report.trials)
+    assert all(trial.policy_report is not None for trial in report.trials)
+
+
+@pytest.mark.asyncio
+async def test_study_minimizes_rcut_smth_metric(tmp_path: Path) -> None:
+    component = DeepMDStudyComponent()
+    await component.activate(ComponentRuntime(storage_path=tmp_path))
+    compiler = DeepMDTrainConfigCompilerComponent()
+    executor = _FakeExecutor("rmse_e_trn", {5.0: 0.06, 5.5: 0.03})
+    validator = _FakeValidator("rmse_e_trn", {5.0: 0.06, 5.5: 0.03})
+
+    spec = DeepMDStudySpec(
+        study_id="study-rcut-smth",
+        task_id="deepmd-study-task",
+        base_task=_build_train_spec(),
+        axis=DeepMDMutationAxis(kind="rcut_smth", values=[5.0, 5.5]),
+        metric_key="rmse_e_trn",
+        goal="minimize",
+    )
+
+    report = component.run_study(spec, compiler=compiler, executor=executor, validator=validator)
+
+    assert executor.calls == [5.0, 5.5]
+    assert report.recommended_value == pytest.approx(5.5)
+    assert report.summary_metrics["best_rmse_e_trn"] == pytest.approx(0.03)
     assert all(trial.evidence_bundle is not None for trial in report.trials)
     assert all(trial.policy_report is not None for trial in report.trials)
 
@@ -371,6 +404,87 @@ async def test_study_sel_runs_real_train_chain(
 
 
 @pytest.mark.asyncio
+async def test_study_rcut_smth_runs_real_train_chain(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    component = DeepMDStudyComponent()
+    await component.activate(ComponentRuntime(storage_path=tmp_path))
+    compiler = DeepMDTrainConfigCompilerComponent()
+    from metaharness_ext.deepmd.executor import DeepMDExecutorComponent
+    from metaharness_ext.deepmd.validator import DeepMDValidatorComponent
+
+    real_executor = DeepMDExecutorComponent()
+    real_validator = DeepMDValidatorComponent()
+    await real_executor.activate(ComponentRuntime(storage_path=tmp_path))
+
+    monkeypatch.setattr(
+        "metaharness_ext.deepmd.executor.shutil.which", lambda binary: f"/usr/bin/{binary}"
+    )
+
+    def fake_run(command, *, cwd, text, capture_output, check, timeout):
+        input_json = json.loads((cwd / "input.json").read_text())
+        rcut_smth = input_json["model"]["descriptor"]["rcut_smth"]
+        rmse = 0.02 if rcut_smth == 5.5 else 0.05
+        (cwd / "lcurve.out").write_text(f"# step rmse_e rmse_f\n100 {rmse} 2.50e-02\n")
+        (cwd / "checkpoint").write_text("checkpoint-marker")
+        return _FakeCompletedProcess(returncode=0, stdout="training ok", stderr="")
+
+    monkeypatch.setattr("metaharness_ext.deepmd.executor.subprocess.run", fake_run)
+
+    spec = DeepMDStudySpec(
+        study_id="study-rcut-smth-real",
+        task_id="deepmd-study-task",
+        base_task=_build_train_spec(),
+        axis=DeepMDMutationAxis(kind="rcut_smth", values=[5.0, 5.5]),
+        metric_key="rmse_e_trn",
+        goal="minimize",
+    )
+
+    report = component.run_study(
+        spec,
+        compiler=compiler,
+        executor=real_executor,
+        validator=real_validator,
+    )
+
+    assert [trial.axis_value for trial in report.trials] == [5.0, 5.5]
+    assert report.recommended_value == pytest.approx(5.5)
+    assert report.summary_metrics["best_rmse_e_trn"] == pytest.approx(0.02)
+    assert all(trial.validation.status == "trained" for trial in report.trials)
+    assert all(trial.validation.governance_state == "ready" for trial in report.trials)
+    assert all(trial.evidence_bundle is not None for trial in report.trials)
+    assert all(trial.policy_report is not None for trial in report.trials)
+    assert all(trial.core_validation_report is not None for trial in report.trials)
+    assert all(trial.candidate_record is not None for trial in report.trials)
+    assert all(isinstance(trial.core_validation_report, ValidationReport) for trial in report.trials)
+    assert all(isinstance(trial.candidate_record, CandidateRecord) for trial in report.trials)
+    assert all(trial.core_validation_report.valid for trial in report.trials if trial.core_validation_report is not None)
+    assert all(trial.candidate_record.promoted for trial in report.trials if trial.candidate_record is not None)
+    assert all(trial.candidate_record.report.valid for trial in report.trials if trial.candidate_record is not None)
+    assert all(
+        trial.candidate_record.candidate_id == trial.run.run_id
+        for trial in report.trials
+        if trial.candidate_record is not None
+    )
+    assert all(
+        trial.candidate_record.snapshot.graph_version == 0
+        for trial in report.trials
+        if trial.candidate_record is not None
+    )
+
+
+def test_descriptor_rejects_rcut_smth_above_rcut() -> None:
+    with pytest.raises(ValueError, match="rcut_smth"):
+        DeepMDDescriptorSpec(
+            descriptor_type="se_e2_a",
+            rcut=6.0,
+            rcut_smth=6.5,
+            sel=[32],
+            neuron=[25, 50, 100],
+        )
+
+
+@pytest.mark.asyncio
 async def test_study_model_devi_trust_lo_runs_real_dpgen_chain(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -544,8 +658,16 @@ async def test_study_simplify_pick_number_runs_real_chain(
     assert [trial.axis_value for trial in report.trials] == [4, 8]
     assert report.recommended_value == 8
     assert report.summary_metrics["best_candidate_count"] == pytest.approx(5.0)
+    assert all(trial.validation.status == "converged" for trial in report.trials if trial.axis_value == 8)
+    assert all(trial.validation.governance_state == "ready" for trial in report.trials)
     assert all(trial.evidence_bundle is not None for trial in report.trials)
     assert all(trial.policy_report is not None for trial in report.trials)
+    assert all(trial.core_validation_report is not None for trial in report.trials)
+    assert all(trial.candidate_record is not None for trial in report.trials)
     assert all(
         trial.policy_report.decision == "allow" for trial in report.trials if trial.policy_report is not None
     )
+    assert all(
+        trial.core_validation_report.valid for trial in report.trials if trial.core_validation_report is not None
+    )
+    assert all(trial.candidate_record.promoted for trial in report.trials if trial.candidate_record is not None)

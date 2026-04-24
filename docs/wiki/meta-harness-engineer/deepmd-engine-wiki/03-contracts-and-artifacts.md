@@ -75,6 +75,23 @@ Literal["planned", "completed", "failed", "unavailable"]
 - `sel` 与 `fitting_net.neuron` 不能为空
 - `compress`、`test`、`model_devi`、`neighbor_stat` 对 `mode_inputs` 有不同必需条件
 
+### 受控 upstream parameterization
+
+参考外部 deepmd-kit wiki 的 architecture / developer material，当前 DeepMD contracts 的设计重点不是“复刻所有上游 knobs”，而是只暴露适合 typed compiler、validator 和 study 的那一小部分控制面。
+
+| 参数面 | 当前状态 | 为什么 |
+|---|---|---|
+| `descriptor.descriptor_type` | 当前仅支持 `se_e2_a` | 这是当前代码真正实现并验证过的 descriptor family |
+| `descriptor.rcut` / `rcut_smth` / `sel` | 已纳入 typed spec 与 study whitelist | 这些参数同时影响 compiler、diagnostics 和 validator 语义 |
+| `fitting_net.neuron` | 已纳入 typed spec | 属于稳定可声明的训练结构参数 |
+| `training` / `learning_rate` / `loss` | 以受控 dict 进入 train spec | 当前实现允许受控编译，但不宣称覆盖全部上游 schema |
+| DP-GEN `model_devi_f_trust_lo` / `model_devi_f_trust_hi` | 已纳入 study whitelist | 这些是 iteration / candidate 语义的核心控制面 |
+| simplify `relabeling.pick_number` | 已纳入 study whitelist | 直接影响 simplify evidence 与 convergence 解释 |
+| 上游全部 descriptor family / 全量 backend knobs | 当前不暴露为正式 typed surface | 若未进入 compiler / validator / tests，写进 contract 只会制造假支持 |
+| 上游模型内核扩展点 | 明确不属于 MHE contract | 那属于 deepmd-kit 本体或上游 plugin / backend 开发面 |
+
+因此 contracts 的正确策略是：**只声明当前真正能被编译、执行、验证、研究和评审的上游控制面**。
+
 ### `DPGenRunSpec` / `DPGenSimplifySpec` / `DPGenAutotestSpec`
 
 DP-GEN family 当前分别通过三种 spec 表达：

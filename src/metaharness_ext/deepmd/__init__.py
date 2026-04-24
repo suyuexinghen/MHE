@@ -51,6 +51,7 @@ from metaharness_ext.deepmd.environment import DeepMDEnvironmentProbeComponent
 from metaharness_ext.deepmd.evidence import build_evidence_bundle
 from metaharness_ext.deepmd.executor import DeepMDExecutorComponent
 from metaharness_ext.deepmd.gateway import DeepMDGatewayComponent
+from metaharness_ext.deepmd.governance import DeepMDGovernanceAdapter
 from metaharness_ext.deepmd.policy import DeepMDEvidencePolicy
 from metaharness_ext.deepmd.slots import (
     DEEPMD_CONFIG_COMPILER_SLOT,
@@ -107,6 +108,7 @@ __all__ = [
     "DeepMDPolicyReport",
     "DeepMDExecutorComponent",
     "DeepMDGatewayComponent",
+    "DeepMDGovernanceAdapter",
     "DeepMDMutationAxis",
     "DeepMDStudyComponent",
     "DeepMDStudyReport",

@@ -154,7 +154,25 @@ executor 的职责是产生 run artifact，不负责给出最终治理判据。
 
 ---
 
-## 2.3 关键执行语义
+## 2.3 MHE 组件与上游 control surface 的对应关系
+
+参考外部 deepmd-kit wiki 的 architecture / developer material，可以把当前 MHE 组件与上游 control surface 对应为：
+
+| MHE 组件 | 对应的上游控制面 | 当前设计意义 |
+|---|---|---|
+| `DeepMDTrainConfigCompilerComponent` | `input.json` | 把受控 DeePMD train 参数编译成稳定 JSON，而不是透传任意配置 |
+| `build_dpgen_param_json(...)` | `param.json` | 固定 DP-GEN workflow 参数面 |
+| `build_dpgen_machine_json(...)` | `machine.json` | 固定 machine / resource / scheduler 参数面 |
+| `DeepMDExecutorComponent` | `dp` / `dpgen` CLI | 调用上游命令并收集 run artifact，而不是实现训练内核 |
+| `DeepMDWorkspacePreparer` | workspace 目录布局 | materialize 输入、配置和 iteration 目录语义 |
+| `DPGenIterationCollector` | `record.dpgen` / `iter.*` | 把 DP-GEN 的 staged workflow 收敛成结构化 evidence |
+| `DeepMDValidatorComponent` | 上游产物 + diagnostics | 将上游运行结果解释成 mode-aware validation / governance signal |
+
+这个映射说明：MHE 扩展层的核心并不是“知道 DeepMD 的所有内部实现”，而是把上游已经稳定的 JSON / CLI / workspace surface 包成可治理的 typed extension。
+
+---
+
+## 2.4 关键执行语义
 
 ### 2.3.1 environment probe 必须前置
 

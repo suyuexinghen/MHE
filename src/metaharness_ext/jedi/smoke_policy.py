@@ -16,8 +16,9 @@ _SMOKE_READINESS_FIELDS = (
     "shared_libraries_resolved",
     "required_paths_present",
     "workspace_testinput_present",
-    "data_prerequisites_ready",
 )
+
+_SMOKE_PRIORITY = ("hofx", "variational", "local_ensemble_da", "forecast")
 
 
 class JediSmokePolicyComponent(HarnessComponent):
@@ -48,15 +49,28 @@ class JediSmokePolicyComponent(HarnessComponent):
                 recommended_binary=None,
                 reason=reason,
             )
+        if report.smoke_candidate is None:
+            return JediSmokePolicyReport(
+                ready=True,
+                recommended_family=None,
+                recommended_binary=None,
+                reason="Environment gated: no smoke family candidate declared.",
+            )
 
-        candidate = report.smoke_candidate
-        binary = self._binary_for_family(candidate)
+        for family in self._family_priority(report):
+            if self._family_ready(report, family):
+                return JediSmokePolicyReport(
+                    ready=True,
+                    recommended_family=family,
+                    recommended_binary=self._binary_for_family(family),
+                    reason=f"Environment gated: {family} baseline selected.",
+                )
 
         return JediSmokePolicyReport(
-            ready=True,
-            recommended_family=candidate,
-            recommended_binary=binary,
-            reason=f"Environment gated: {candidate} baseline selected.",
+            ready=False,
+            recommended_family=report.smoke_candidate,
+            recommended_binary=None,
+            reason="Environment not smoke-ready for any supported baseline.",
         )
 
     def evaluate_environment(self, report: JediEnvironmentReport) -> tuple[bool, str]:
@@ -66,6 +80,23 @@ class JediSmokePolicyComponent(HarnessComponent):
         if report.messages:
             return False, "Environment not smoke-ready: " + "; ".join(report.messages)
         return False, "Environment not smoke-ready: missing " + ", ".join(missing)
+
+    def _family_priority(self, report: JediEnvironmentReport) -> tuple[str, ...]:
+        if report.smoke_candidate in _SMOKE_PRIORITY:
+            candidate_index = _SMOKE_PRIORITY.index(report.smoke_candidate)
+            return _SMOKE_PRIORITY[candidate_index:]
+        return _SMOKE_PRIORITY
+
+    def _family_ready(self, report: JediEnvironmentReport, family: str) -> bool:
+        if family == "hofx":
+            return report.data_paths_present
+        if family == "variational":
+            return report.data_prerequisites_ready
+        if family == "local_ensemble_da":
+            return report.data_prerequisites_ready and report.data_paths_present
+        if family == "forecast":
+            return report.data_paths_present
+        return False
 
     def _binary_for_family(self, family: str | None) -> str | None:
         mapping = {

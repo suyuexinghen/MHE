@@ -34,7 +34,27 @@ DeepModeling 生态可粗分为四层：
 
 ---
 
-## 1.3 为什么 DeepMD 适合接入 MHE
+## 1.3 上游架构图与 MHE 落点
+
+外部 deepmd-kit wiki 展示的上游架构大致可分为四层：
+
+- **核心计算层**：`libdeepmd.so` 一类核心 C++ 库，承担邻居列表、环境矩阵、力 / virial 等底层计算
+- **后端算子层**：TensorFlow / PyTorch / Paddle 等 `deepmd_op_*` 自定义算子
+- **API / 驱动层**：C / C++ API，以及 LAMMPS、i-PI、ABACUS 等驱动集成
+- **CLI / 配置 / 工作流层**：`dp`、`dpgen`、`input.json`、`param.json`、`machine.json` 与 workspace 目录语义
+
+`metaharness_ext.deepmd` 当前只应包装最后一层，并在必要时对上游 model / descriptor / training 参数做受控映射：
+
+- **直接拥有**：typed contracts、compiler、workspace、executor、validator、evidence、policy、study
+- **显式调用但不拥有**：`dp` / `dpgen` CLI 与其 JSON 控制面
+- **理解但不直接管理**：上游 descriptor / fitting / model version 的能力边界
+- **不进入**：`libdeepmd` 内核、后端算子实现、LAMMPS / ABACUS 驱动源码本体
+
+这个分层非常重要，因为它解释了为什么 DeepMD 扩展的正确职责不是“实现上游能力”，而是“包装上游稳定控制面”。
+
+---
+
+## 1.4 为什么 DeepMD 适合接入 MHE
 
 ### 1.3.1 控制面天然是声明式的
 

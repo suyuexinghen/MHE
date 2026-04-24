@@ -15,6 +15,7 @@ from metaharness_ext.deepmd.contracts import (
 )
 from metaharness_ext.deepmd.evidence import build_evidence_bundle
 from metaharness_ext.deepmd.executor import DeepMDExecutorComponent
+from metaharness_ext.deepmd.governance import DeepMDGovernanceAdapter
 from metaharness_ext.deepmd.policy import DeepMDEvidencePolicy
 from metaharness_ext.deepmd.slots import DEEPMD_STUDY_SLOT
 from metaharness_ext.deepmd.train_config_compiler import DeepMDTrainConfigCompilerComponent
@@ -44,6 +45,7 @@ class DeepMDStudyComponent(HarnessComponent):
     ) -> DeepMDStudyReport:
         trials: list[DeepMDStudyTrial] = []
         policy = DeepMDEvidencePolicy()
+        governance = DeepMDGovernanceAdapter()
         for value in spec.axis.values:
             trial_task = self._mutate_task(spec, value)
             plan = compiler.build_plan(trial_task)
@@ -51,6 +53,8 @@ class DeepMDStudyComponent(HarnessComponent):
             validation = validator.validate_run(run)
             evidence_bundle = build_evidence_bundle(run, validation)
             policy_report = policy.evaluate(evidence_bundle)
+            core_validation_report = governance.build_core_validation_report(validation, policy_report)
+            candidate_record = governance.build_candidate_record(evidence_bundle, policy_report)
             metric_value = self._extract_metric(validation, spec.metric_key)
             trials.append(
                 DeepMDStudyTrial(
@@ -63,6 +67,8 @@ class DeepMDStudyComponent(HarnessComponent):
                     validation=validation,
                     evidence_bundle=evidence_bundle,
                     policy_report=policy_report,
+                    core_validation_report=core_validation_report,
+                    candidate_record=candidate_record,
                     metric_value=metric_value,
                     passed=validation.passed,
                     messages=list(validation.messages),

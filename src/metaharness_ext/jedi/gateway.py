@@ -10,6 +10,8 @@ from metaharness_ext.jedi.capabilities import CAP_JEDI_CASE_COMPILE
 from metaharness_ext.jedi.contracts import (
     JediEnvironmentReport,
     JediExecutableSpec,
+    JediForecastSpec,
+    JediHofXSpec,
     JediLocalEnsembleDASpec,
     JediVariationalSpec,
 )
@@ -97,6 +99,14 @@ class JediGatewayComponent(HarnessComponent):
         policy = JediSmokePolicyComponent().select_baseline(environment)
         if not policy.ready:
             raise ValueError(policy.reason)
+        if policy.recommended_family == "hofx":
+            return self.issue_hofx_task(
+                task_id=task_id,
+                execution_mode=execution_mode,
+                binary_name=policy.recommended_binary or "qgHofX4D.x",
+                state_path=background_path,
+                observation_paths=list(observation_paths or []),
+            )
         if policy.recommended_family == "local_ensemble_da":
             if not ensemble_paths:
                 raise ValueError("local_ensemble_da smoke baseline requires ensemble_paths")
@@ -108,7 +118,14 @@ class JediGatewayComponent(HarnessComponent):
                 background_path=background_path,
                 observation_paths=list(observation_paths or []),
             )
-        if policy.recommended_family not in {None, "variational", "hofx"}:
+        if policy.recommended_family == "forecast":
+            return self.issue_forecast_task(
+                task_id=task_id,
+                execution_mode=execution_mode,
+                binary_name=policy.recommended_binary or "qgForecast.x",
+                initial_condition_path=background_path,
+            )
+        if policy.recommended_family not in {None, "variational"}:
             raise NotImplementedError(
                 f"Smoke task issuance is not implemented for {policy.recommended_family}"
             )
@@ -118,6 +135,50 @@ class JediGatewayComponent(HarnessComponent):
             binary_name=policy.recommended_binary or "qg4DVar.x",
             background_path=background_path,
             observation_paths=list(observation_paths or []),
+        )
+
+    def issue_hofx_task(
+        self,
+        *,
+        task_id: str = "jedi-hofx-task-1",
+        execution_mode: JediExecutionMode = "validate_only",
+        binary_name: str = "qgHofX4D.x",
+        launcher: str = "direct",
+        process_count: int | None = None,
+        state_path: str | None = None,
+        observation_paths: list[str] | None = None,
+        working_directory: str | None = None,
+        subject_id: str | None = None,
+        credentials: dict[str, str] | None = None,
+        claims: dict[str, str] | None = None,
+        candidate_id: str | None = None,
+        graph_version_id: int | None = None,
+        session_id: str | None = None,
+        audit_refs: list[str] | None = None,
+    ) -> JediHofXSpec:
+        self._enforce_ingress_policy(
+            subject_id=subject_id,
+            credentials=credentials,
+            claims=claims,
+        )
+        return JediHofXSpec(
+            task_id=task_id,
+            candidate_id=candidate_id,
+            graph_version_id=graph_version_id,
+            session_id=session_id,
+            audit_refs=list(audit_refs or []),
+            executable=JediExecutableSpec(
+                binary_name=binary_name,
+                launcher=launcher,
+                execution_mode=execution_mode,
+                process_count=process_count,
+            ),
+            state_path=state_path,
+            observation_paths=list(observation_paths or []),
+            hofx={"driver": "hofx"},
+            output={"filename": "hofx.out"},
+            test={"reference": {"filename": "hofx_reference.json"}},
+            working_directory=working_directory,
         )
 
     def issue_local_ensemble_task(
@@ -169,6 +230,49 @@ class JediGatewayComponent(HarnessComponent):
             test={"reference": {"filename": "ensemble_reference.json"}},
             expected_diagnostics=["posterior.out"],
             scientific_check=scientific_check,
+        )
+
+    def issue_forecast_task(
+        self,
+        *,
+        task_id: str = "jedi-forecast-task-1",
+        execution_mode: JediExecutionMode = "validate_only",
+        binary_name: str = "qgForecast.x",
+        launcher: str = "direct",
+        process_count: int | None = None,
+        initial_condition_path: str | None = None,
+        working_directory: str | None = None,
+        subject_id: str | None = None,
+        credentials: dict[str, str] | None = None,
+        claims: dict[str, str] | None = None,
+        candidate_id: str | None = None,
+        graph_version_id: int | None = None,
+        session_id: str | None = None,
+        audit_refs: list[str] | None = None,
+    ) -> JediForecastSpec:
+        self._enforce_ingress_policy(
+            subject_id=subject_id,
+            credentials=credentials,
+            claims=claims,
+        )
+        return JediForecastSpec(
+            task_id=task_id,
+            candidate_id=candidate_id,
+            graph_version_id=graph_version_id,
+            session_id=session_id,
+            audit_refs=list(audit_refs or []),
+            executable=JediExecutableSpec(
+                binary_name=binary_name,
+                launcher=launcher,
+                execution_mode=execution_mode,
+                process_count=process_count,
+            ),
+            initial_condition_path=initial_condition_path,
+            model={"name": "toy-model"},
+            forecast={"length": "PT6H"},
+            output={"filename": "forecast.out"},
+            test={"reference": {"filename": "forecast_reference.json"}},
+            working_directory=working_directory,
         )
 
     def _enforce_ingress_policy(
