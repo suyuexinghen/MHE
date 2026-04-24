@@ -2,8 +2,10 @@ import json
 from importlib import import_module
 from pathlib import Path
 
+from metaharness.sdk.discovery import ComponentDiscovery, DiscoverySource
 from metaharness.sdk.loader import declare_component
 from metaharness.sdk.manifest import ComponentManifest
+from metaharness.sdk.registry import ComponentRegistry
 from metaharness_ext.jedi.capabilities import (
     CAP_JEDI_CASE_COMPILE,
     CAP_JEDI_DIAGNOSTICS,
@@ -125,6 +127,8 @@ def test_metaharness_jedi_manifest_entries_are_importable() -> None:
         assert getattr(module, class_name) is not None
 
 
+
+
 def test_metaharness_jedi_component_declarations_match_manifests() -> None:
     for filename, expected in EXPECTED_MANIFESTS.items():
         manifest = ComponentManifest.model_validate(
@@ -136,3 +140,47 @@ def test_metaharness_jedi_component_declarations_match_manifests() -> None:
         assert snapshot.slots[0].slot == expected["slot"]
         assert snapshot.outputs[0].name == expected["output"]
         assert sorted(cap.name for cap in snapshot.provides) == sorted(expected["capabilities"])
+
+
+def test_metaharness_jedi_custom_plugin_path_discovers_and_uses_hofx_slice() -> None:
+    discovery = ComponentDiscovery(custom=MANIFEST_DIR)
+    result = discovery.resolve()
+    discovered = {item.manifest.name: item for item in result.winners}
+
+    assert set(discovered) == {expected["name"] for expected in EXPECTED_MANIFESTS.values()}
+    assert discovered["jedi_gateway"].source is DiscoverySource.CUSTOM
+    assert discovered["jedi_config_compiler"].source is DiscoverySource.CUSTOM
+    assert discovered["jedi_gateway"].path == MANIFEST_DIR / "manifest.json"
+    assert discovered["jedi_config_compiler"].path == MANIFEST_DIR / "compiler.json"
+
+    registry = ComponentRegistry()
+    gateway_manifest = discovered["jedi_gateway"].manifest
+    compiler_manifest = discovered["jedi_config_compiler"].manifest
+
+    gateway, gateway_api = declare_component("jedi_gateway.primary", gateway_manifest)
+    compiler, compiler_api = declare_component("jedi_config_compiler.primary", compiler_manifest)
+    registry.register("jedi_gateway.primary", gateway_manifest, gateway_api.snapshot())
+    registry.register("jedi_config_compiler.primary", compiler_manifest, compiler_api.snapshot())
+
+    task = gateway.issue_hofx_task(
+        task_id="hofx-registry-proof",
+        execution_mode="validate_only",
+        state_path="/tmp/background.nc",
+        observation_paths=["/tmp/obs.ioda"],
+    )
+    plan = compiler.build_plan(task)
+
+    assert registry.components_by_slot(JEDI_GATEWAY_SLOT) == ["jedi_gateway.primary"]
+    assert registry.components_by_slot(JEDI_CONFIG_COMPILER_SLOT) == [
+        "jedi_config_compiler.primary"
+    ]
+    assert registry.components_for_capability(CAP_JEDI_CASE_COMPILE) == [
+        "jedi_gateway.primary",
+        "jedi_config_compiler.primary",
+    ]
+    assert task.application_family == "hofx"
+    assert plan.application_family == "hofx"
+    assert plan.command == ["qgHofX4D.x", "validate_only"]
+    assert "hofx:" in plan.config_text
+    assert "/tmp/background.nc" in plan.required_runtime_paths
+    assert "/tmp/obs.ioda" in plan.required_runtime_paths

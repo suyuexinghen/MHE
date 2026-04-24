@@ -86,5 +86,31 @@ def build_evidence_bundle(
             "return_code": run.return_code,
             "validation_status": validation.status if validation is not None else None,
             "policy_decision": validation.policy_decision if validation is not None else None,
+            "diagnostics_present": summary is not None,
+            "diagnostic_files_scanned": len(summary.files_scanned) if summary is not None else 0,
+            "ioda_groups_found": list(summary.ioda_groups_found) if summary is not None else [],
+            "ioda_groups_missing": list(summary.ioda_groups_missing) if summary is not None else [],
+            "minimizer_iterations": (
+                summary.minimizer_iterations if summary is not None else None
+            ),
+            "outer_iterations": summary.outer_iterations if summary is not None else None,
+            "inner_iterations": summary.inner_iterations if summary is not None else None,
+            "initial_cost_function": (
+                summary.initial_cost_function if summary is not None else None
+            ),
+            "final_cost_function": summary.final_cost_function if summary is not None else None,
+            "initial_gradient_norm": (
+                summary.initial_gradient_norm if summary is not None else None
+            ),
+            "final_gradient_norm": summary.final_gradient_norm if summary is not None else None,
+            "gradient_norm_reduction": (
+                summary.gradient_norm_reduction if summary is not None else None
+            ),
+            "observer_output_detected": (
+                summary.observer_output_detected if summary is not None else False
+            ),
+            "posterior_output_detected": (
+                summary.posterior_output_detected if summary is not None else False
+            ),
         },
     )

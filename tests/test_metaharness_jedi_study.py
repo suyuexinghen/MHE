@@ -59,6 +59,7 @@ class _FakeExecutor:
             status="completed",
             result_summary={
                 "exit_code": 0,
+                "axis_value": axis_value,
                 self.metric_key: metric,
                 "candidate_id": plan.candidate_id,
                 "graph_version_id": plan.graph_version_id,
@@ -69,12 +70,18 @@ class _FakeExecutor:
 
 
 class _FakeDiagnostics:
+    def __init__(self, *, deferred_axis_values: set[int | str] | None = None) -> None:
+        self.deferred_axis_values = deferred_axis_values or set()
+
     def collect(self, artifact: JediRunArtifact) -> JediDiagnosticSummary:
         metric_value = artifact.result_summary.get("final_cost_function")
+        axis_value = artifact.result_summary.get("axis_value")
+        files_scanned = [] if axis_value in self.deferred_axis_values else list(artifact.diagnostic_files)
         summary = JediDiagnosticSummary(
+            files_scanned=files_scanned,
             final_cost_function=float(metric_value)
             if isinstance(metric_value, int | float)
-            else None
+            else None,
         )
         summary.messages = [
             f"metric:{key}={value}"
@@ -94,6 +101,7 @@ class _FakeValidator:
         diagnostic_summary: JediDiagnosticSummary | None = None,
     ) -> JediValidationReport:
         summary_metrics: dict[str, float | str] = {}
+        evidence_files = list(artifact.diagnostic_files)
         if diagnostic_summary and diagnostic_summary.final_cost_function is not None:
             summary_metrics["final_cost_function"] = diagnostic_summary.final_cost_function
         if diagnostic_summary:
@@ -108,7 +116,7 @@ class _FakeValidator:
             passed=self.passed,
             status="executed" if self.passed else "validation_failed",
             summary_metrics=summary_metrics,
-            evidence_files=[],
+            evidence_files=evidence_files,
             candidate_id=artifact.result_summary.get("candidate_id"),
             graph_version_id=artifact.result_summary.get("graph_version_id"),
             session_id=artifact.result_summary.get("session_id"),
@@ -352,6 +360,116 @@ async def test_study_supports_maximize_goal(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_study_skips_deferred_best_metric_trial_when_recommending(tmp_path: Path) -> None:
+    component = JediStudyComponent()
+    await component.activate(ComponentRuntime(storage_path=tmp_path))
+    compiler = JediConfigCompilerComponent()
+    executor = _FakeExecutor("final_cost_function", {10: 9.0, 20: 2.0, 30: 4.0})
+    diagnostics = _FakeDiagnostics(deferred_axis_values={20})
+    validator = _FakeValidator()
+
+    spec = JediStudySpec(
+        study_id="study-policy-gate-min",
+        task_id="jedi-study-task",
+        base_task=_build_variational_spec(),
+        axis=JediMutationAxis(kind="variational_iterations", values=[10, 20, 30]),
+        metric_key="final_cost_function",
+        goal="minimize",
+    )
+
+    report = component.run_study(
+        spec,
+        compiler=compiler,
+        executor=executor,
+        diagnostics=diagnostics,
+        validator=validator,
+    )
+
+    assert report.recommended_value == 30
+    assert report.summary_metrics["best_final_cost_function"] == pytest.approx(4.0)
+    assert report.recommended_reason == (
+        "Selected the lowest policy-allowed final_cost_function; better-ranked trials were "
+        "excluded by diagnostics-aware policy."
+    )
+    assert report.messages == [
+        "Diagnostics-aware policy excluded a better-ranked trial from recommendation."
+    ]
+    deferred_trial = next(trial for trial in report.trials if trial.axis_value == 20)
+    assert deferred_trial.metric_value == pytest.approx(2.0)
+    assert deferred_trial.policy_report is not None
+    assert deferred_trial.policy_report.decision == "defer"
+    assert deferred_trial.passed is False
+
+
+@pytest.mark.asyncio
+async def test_study_prefers_allow_trial_over_better_deferred_trial(tmp_path: Path) -> None:
+    component = JediStudyComponent()
+    await component.activate(ComponentRuntime(storage_path=tmp_path))
+    compiler = JediConfigCompilerComponent()
+    executor = _FakeExecutor("posterior_spread", {0.8: 1.5, 1.0: 2.0, 1.2: 3.0})
+    diagnostics = _FakeDiagnostics(deferred_axis_values={0.8})
+    validator = _FakeValidator()
+
+    spec = JediStudySpec(
+        study_id="study-policy-gate-mixed",
+        task_id="jedi-letkf-study-task",
+        base_task=_build_local_ensemble_spec(),
+        axis=JediMutationAxis(kind="ensemble_inflation", values=[0.8, 1.0, 1.2]),
+        metric_key="posterior_spread",
+        goal="minimize",
+    )
+
+    report = component.run_study(
+        spec,
+        compiler=compiler,
+        executor=executor,
+        diagnostics=diagnostics,
+        validator=validator,
+    )
+
+    assert report.recommended_value == pytest.approx(1.0)
+    assert report.summary_metrics["best_posterior_spread"] == pytest.approx(2.0)
+    deferred_trial = next(trial for trial in report.trials if trial.axis_value == pytest.approx(0.8))
+    assert deferred_trial.metric_value == pytest.approx(1.5)
+    assert deferred_trial.policy_report is not None
+    assert deferred_trial.policy_report.decision == "defer"
+    assert deferred_trial.passed is False
+
+
+@pytest.mark.asyncio
+async def test_study_reports_when_all_metric_trials_are_policy_blocked(tmp_path: Path) -> None:
+    component = JediStudyComponent()
+    await component.activate(ComponentRuntime(storage_path=tmp_path))
+    compiler = JediConfigCompilerComponent()
+    executor = _FakeExecutor("final_cost_function", {10: 9.0, 20: 3.0, 30: 4.0})
+    diagnostics = _FakeDiagnostics(deferred_axis_values={10, 20, 30})
+    validator = _FakeValidator()
+
+    spec = JediStudySpec(
+        study_id="study-all-policy-blocked",
+        task_id="jedi-study-task",
+        base_task=_build_variational_spec(),
+        axis=JediMutationAxis(kind="variational_iterations", values=[10, 20, 30]),
+        metric_key="final_cost_function",
+        goal="minimize",
+    )
+
+    report = component.run_study(
+        spec,
+        compiler=compiler,
+        executor=executor,
+        diagnostics=diagnostics,
+        validator=validator,
+    )
+
+    assert report.recommended_value is None
+    assert report.recommended_trial_id is None
+    assert report.recommended_reason == "No policy-allowed trial produced the requested final_cost_function."
+    assert report.messages == ["All metric-producing trials were excluded by diagnostics-aware policy."]
+    assert "best_final_cost_function" not in report.summary_metrics
+
+
+@pytest.mark.asyncio
 async def test_study_returns_no_recommendation_when_all_trials_fail(tmp_path: Path) -> None:
     component = JediStudyComponent()
     await component.activate(ComponentRuntime(storage_path=tmp_path))
@@ -379,6 +497,7 @@ async def test_study_returns_no_recommendation_when_all_trials_fail(tmp_path: Pa
 
     assert report.recommended_value is None
     assert report.recommended_trial_id is None
+    assert report.recommended_reason == "No passing trial produced the requested metric."
     assert report.messages == ["No passing trial produced the requested metric."]
     assert "best_final_cost_function" not in report.summary_metrics
 

@@ -28,6 +28,26 @@ class JediGovernanceAdapter:
         self.session_id = session_id
         self.actor = actor
 
+    def _diagnostics_payload(self, bundle: JediEvidenceBundle) -> dict[str, object]:
+        summary = bundle.summary
+        if summary is None:
+            return {}
+        return {
+            "diagnostic_files_scanned": len(summary.files_scanned),
+            "ioda_groups_found": list(summary.ioda_groups_found),
+            "ioda_groups_missing": list(summary.ioda_groups_missing),
+            "minimizer_iterations": summary.minimizer_iterations,
+            "outer_iterations": summary.outer_iterations,
+            "inner_iterations": summary.inner_iterations,
+            "initial_cost_function": summary.initial_cost_function,
+            "final_cost_function": summary.final_cost_function,
+            "initial_gradient_norm": summary.initial_gradient_norm,
+            "final_gradient_norm": summary.final_gradient_norm,
+            "gradient_norm_reduction": summary.gradient_norm_reduction,
+            "observer_output_detected": summary.observer_output_detected,
+            "posterior_output_detected": summary.posterior_output_detected,
+        }
+
     def build_candidate_record(
         self,
         bundle: JediEvidenceBundle,
@@ -95,6 +115,7 @@ class JediGovernanceAdapter:
                         "decision": policy.decision,
                         "reason": policy.reason,
                         "gate_count": len(policy.gates),
+                        **self._diagnostics_payload(bundle),
                     },
                 )
             )
@@ -175,6 +196,7 @@ class JediGovernanceAdapter:
                 "candidate_id": candidate_id,
                 "graph_version": graph_version,
                 "policy_decision": policy.decision,
+                **self._diagnostics_payload(bundle),
             },
         )
         audit_refs.append(f"audit-record:{handoff_record.record_id}")

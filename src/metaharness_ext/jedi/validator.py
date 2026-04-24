@@ -235,26 +235,55 @@ class JediValidatorComponent(HarnessComponent):
         if diagnostic_summary.observer_output_detected:
             enriched_messages.append("Observer output evidence detected.")
 
+        has_structured_signal = self._has_structured_diagnostics(diagnostic_summary)
+        passed = report.passed
+        status = report.status
+        policy_decision = report.policy_decision
+        blocking_reasons = list(report.blocking_reasons)
+        session_events = list(report.session_events)
+
+        if (
+            artifact.execution_mode == "real_run"
+            and report.passed
+            and not has_structured_signal
+        ):
+            diagnostics_message = (
+                "JEDI real_run completed without structured diagnostics evidence."
+            )
+            enriched_messages.append(diagnostics_message)
+            passed = False
+            status = "validation_failed"
+            policy_decision = "defer"
+            blocking_reasons.append(diagnostics_message)
+            session_events = self._build_session_events(
+                artifact=artifact,
+                session_id=report.session_id,
+                candidate_id=report.candidate_id,
+                graph_version_id=report.graph_version_id,
+                policy_decision=policy_decision,
+                blocking_reasons=blocking_reasons,
+            )
+
         enriched_files.extend(diagnostic_summary.files_scanned)
         deduped_files = list(dict.fromkeys(enriched_files))
 
         return JediValidationReport(
             task_id=report.task_id,
             run_id=report.run_id,
-            passed=report.passed,
-            status=report.status,
+            passed=passed,
+            status=status,
             messages=enriched_messages,
             summary_metrics=enriched_metrics,
             evidence_files=deduped_files,
-            blocking_reasons=list(report.blocking_reasons),
-            policy_decision=report.policy_decision,
+            blocking_reasons=blocking_reasons,
+            policy_decision=policy_decision,
             prerequisite_evidence=dict(report.prerequisite_evidence),
             provenance_refs=list(report.provenance_refs),
             checkpoint_refs=list(report.checkpoint_refs),
             candidate_id=report.candidate_id,
             graph_version_id=report.graph_version_id,
             session_id=report.session_id,
-            session_events=list(report.session_events),
+            session_events=session_events,
             audit_refs=list(report.audit_refs),
         )
 
@@ -266,6 +295,15 @@ class JediValidatorComponent(HarnessComponent):
         if not isinstance(observation_minus_background, int | float):
             return False
         return float(observation_minus_analysis) < float(observation_minus_background)
+
+    def _has_structured_diagnostics(self, diagnostic_summary: JediDiagnosticSummary) -> bool:
+        return bool(
+            diagnostic_summary.files_scanned
+            or diagnostic_summary.ioda_groups_found
+            or diagnostic_summary.gradient_norm_reduction is not None
+            or diagnostic_summary.observer_output_detected
+            or diagnostic_summary.posterior_output_detected
+        )
 
     def _blocking_reasons_for_status(self, status: str, messages: list[str]) -> list[str]:
         if status in {"validated", "executed"}:

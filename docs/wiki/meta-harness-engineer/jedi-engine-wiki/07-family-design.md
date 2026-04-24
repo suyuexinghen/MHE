@@ -24,6 +24,17 @@
 
 它们不是 JEDI 全部应用的完整分类，而是 **MHE 对 JEDI extension 的首版正式支持边界**。
 
+### 当前测试支持矩阵
+
+该矩阵记录当前已由代码和测试证明的支持面，而不是未来路线图承诺。
+
+| Family | Contract / gateway / compiler | Environment / smoke | Real-run executor / validator | Diagnostics / policy / governance E2E | 测试锚点 | 当前状态 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `variational` | 已覆盖 typed task、plan 与 4D-Var command/config 生成 | 已覆盖 readiness 与 variational smoke candidate | 已覆盖 fake `real_run` artifact discovery 与 diagnostics-aware validation | 已覆盖 richer diagnostics 进入 evidence、policy report、safety gate event、audit handoff 与 provenance | `test_metaharness_jedi_minimal_demo.py` | 首版最完整基线 |
+| `local_ensemble_da` | 已覆盖 typed task、LETKF plan 与 expected output/reference surface | 已覆盖 LETKF readiness/smoke-adjacent 路径 | 已覆盖基础 `real_run` happy path | 尚未作为 richer diagnostics/governance 的主 E2E 断言对象 | `test_metaharness_jedi_minimal_demo.py`、`test_metaharness_jedi_smoke.py` | 支持基础执行面，治理断言弱于 variational/HofX/forecast |
+| `hofx` | 已覆盖 manifest-loaded gateway/compiler 与 direct orchestration slice | 已覆盖 HofX readiness 与 smoke candidate | 已覆盖 `qgHofX4D.x` fake `real_run` artifact discovery 与 validator success | 已覆盖 evidence、policy、session event、audit 与 provenance handoff | `test_metaharness_jedi_minimal_demo.py`、`test_metaharness_jedi_manifest.py` | 支持 observation-side E2E 基线 |
+| `forecast` | 已覆盖 forecast task、plan、`forecast.out` 与 `forecast_reference.json` surface | 已覆盖 forecast readiness 与 smoke candidate | 已覆盖 `qgForecast.x` fake `real_run` artifact discovery 与 validator success | 已覆盖 evidence、policy、session event、audit 与 provenance handoff | `test_metaharness_jedi_minimal_demo.py` | 支持 forecast E2E 基线 |
+
 ---
 
 ## 7.3 `variational` family

@@ -522,18 +522,422 @@ async def test_jedi_orchestration_happy_path_wires_runtime_evidence_policy_and_g
     assert bundle.summary is diagnostic_summary
     assert artifact.diagnostic_files[0] in bundle.evidence_files
     assert artifact.stdout_path in bundle.evidence_files
+    assert bundle.metadata["diagnostic_files_scanned"] == 2
+    assert bundle.metadata["ioda_groups_found"] == ["HofX", "MetaData", "ObsValue"]
+    assert "ObsError" in bundle.metadata["ioda_groups_missing"]
+    assert "PreQC" in bundle.metadata["ioda_groups_missing"]
+    assert bundle.metadata["minimizer_iterations"] == 4
+    assert bundle.metadata["outer_iterations"] == 2
+    assert bundle.metadata["inner_iterations"] == 5
+    assert bundle.metadata["initial_cost_function"] == 12.5
+    assert bundle.metadata["final_cost_function"] == 3.125
+    assert bundle.metadata["initial_gradient_norm"] == 8.0
+    assert bundle.metadata["final_gradient_norm"] == 0.5
+    assert bundle.metadata["gradient_norm_reduction"] == 0.0625
     assert policy_report.passed is True
     assert policy_report.decision == "allow"
+    assert policy_report.evidence["diagnostic_files_scanned"] == 2
+    assert policy_report.evidence["ioda_groups_found"] == ["HofX", "MetaData", "ObsValue"]
+    assert "ObsError" in policy_report.evidence["ioda_groups_missing"]
+    assert "PreQC" in policy_report.evidence["ioda_groups_missing"]
+    assert policy_report.evidence["minimizer_iterations"] == 4
+    assert policy_report.evidence["outer_iterations"] == 2
+    assert policy_report.evidence["inner_iterations"] == 5
+    assert policy_report.evidence["initial_cost_function"] == 12.5
+    assert policy_report.evidence["final_cost_function"] == 3.125
+    assert policy_report.evidence["initial_gradient_norm"] == 8.0
+    assert policy_report.evidence["final_gradient_norm"] == 0.5
+    assert policy_report.evidence["gradient_norm_reduction"] == 0.0625
     assert candidate_record.promoted is True
     assert candidate_record.candidate_id == "candidate-orchestration-1"
-    assert [event.event_type for event in session_store.get_events("jedi-orchestration-session")] == [
+    events = session_store.get_events("jedi-orchestration-session")
+    assert [event.event_type for event in events] == [
         SessionEventType.CANDIDATE_VALIDATED,
         SessionEventType.SAFETY_GATE_EVALUATED,
     ]
+    safety_gate_event = next(
+        event for event in events if event.event_type == SessionEventType.SAFETY_GATE_EVALUATED
+    )
+    assert safety_gate_event.payload["diagnostic_files_scanned"] == 2
+    assert safety_gate_event.payload["ioda_groups_found"] == ["HofX", "MetaData", "ObsValue"]
+    assert "ObsError" in safety_gate_event.payload["ioda_groups_missing"]
+    assert "PreQC" in safety_gate_event.payload["ioda_groups_missing"]
+    assert safety_gate_event.payload["minimizer_iterations"] == 4
+    assert safety_gate_event.payload["outer_iterations"] == 2
+    assert safety_gate_event.payload["inner_iterations"] == 5
+    assert safety_gate_event.payload["initial_cost_function"] == 12.5
+    assert safety_gate_event.payload["final_cost_function"] == 3.125
+    assert safety_gate_event.payload["initial_gradient_norm"] == 8.0
+    assert safety_gate_event.payload["final_gradient_norm"] == 0.5
+    assert safety_gate_event.payload["gradient_norm_reduction"] == 0.0625
     assert len(audit_log.by_kind("session.candidate_validated")) == 1
     assert len(audit_log.by_kind("session.safety_gate_evaluated")) == 1
     assert len(audit_log.by_kind("jedi.governance_handoff")) == 1
+    handoff_record = audit_log.by_kind("jedi.governance_handoff")[0]
+    assert handoff_record.payload["diagnostic_files_scanned"] == 2
+    assert handoff_record.payload["ioda_groups_found"] == ["HofX", "MetaData", "ObsValue"]
+    assert "ObsError" in handoff_record.payload["ioda_groups_missing"]
+    assert "PreQC" in handoff_record.payload["ioda_groups_missing"]
+    assert handoff_record.payload["minimizer_iterations"] == 4
+    assert handoff_record.payload["outer_iterations"] == 2
+    assert handoff_record.payload["inner_iterations"] == 5
+    assert handoff_record.payload["initial_cost_function"] == 12.5
+    assert handoff_record.payload["final_cost_function"] == 3.125
+    assert handoff_record.payload["initial_gradient_norm"] == 8.0
+    assert handoff_record.payload["final_gradient_norm"] == 0.5
+    assert handoff_record.payload["gradient_norm_reduction"] == 0.0625
     assert "graph-candidate:candidate-orchestration-1" in provenance_graph.to_dict()["entities"]
+    assert all(ref.startswith("audit-record:") for ref in governance_refs["audit_refs"])
+    assert "graph-version:1" in governance_refs["provenance_refs"]
+
+
+@pytest.mark.asyncio
+async def test_jedi_hofx_orchestration_happy_path_wires_runtime_evidence_policy_and_governance(
+    examples_dir: Path, monkeypatch, tmp_path: Path
+) -> None:
+    manifest_dir = examples_dir / "manifests" / "jedi"
+    graphs_dir = examples_dir / "graphs"
+    registry = _build_registry(manifest_dir)
+    engine = ConnectionEngine(registry, GraphVersionStore())
+    snapshot = parse_graph_xml(graphs_dir / "jedi-minimal.xml")
+    candidate, report = engine.stage(
+        PendingConnectionSet(nodes=snapshot.nodes, edges=snapshot.edges)
+    )
+    version = engine.commit("jedi-hofx-orchestration-happy", candidate, report)
+
+    gateway = JediGatewayComponent()
+    environment = JediEnvironmentProbeComponent()
+    compiler = JediConfigCompilerComponent()
+    executor = JediExecutorComponent()
+    validator = JediValidatorComponent()
+    diagnostics = JediDiagnosticsCollectorComponent()
+    policy = JediEvidencePolicy()
+    governance = JediGovernanceAdapter()
+    session_store = InMemorySessionStore()
+    audit_log = AuditLog()
+    provenance_graph = ProvGraph()
+    await executor.activate(ComponentRuntime(storage_path=tmp_path))
+
+    workspace = tmp_path / "jedi-hofx-workspace"
+    (workspace / "testinput").mkdir(parents=True)
+    state = workspace / "hofx-state.nc"
+    observations = workspace / "hofx-obs.ioda"
+    state.write_text("state")
+    observations.write_text("observations")
+
+    task = gateway.issue_hofx_task(
+        task_id="jedi-hofx-orchestration-1",
+        execution_mode="real_run",
+        binary_name="qgHofX4D.x",
+        state_path=str(state),
+        observation_paths=[str(observations)],
+        working_directory=str(workspace),
+        candidate_id="candidate-hofx-orchestration-1",
+        graph_version_id=version,
+        session_id="jedi-hofx-orchestration-session",
+        audit_refs=["audit-record:hofx-orchestration-seed"],
+    )
+
+    def fake_which(name: str) -> str | None:
+        if name == "ldd":
+            return "/usr/bin/ldd"
+        if name == "qgHofX4D.x":
+            return "/usr/bin/qgHofX4D.x"
+        return None
+
+    class _LddResult:
+        returncode = 0
+        stdout = ""
+
+    monkeypatch.setattr("metaharness_ext.jedi.environment.shutil.which", fake_which)
+    monkeypatch.setattr(
+        "metaharness_ext.jedi.environment.subprocess.run",
+        lambda *args, **kwargs: _LddResult(),
+    )
+
+    environment_report = environment.probe(task)
+    smoke_task = gateway.issue_smoke_task(
+        environment_report,
+        task_id="jedi-hofx-smoke-orchestration-1",
+        execution_mode="validate_only",
+        background_path=str(state),
+        observation_paths=[str(observations)],
+    )
+    plan = compiler.build_plan(task)
+
+    monkeypatch.setattr(
+        "metaharness_ext.jedi.executor.JediExecutorComponent._resolve_binary",
+        lambda self, binary_name: f"/usr/bin/{Path(binary_name).name}",
+    )
+
+    def fake_run(command, *, cwd, text, capture_output, check, timeout):
+        (cwd / "hofx.out").write_text("hofx output")
+        (cwd / "hofx_reference.json").write_text('{"baseline": "hofx-reference"}')
+        return type(
+            "_HofXCompletedProcess",
+            (),
+            {
+                "returncode": 0,
+                "stdout": (
+                    "run ok\n"
+                    "MetaData group present\n"
+                    "ObsValue group present\n"
+                    "HofX group present\n"
+                    "observer summary available\n"
+                ),
+                "stderr": "",
+            },
+        )()
+
+    monkeypatch.setattr("metaharness_ext.jedi.executor.subprocess.run", fake_run)
+
+    artifact = executor.execute_plan(plan, environment_report=environment_report)
+    diagnostic_summary = diagnostics.collect(artifact)
+    validation = validator.validate_run_with_diagnostics(artifact, diagnostic_summary)
+    bundle = build_evidence_bundle(artifact, validation, diagnostic_summary)
+    policy_report = policy.evaluate(bundle)
+    governance_refs = governance.emit_runtime_evidence(
+        bundle,
+        policy_report,
+        session_store=session_store,
+        audit_log=audit_log,
+        provenance_graph=provenance_graph,
+    )
+    candidate_record = governance.build_candidate_record(bundle, policy_report)
+
+    assert report.valid is True
+    assert version == 1
+    assert task.application_family == "hofx"
+    assert task.executable.binary_name == "qgHofX4D.x"
+    assert smoke_task.application_family == "hofx"
+    assert smoke_task.executable.binary_name == "qgHofX4D.x"
+    assert environment_report.binary_available is True
+    assert environment_report.workspace_root == str(workspace)
+    assert environment_report.workspace_testinput_present is True
+    assert environment_report.data_prerequisites_ready is True
+    assert environment_report.smoke_ready is True
+    assert environment_report.smoke_candidate == "hofx"
+    assert environment_report.ready_prerequisites == [
+        "workspace testinput",
+        "ctest -R get_ or equivalent observation data preparation",
+    ]
+    assert plan.application_family == "hofx"
+    assert plan.execution_mode == "real_run"
+    assert plan.expected_outputs == ["hofx.out"]
+    assert plan.expected_references == ["hofx_reference.json"]
+    assert artifact.status == "completed"
+    assert artifact.command == ["/usr/bin/qgHofX4D.x", "config.yaml"]
+    assert any(path.endswith("hofx.out") for path in artifact.output_files)
+    assert any(path.endswith("hofx_reference.json") for path in artifact.reference_files)
+    assert artifact.result_summary["checkpoint_refs"] == [
+        "checkpoint://jedi/prerequisite/workspace-testinput",
+        "checkpoint://jedi/prerequisite/ctest-r-get-or-equivalent-observation-data-preparation",
+    ]
+    assert validation.passed is True
+    assert validation.status == "executed"
+    assert validation.policy_decision == "allow"
+    assert validation.candidate_id == "candidate-hofx-orchestration-1"
+    assert validation.graph_version_id == 1
+    assert validation.session_id == "jedi-hofx-orchestration-session"
+    assert validation.audit_refs == ["audit-record:hofx-orchestration-seed"]
+    assert validation.summary_metrics["primary_output"].endswith("hofx.out")
+    assert validation.summary_metrics["ioda_groups_found"] == 3
+    assert validation.summary_metrics["observer_output_detected"] == "True"
+    assert "IODA groups detected: HofX, MetaData, ObsValue." in validation.messages
+    assert diagnostic_summary.files_scanned == [artifact.stdout_path]
+    assert bundle.validation is validation
+    assert bundle.summary is diagnostic_summary
+    assert artifact.output_files[0] in bundle.evidence_files
+    assert artifact.reference_files[0] in bundle.evidence_files
+    assert artifact.stdout_path in bundle.evidence_files
+    assert bundle.metadata["diagnostic_files_scanned"] == 1
+    assert bundle.metadata["ioda_groups_found"] == ["HofX", "MetaData", "ObsValue"]
+    assert policy_report.passed is True
+    assert policy_report.decision == "allow"
+    assert policy_report.evidence["diagnostic_files_scanned"] == 1
+    assert policy_report.evidence["ioda_groups_found"] == ["HofX", "MetaData", "ObsValue"]
+    assert candidate_record.promoted is True
+    assert candidate_record.candidate_id == "candidate-hofx-orchestration-1"
+    events = session_store.get_events("jedi-hofx-orchestration-session")
+    assert [event.event_type for event in events] == [
+        SessionEventType.CANDIDATE_VALIDATED,
+        SessionEventType.SAFETY_GATE_EVALUATED,
+    ]
+    safety_gate_event = next(
+        event for event in events if event.event_type == SessionEventType.SAFETY_GATE_EVALUATED
+    )
+    assert safety_gate_event.payload["diagnostic_files_scanned"] == 1
+    assert safety_gate_event.payload["ioda_groups_found"] == ["HofX", "MetaData", "ObsValue"]
+    assert len(audit_log.by_kind("session.candidate_validated")) == 1
+    assert len(audit_log.by_kind("session.safety_gate_evaluated")) == 1
+    assert len(audit_log.by_kind("jedi.governance_handoff")) == 1
+    handoff_record = audit_log.by_kind("jedi.governance_handoff")[0]
+    assert handoff_record.payload["diagnostic_files_scanned"] == 1
+    assert handoff_record.payload["ioda_groups_found"] == ["HofX", "MetaData", "ObsValue"]
+    assert (
+        "graph-candidate:candidate-hofx-orchestration-1" in provenance_graph.to_dict()["entities"]
+    )
+    assert all(ref.startswith("audit-record:") for ref in governance_refs["audit_refs"])
+    assert "graph-version:1" in governance_refs["provenance_refs"]
+
+
+@pytest.mark.asyncio
+async def test_jedi_forecast_orchestration_happy_path_wires_real_run_evidence(
+    examples_dir: Path, monkeypatch, tmp_path: Path
+) -> None:
+    manifest_dir = examples_dir / "manifests" / "jedi"
+    graphs_dir = examples_dir / "graphs"
+    registry = _build_registry(manifest_dir)
+    engine = ConnectionEngine(registry, GraphVersionStore())
+    snapshot = parse_graph_xml(graphs_dir / "jedi-minimal.xml")
+    candidate, report = engine.stage(
+        PendingConnectionSet(nodes=snapshot.nodes, edges=snapshot.edges)
+    )
+    version = engine.commit("jedi-forecast-orchestration-happy", candidate, report)
+
+    gateway = JediGatewayComponent()
+    environment = JediEnvironmentProbeComponent()
+    compiler = JediConfigCompilerComponent()
+    executor = JediExecutorComponent()
+    validator = JediValidatorComponent()
+    diagnostics = JediDiagnosticsCollectorComponent()
+    policy = JediEvidencePolicy()
+    governance = JediGovernanceAdapter()
+    session_store = InMemorySessionStore()
+    audit_log = AuditLog()
+    provenance_graph = ProvGraph()
+    await executor.activate(ComponentRuntime(storage_path=tmp_path))
+
+    workspace = tmp_path / "jedi-forecast-workspace"
+    (workspace / "testinput").mkdir(parents=True)
+    initial_condition = workspace / "forecast-initial.nc"
+    initial_condition.write_text("initial condition")
+
+    task = gateway.issue_forecast_task(
+        task_id="jedi-forecast-orchestration-1",
+        execution_mode="real_run",
+        binary_name="qgForecast.x",
+        initial_condition_path=str(initial_condition),
+        working_directory=str(workspace),
+        candidate_id="candidate-forecast-orchestration-1",
+        graph_version_id=version,
+        session_id="jedi-forecast-orchestration-session",
+        audit_refs=["audit-record:forecast-orchestration-seed"],
+    )
+
+    def fake_which(name: str) -> str | None:
+        if name == "ldd":
+            return "/usr/bin/ldd"
+        if name == "qgForecast.x":
+            return "/usr/bin/qgForecast.x"
+        return None
+
+    class _LddResult:
+        returncode = 0
+        stdout = ""
+
+    monkeypatch.setattr("metaharness_ext.jedi.environment.shutil.which", fake_which)
+    monkeypatch.setattr(
+        "metaharness_ext.jedi.environment.subprocess.run",
+        lambda *args, **kwargs: _LddResult(),
+    )
+
+    environment_report = environment.probe(task)
+    smoke_task = gateway.issue_smoke_task(
+        environment_report,
+        task_id="jedi-forecast-smoke-orchestration-1",
+        execution_mode="validate_only",
+        background_path=str(initial_condition),
+    )
+    plan = compiler.build_plan(task)
+
+    monkeypatch.setattr(
+        "metaharness_ext.jedi.executor.JediExecutorComponent._resolve_binary",
+        lambda self, binary_name: f"/usr/bin/{Path(binary_name).name}",
+    )
+
+    def fake_run(command, *, cwd, text, capture_output, check, timeout):
+        (cwd / "forecast.out").write_text("forecast output")
+        (cwd / "forecast_reference.json").write_text('{"baseline": "forecast-reference"}')
+        return type(
+            "_ForecastCompletedProcess",
+            (),
+            {"returncode": 0, "stdout": "run ok\nforecast complete\n", "stderr": ""},
+        )()
+
+    monkeypatch.setattr("metaharness_ext.jedi.executor.subprocess.run", fake_run)
+
+    artifact = executor.execute_plan(plan, environment_report=environment_report)
+    diagnostic_summary = diagnostics.collect(artifact)
+    validation = validator.validate_run_with_diagnostics(artifact, diagnostic_summary)
+    bundle = build_evidence_bundle(artifact, validation, diagnostic_summary)
+    policy_report = policy.evaluate(bundle)
+    governance_refs = governance.emit_runtime_evidence(
+        bundle,
+        policy_report,
+        session_store=session_store,
+        audit_log=audit_log,
+        provenance_graph=provenance_graph,
+    )
+    candidate_record = governance.build_candidate_record(bundle, policy_report)
+
+    assert report.valid is True
+    assert version == 1
+    assert task.application_family == "forecast"
+    assert task.executable.binary_name == "qgForecast.x"
+    assert smoke_task.application_family == "forecast"
+    assert smoke_task.executable.binary_name == "qgForecast.x"
+    assert environment_report.binary_available is True
+    assert environment_report.workspace_root == str(workspace)
+    assert environment_report.workspace_testinput_present is True
+    assert environment_report.data_prerequisites_ready is True
+    assert environment_report.smoke_ready is True
+    assert environment_report.smoke_candidate == "forecast"
+    assert environment_report.ready_prerequisites == [
+        "workspace testinput",
+        "model initial-condition data prepared",
+    ]
+    assert plan.application_family == "forecast"
+    assert plan.execution_mode == "real_run"
+    assert plan.expected_outputs == ["forecast.out"]
+    assert plan.expected_references == ["forecast_reference.json"]
+    assert artifact.status == "completed"
+    assert artifact.command == ["/usr/bin/qgForecast.x", "config.yaml"]
+    assert any(path.endswith("forecast.out") for path in artifact.output_files)
+    assert any(path.endswith("forecast_reference.json") for path in artifact.reference_files)
+    assert artifact.result_summary["checkpoint_refs"] == [
+        "checkpoint://jedi/prerequisite/workspace-testinput",
+        "checkpoint://jedi/prerequisite/model-initial-condition-data-prepared",
+    ]
+    assert validation.passed is True
+    assert validation.status == "executed"
+    assert validation.policy_decision == "allow"
+    assert validation.candidate_id == "candidate-forecast-orchestration-1"
+    assert validation.graph_version_id == 1
+    assert validation.session_id == "jedi-forecast-orchestration-session"
+    assert validation.audit_refs == ["audit-record:forecast-orchestration-seed"]
+    assert validation.summary_metrics["primary_output"].endswith("forecast.out")
+    assert validation.summary_metrics["reference_count"] == 1.0
+    assert diagnostic_summary.files_scanned == [artifact.stdout_path]
+    assert bundle.validation is validation
+    assert artifact.output_files[0] in bundle.evidence_files
+    assert artifact.reference_files[0] in bundle.evidence_files
+    assert artifact.stdout_path in bundle.evidence_files
+    assert policy_report.passed is True
+    assert policy_report.decision == "allow"
+    assert policy_report.evidence["diagnostic_files_scanned"] == 1
+    assert candidate_record.promoted is True
+    assert candidate_record.candidate_id == "candidate-forecast-orchestration-1"
+    events = session_store.get_events("jedi-forecast-orchestration-session")
+    assert [event.event_type for event in events] == [
+        SessionEventType.CANDIDATE_VALIDATED,
+        SessionEventType.SAFETY_GATE_EVALUATED,
+    ]
+    assert len(audit_log.by_kind("jedi.governance_handoff")) == 1
+    assert (
+        "graph-candidate:candidate-forecast-orchestration-1"
+        in provenance_graph.to_dict()["entities"]
+    )
     assert all(ref.startswith("audit-record:") for ref in governance_refs["audit_refs"])
     assert "graph-version:1" in governance_refs["provenance_refs"]
 
@@ -659,9 +1063,7 @@ async def test_jedi_gateway_rejects_unsupported_sandbox_tier() -> None:
         def supports_tier(self, tier) -> bool:
             return False
 
-    gateway = JediGatewayComponent(
-        manifest=_jedi_gateway_manifest(sandbox={"tier": "gvisor"})
-    )
+    gateway = JediGatewayComponent(manifest=_jedi_gateway_manifest(sandbox={"tier": "gvisor"}))
     await gateway.activate(ComponentRuntime(sandbox_client=_SandboxClient()))
 
     with pytest.raises(ValueError, match="sandbox policy requires tier 'gvisor'"):

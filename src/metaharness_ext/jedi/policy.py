@@ -5,6 +5,27 @@ from metaharness_ext.jedi.contracts import JediEvidenceBundle, JediEvidenceWarni
 
 
 class JediEvidencePolicy:
+    def _report_evidence(self, bundle: JediEvidenceBundle, validation_status: str | None) -> dict[str, object]:
+        evidence: dict[str, object] = {"run_id": bundle.run_id, "status": validation_status}
+        for key in (
+            "diagnostic_files_scanned",
+            "ioda_groups_found",
+            "ioda_groups_missing",
+            "minimizer_iterations",
+            "outer_iterations",
+            "inner_iterations",
+            "initial_cost_function",
+            "final_cost_function",
+            "initial_gradient_norm",
+            "final_gradient_norm",
+            "gradient_norm_reduction",
+            "observer_output_detected",
+            "posterior_output_detected",
+        ):
+            if key in bundle.metadata:
+                evidence[key] = bundle.metadata[key]
+        return evidence
+
     def evaluate(self, bundle: JediEvidenceBundle) -> JediPolicyReport:
         gates: list[GateResult] = []
         warnings = list(bundle.warnings)
@@ -46,7 +67,7 @@ class JediEvidencePolicy:
                 reason="Validation status is environment_invalid.",
                 warnings=warnings,
                 gates=gates,
-                evidence={"status": validation.status, "run_id": bundle.run_id},
+                evidence=self._report_evidence(bundle, validation.status),
             )
 
         if validation.status in {"runtime_failed", "validation_failed"}:
@@ -68,7 +89,7 @@ class JediEvidencePolicy:
                 reason=f"Validation status is {validation.status}.",
                 warnings=warnings,
                 gates=gates,
-                evidence={"status": validation.status, "run_id": bundle.run_id},
+                evidence=self._report_evidence(bundle, validation.status),
             )
 
         incomplete = False
@@ -105,6 +126,59 @@ class JediEvidencePolicy:
                 )
             )
 
+        if bundle.execution_mode == "real_run" and bundle.summary is None:
+            warnings.append(
+                JediEvidenceWarning(
+                    code="diagnostics_summary_missing",
+                    message="Real run evidence bundle does not include a diagnostics summary.",
+                    severity="info",
+                    evidence={"run_id": bundle.run_id},
+                )
+            )
+        elif bundle.execution_mode == "real_run":
+            diagnostics_summary = bundle.summary
+            has_structured_signal = bool(
+                diagnostics_summary.files_scanned
+                or diagnostics_summary.ioda_groups_found
+                or diagnostics_summary.gradient_norm_reduction is not None
+                or diagnostics_summary.observer_output_detected
+                or diagnostics_summary.posterior_output_detected
+            )
+            if not has_structured_signal:
+                incomplete = True
+                gates.append(
+                    GateResult(
+                        gate="diagnostics_structured_signal",
+                        decision=GateDecision.DEFER,
+                        reason="Diagnostics summary is present but does not contain structured diagnostics evidence.",
+                        evidence={"run_id": bundle.run_id},
+                    )
+                )
+            else:
+                gates.append(
+                    GateResult(
+                        gate="diagnostics_structured_signal",
+                        decision=GateDecision.ALLOW,
+                        reason="Diagnostics summary provides structured evidence for downstream review.",
+                        evidence={
+                            "run_id": bundle.run_id,
+                            "files_scanned": len(diagnostics_summary.files_scanned),
+                            "ioda_groups_found": list(diagnostics_summary.ioda_groups_found),
+                            "ioda_groups_missing": list(diagnostics_summary.ioda_groups_missing),
+                            "minimizer_iterations": diagnostics_summary.minimizer_iterations,
+                            "outer_iterations": diagnostics_summary.outer_iterations,
+                            "inner_iterations": diagnostics_summary.inner_iterations,
+                            "initial_cost_function": diagnostics_summary.initial_cost_function,
+                            "final_cost_function": diagnostics_summary.final_cost_function,
+                            "initial_gradient_norm": diagnostics_summary.initial_gradient_norm,
+                            "final_gradient_norm": diagnostics_summary.final_gradient_norm,
+                            "gradient_norm_reduction": diagnostics_summary.gradient_norm_reduction,
+                            "observer_output_detected": diagnostics_summary.observer_output_detected,
+                            "posterior_output_detected": diagnostics_summary.posterior_output_detected,
+                        },
+                    )
+                )
+
         if validation.blocking_reasons:
             warnings.append(
                 JediEvidenceWarning(
@@ -135,7 +209,7 @@ class JediEvidencePolicy:
                 reason="Evidence bundle is incomplete for downstream review.",
                 warnings=warnings,
                 gates=gates,
-                evidence={"run_id": bundle.run_id, "status": validation.status},
+                evidence=self._report_evidence(bundle, validation.status),
             )
 
         gates.append(
@@ -143,7 +217,7 @@ class JediEvidencePolicy:
                 gate="evidence_ready",
                 decision=GateDecision.ALLOW,
                 reason="Evidence bundle is complete enough for downstream consumption.",
-                evidence={"run_id": bundle.run_id, "status": validation.status},
+                evidence=self._report_evidence(bundle, validation.status),
             )
         )
         return JediPolicyReport(
@@ -152,5 +226,5 @@ class JediEvidencePolicy:
             reason="Evidence bundle is complete enough for downstream consumption.",
             warnings=warnings,
             gates=gates,
-            evidence={"run_id": bundle.run_id, "status": validation.status},
+            evidence=self._report_evidence(bundle, validation.status),
         )

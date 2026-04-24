@@ -32,7 +32,18 @@ def test_build_evidence_bundle_aggregates_run_validation_and_summary() -> None:
         evidence_files=["/tmp/departures.json", "/tmp/reference.json"],
         policy_decision="allow",
     )
-    summary = JediDiagnosticSummary(files_scanned=["/tmp/departures.json", "/tmp/extra.nc"])
+    summary = JediDiagnosticSummary(
+        files_scanned=["/tmp/departures.json", "/tmp/extra.nc"],
+        ioda_groups_missing=["ObsError", "PreQC"],
+        minimizer_iterations=4,
+        outer_iterations=2,
+        inner_iterations=5,
+        initial_cost_function=12.5,
+        final_cost_function=3.125,
+        initial_gradient_norm=8.0,
+        final_gradient_norm=0.5,
+        gradient_norm_reduction=0.0625,
+    )
 
     bundle = build_evidence_bundle(run, validation, summary)
 
@@ -51,6 +62,20 @@ def test_build_evidence_bundle_aggregates_run_validation_and_summary() -> None:
     assert bundle.session_events == []
     assert bundle.audit_refs == []
     assert bundle.metadata["policy_decision"] == "allow"
+    assert bundle.metadata["diagnostics_present"] is True
+    assert bundle.metadata["diagnostic_files_scanned"] == 2
+    assert bundle.metadata["ioda_groups_found"] == []
+    assert bundle.metadata["ioda_groups_missing"] == ["ObsError", "PreQC"]
+    assert bundle.metadata["minimizer_iterations"] == 4
+    assert bundle.metadata["outer_iterations"] == 2
+    assert bundle.metadata["inner_iterations"] == 5
+    assert bundle.metadata["initial_cost_function"] == 12.5
+    assert bundle.metadata["final_cost_function"] == 3.125
+    assert bundle.metadata["initial_gradient_norm"] == 8.0
+    assert bundle.metadata["final_gradient_norm"] == 0.5
+    assert bundle.metadata["gradient_norm_reduction"] == 0.0625
+    assert bundle.metadata["observer_output_detected"] is False
+    assert bundle.metadata["posterior_output_detected"] is False
 
 
 def test_build_evidence_bundle_preserves_validation_prerequisite_and_checkpoint_handoff() -> None:

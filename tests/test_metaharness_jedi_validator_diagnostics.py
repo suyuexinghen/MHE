@@ -50,6 +50,8 @@ class TestJediValidatorWithDiagnostics:
         assert report.session_id == "task-1"
         assert len(report.session_events) == 1
         assert report.session_events[0].candidate_id == "run-1"
+        assert report.session_events[0].payload["status"] == "allow"
+        assert report.session_events[0].payload["blocking_reasons"] == []
         assert report.audit_refs == []
         assert report.summary_metrics["ioda_groups_found"] == 3
         assert report.summary_metrics["ioda_groups_missing"] == 2
@@ -102,6 +104,39 @@ class TestJediValidatorWithDiagnostics:
         assert report.summary_metrics["ioda_groups_found"] == 2
         assert report.summary_metrics["ioda_groups_missing"] == 2
         assert "MetaData, ObsValue" in report.messages[-2]
+
+    def test_validator_downgrades_real_run_without_structured_diagnostics(self) -> None:
+        artifact = JediRunArtifact(
+            task_id="task-1",
+            run_id="run-1",
+            application_family="hofx",
+            execution_mode="real_run",
+            command=["/usr/bin/qgHofX4D.x", "config.yaml"],
+            return_code=0,
+            config_path="/tmp/config.yaml",
+            stdout_path="/tmp/stdout.log",
+            stderr_path="/tmp/stderr.log",
+            working_directory="/tmp/run-1",
+            output_files=["/tmp/run-1/analysis.out"],
+            diagnostic_files=["/tmp/run-1/departures.json"],
+            status="completed",
+        )
+
+        diagnostics = JediDiagnosticSummary()
+
+        validator = JediValidatorComponent()
+        report = validator.validate_run_with_diagnostics(artifact, diagnostics)
+
+        assert report.passed is False
+        assert report.status == "validation_failed"
+        assert report.policy_decision == "defer"
+        assert report.blocking_reasons[-1] == "JEDI real_run completed without structured diagnostics evidence."
+        assert report.messages[-1] == "JEDI real_run completed without structured diagnostics evidence."
+        assert len(report.session_events) == 1
+        assert report.session_events[0].payload["status"] == "defer"
+        assert report.session_events[0].payload["blocking_reasons"][-1] == (
+            "JEDI real_run completed without structured diagnostics evidence."
+        )
 
     def test_validator_deduplicates_evidence_files(self) -> None:
         artifact = JediRunArtifact(

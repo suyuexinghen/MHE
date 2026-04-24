@@ -257,6 +257,26 @@ def _expected_references(spec: JediExperimentSpec) -> list[str]:
         elif spec.executable.execution_mode == "real_run":
             reference_files.append("ensemble_reference.json")
         return list(dict.fromkeys(reference_files))
+    if isinstance(spec, JediHofXSpec):
+        reference_files: list[str] = []
+        reference = spec.test.get("reference")
+        if isinstance(reference, dict):
+            filename = reference.get("filename")
+            if isinstance(filename, str) and filename.strip():
+                reference_files.append(filename)
+        elif spec.executable.execution_mode == "real_run":
+            reference_files.append("hofx_reference.json")
+        return list(dict.fromkeys(reference_files))
+    if isinstance(spec, JediForecastSpec):
+        reference_files: list[str] = []
+        reference = spec.test.get("reference")
+        if isinstance(reference, dict):
+            filename = reference.get("filename")
+            if isinstance(filename, str) and filename.strip():
+                reference_files.append(filename)
+        elif spec.executable.execution_mode == "real_run":
+            reference_files.append("forecast_reference.json")
+        return list(dict.fromkeys(reference_files))
     return []
 
 

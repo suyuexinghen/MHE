@@ -71,7 +71,7 @@ class JediStudyComponent(HarnessComponent):
                         evidence_bundle=evidence_bundle,
                         policy_report=policy_report,
                         metric_value=metric_value,
-                        passed=validation.passed,
+                        passed=validation.passed and policy_report.decision == "allow",
                         messages=list(validation.messages),
                     )
                 )
@@ -117,6 +117,12 @@ class JediStudyComponent(HarnessComponent):
         summary_metrics: dict[str, float | str] = {"trial_count": float(len(trials))}
         if recommended is not None and recommended.metric_value is not None:
             summary_metrics[f"best_{spec.metric_key}"] = recommended.metric_value
+        recommended_reason, messages = self._recommendation_reporting(
+            trials,
+            recommended=recommended,
+            metric_key=spec.metric_key,
+            goal=spec.goal,
+        )
 
         return JediStudyReport(
             study_id=spec.study_id,
@@ -126,15 +132,9 @@ class JediStudyComponent(HarnessComponent):
             trials=trials,
             recommended_value=recommended.axis_value if recommended is not None else None,
             recommended_trial_id=recommended.trial_id if recommended is not None else None,
-            recommended_reason=(
-                f"Selected the {'lowest' if spec.goal == 'minimize' else 'highest'} passing {spec.metric_key}."
-                if recommended is not None
-                else "No passing trial produced the requested metric."
-            ),
+            recommended_reason=recommended_reason,
             summary_metrics=summary_metrics,
-            messages=[]
-            if recommended is not None
-            else ["No passing trial produced the requested metric."],
+            messages=messages,
         )
 
     def _validate_axis(self, spec: JediStudySpec) -> None:
@@ -229,3 +229,62 @@ class JediStudyComponent(HarnessComponent):
             return None
         reverse = goal == "maximize"
         return sorted(candidates, key=lambda trial: trial.metric_value, reverse=reverse)[0]
+
+    def _recommendation_reporting(
+        self,
+        trials: list[JediStudyTrial],
+        *,
+        recommended: JediStudyTrial | None,
+        metric_key: str,
+        goal: str,
+    ) -> tuple[str, list[str]]:
+        ranked_trials = [trial for trial in trials if trial.metric_value is not None]
+        policy_blocked_trials = [
+            trial
+            for trial in ranked_trials
+            if trial.validation.passed
+            and trial.policy_report is not None
+            and trial.policy_report.decision != "allow"
+        ]
+        direction = "lowest" if goal == "minimize" else "highest"
+
+        if recommended is None:
+            if ranked_trials and policy_blocked_trials and len(policy_blocked_trials) == len(ranked_trials):
+                reason = f"No policy-allowed trial produced the requested {metric_key}."
+                return reason, [
+                    "All metric-producing trials were excluded by diagnostics-aware policy."
+                ]
+            reason = "No passing trial produced the requested metric."
+            return reason, [reason]
+
+        blocked_better_trial = self._best_policy_blocked_trial(ranked_trials, goal=goal)
+        if blocked_better_trial is not None and self._is_better_metric(
+            blocked_better_trial.metric_value,
+            recommended.metric_value,
+            goal=goal,
+        ):
+            reason = (
+                f"Selected the {direction} policy-allowed {metric_key}; better-ranked trials were "
+                "excluded by diagnostics-aware policy."
+            )
+            return reason, [
+                "Diagnostics-aware policy excluded a better-ranked trial from recommendation."
+            ]
+
+        return f"Selected the {direction} policy-allowed {metric_key}.", []
+
+    def _best_policy_blocked_trial(
+        self, trials: list[JediStudyTrial], *, goal: str
+    ) -> JediStudyTrial | None:
+        blocked = [trial for trial in trials if not trial.passed and trial.metric_value is not None]
+        if not blocked:
+            return None
+        reverse = goal == "maximize"
+        return sorted(blocked, key=lambda trial: trial.metric_value, reverse=reverse)[0]
+
+    def _is_better_metric(self, candidate: float | None, baseline: float | None, *, goal: str) -> bool:
+        if candidate is None or baseline is None:
+            return False
+        if goal == "maximize":
+            return candidate > baseline
+        return candidate < baseline
