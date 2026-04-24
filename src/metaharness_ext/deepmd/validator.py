@@ -6,7 +6,12 @@ from metaharness.sdk.api import HarnessAPI
 from metaharness.sdk.base import HarnessComponent
 from metaharness.sdk.runtime import ComponentRuntime
 from metaharness_ext.deepmd.capabilities import CAP_DEEPMD_VALIDATE
-from metaharness_ext.deepmd.contracts import DeepMDRunArtifact, DeepMDValidationReport
+from metaharness_ext.deepmd.contracts import (
+    DeepMDEvidenceBundle,
+    DeepMDRunArtifact,
+    DeepMDValidationReport,
+)
+from metaharness_ext.deepmd.evidence import build_evidence_bundle
 from metaharness_ext.deepmd.slots import DEEPMD_VALIDATOR_SLOT
 
 
@@ -184,3 +189,10 @@ class DeepMDValidatorComponent(HarnessComponent):
             summary_metrics=metrics,
             evidence_files=evidence_files,
         )
+
+    def build_evidence_bundle(
+        self,
+        artifact: DeepMDRunArtifact,
+        validation: DeepMDValidationReport | None = None,
+    ) -> DeepMDEvidenceBundle:
+        return build_evidence_bundle(artifact, validation)

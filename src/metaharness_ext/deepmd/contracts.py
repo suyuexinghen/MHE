@@ -4,6 +4,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from metaharness.safety.gates import GateResult
+
 DeepMDApplicationFamily = Literal["deepmd_train", "dpgen_run", "dpgen_simplify", "dpgen_autotest"]
 DeepMDExecutionMode = Literal[
     "train",
@@ -360,8 +362,44 @@ class DeepMDValidationReport(BaseModel):
     evidence_files: list[str] = Field(default_factory=list)
 
 
+class DeepMDEvidenceWarning(BaseModel):
+    code: str
+    message: str
+    severity: Literal["info", "warning"] = "warning"
+    evidence: dict[str, Any] = Field(default_factory=dict)
+
+
+class DeepMDEvidenceBundle(BaseModel):
+    task_id: str
+    run_id: str
+    application_family: DeepMDApplicationFamily
+    execution_mode: DeepMDExecutionMode
+    run: DeepMDRunArtifact
+    validation: DeepMDValidationReport | None = None
+    summary: DeepMDDiagnosticSummary
+    evidence_files: list[str] = Field(default_factory=list)
+    warnings: list[DeepMDEvidenceWarning] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class DeepMDPolicyReport(BaseModel):
+    passed: bool
+    decision: Literal["allow", "defer", "reject"]
+    reason: str
+    warnings: list[DeepMDEvidenceWarning] = Field(default_factory=list)
+    gates: list[GateResult] = Field(default_factory=list)
+    evidence: dict[str, Any] = Field(default_factory=dict)
+
+
 class DeepMDMutationAxis(BaseModel):
-    kind: Literal["numb_steps", "rcut", "sel", "model_devi_f_trust_lo", "model_devi_f_trust_hi"]
+    kind: Literal[
+        "numb_steps",
+        "rcut",
+        "sel",
+        "model_devi_f_trust_lo",
+        "model_devi_f_trust_hi",
+        "relabeling.pick_number",
+    ]
     values: list[int | float] = Field(default_factory=list)
     label: str | None = None
 
@@ -375,7 +413,7 @@ class DeepMDMutationAxis(BaseModel):
 class DeepMDStudySpec(BaseModel):
     study_id: str
     task_id: str
-    base_task: DeepMDTrainSpec | DPGenRunSpec
+    base_task: DeepMDTrainSpec | DPGenRunSpec | DPGenSimplifySpec
     axis: DeepMDMutationAxis
     metric_key: str
     goal: Literal["minimize", "maximize"] = "minimize"
@@ -389,6 +427,8 @@ class DeepMDStudyTrial(BaseModel):
     mutated_parameters: dict[str, int | float | str] = Field(default_factory=dict)
     run: DeepMDRunArtifact
     validation: DeepMDValidationReport
+    evidence_bundle: DeepMDEvidenceBundle | None = None
+    policy_report: DeepMDPolicyReport | None = None
     metric_value: float | None = None
     passed: bool = False
     messages: list[str] = Field(default_factory=list)

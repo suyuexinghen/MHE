@@ -11,8 +11,11 @@ from metaharness_ext.deepmd.contracts import (
     DeepMDTrainSpec,
     DeepMDValidationReport,
     DPGenRunSpec,
+    DPGenSimplifySpec,
 )
+from metaharness_ext.deepmd.evidence import build_evidence_bundle
 from metaharness_ext.deepmd.executor import DeepMDExecutorComponent
+from metaharness_ext.deepmd.policy import DeepMDEvidencePolicy
 from metaharness_ext.deepmd.slots import DEEPMD_STUDY_SLOT
 from metaharness_ext.deepmd.train_config_compiler import DeepMDTrainConfigCompilerComponent
 from metaharness_ext.deepmd.validator import DeepMDValidatorComponent
@@ -40,11 +43,14 @@ class DeepMDStudyComponent(HarnessComponent):
         validator: DeepMDValidatorComponent,
     ) -> DeepMDStudyReport:
         trials: list[DeepMDStudyTrial] = []
+        policy = DeepMDEvidencePolicy()
         for value in spec.axis.values:
             trial_task = self._mutate_task(spec, value)
             plan = compiler.build_plan(trial_task)
             run = executor.execute_plan(plan)
             validation = validator.validate_run(run)
+            evidence_bundle = build_evidence_bundle(run, validation)
+            policy_report = policy.evaluate(evidence_bundle)
             metric_value = self._extract_metric(validation, spec.metric_key)
             trials.append(
                 DeepMDStudyTrial(
@@ -55,6 +61,8 @@ class DeepMDStudyComponent(HarnessComponent):
                     mutated_parameters={spec.axis.kind: value},
                     run=run,
                     validation=validation,
+                    evidence_bundle=evidence_bundle,
+                    policy_report=policy_report,
                     metric_value=metric_value,
                     passed=validation.passed,
                     messages=list(validation.messages),
@@ -87,7 +95,7 @@ class DeepMDStudyComponent(HarnessComponent):
 
     def _mutate_task(
         self, spec: DeepMDStudySpec, value: int | float
-    ) -> DeepMDTrainSpec | DPGenRunSpec:
+    ) -> DeepMDTrainSpec | DPGenRunSpec | DPGenSimplifySpec:
         task = spec.base_task.model_copy(deep=True)
         task.task_id = f"{spec.task_id}__study__{spec.axis.kind}__{value}"
 
@@ -101,6 +109,15 @@ class DeepMDStudyComponent(HarnessComponent):
             else:
                 raise NotImplementedError(
                     f"Axis {spec.axis.kind} is not supported for DeepMDTrainSpec"
+                )
+            return task
+
+        if isinstance(task, DPGenSimplifySpec):
+            if spec.axis.kind == "relabeling.pick_number":
+                task.relabeling["pick_number"] = int(value)
+            else:
+                raise NotImplementedError(
+                    f"Axis {spec.axis.kind} is not supported for DPGenSimplifySpec"
                 )
             return task
 

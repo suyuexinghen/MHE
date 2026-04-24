@@ -21,12 +21,15 @@ from metaharness_ext.deepmd.contracts import (
     DeepMDDescriptorSpec,
     DeepMDDiagnosticSummary,
     DeepMDEnvironmentReport,
+    DeepMDEvidenceBundle,
+    DeepMDEvidenceWarning,
     DeepMDExecutableSpec,
     DeepMDExecutionMode,
     DeepMDExperimentSpec,
     DeepMDFittingNetSpec,
     DeepMDModeInputSpec,
     DeepMDMutationAxis,
+    DeepMDPolicyReport,
     DeepMDRunArtifact,
     DeepMDRunPlan,
     DeepMDRunStatus,
@@ -45,8 +48,10 @@ from metaharness_ext.deepmd.contracts import (
 from metaharness_ext.deepmd.dpgen_machine_compiler import build_dpgen_machine_json
 from metaharness_ext.deepmd.dpgen_param_compiler import build_dpgen_param_json
 from metaharness_ext.deepmd.environment import DeepMDEnvironmentProbeComponent
+from metaharness_ext.deepmd.evidence import build_evidence_bundle
 from metaharness_ext.deepmd.executor import DeepMDExecutorComponent
 from metaharness_ext.deepmd.gateway import DeepMDGatewayComponent
+from metaharness_ext.deepmd.policy import DeepMDEvidencePolicy
 from metaharness_ext.deepmd.slots import (
     DEEPMD_CONFIG_COMPILER_SLOT,
     DEEPMD_ENVIRONMENT_SLOT,
@@ -95,8 +100,11 @@ __all__ = [
     "DeepMDFittingNetSpec",
     "DeepMDDatasetSpec",
     "DeepMDDiagnosticSummary",
+    "DeepMDEvidenceBundle",
+    "DeepMDEvidenceWarning",
     "DeepMDModeInputSpec",
     "DeepMDExecutionMode",
+    "DeepMDPolicyReport",
     "DeepMDExecutorComponent",
     "DeepMDGatewayComponent",
     "DeepMDMutationAxis",
@@ -122,5 +130,7 @@ __all__ = [
     "PROTECTED_SLOTS",
     "build_dpgen_machine_json",
     "build_dpgen_param_json",
+    "build_evidence_bundle",
     "build_train_input_json",
+    "DeepMDEvidencePolicy",
 ]

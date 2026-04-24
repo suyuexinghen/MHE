@@ -99,7 +99,9 @@ def test_deepmd_environment_checks_dpgen_workspace_and_machine_root(
     assert any("DP-GEN binary not found" in message for message in report.messages)
 
 
-def test_deepmd_environment_checks_remote_and_scheduler_prerequisites(tmp_path: Path, monkeypatch) -> None:
+def test_deepmd_environment_checks_remote_and_scheduler_prerequisites(
+    tmp_path: Path, monkeypatch
+) -> None:
     workspace_dir = tmp_path / "workspace-inputs"
     workspace_dir.mkdir()
     spec = DPGenSimplifySpec(
@@ -130,7 +132,9 @@ def test_deepmd_environment_checks_remote_and_scheduler_prerequisites(tmp_path: 
     assert any("machine.command" in message for message in report.messages)
 
 
-def test_deepmd_environment_checks_missing_dpgen_workspace_file(tmp_path: Path, monkeypatch) -> None:
+def test_deepmd_environment_checks_missing_dpgen_workspace_file(
+    tmp_path: Path, monkeypatch
+) -> None:
     missing_workspace = tmp_path / "missing-workspace"
     spec = DPGenAutotestSpec(
         task_id="dpgen-autotest",

@@ -18,6 +18,7 @@ from metaharness_ext.deepmd.contracts import (
     DeepMDValidationReport,
     DPGenMachineSpec,
     DPGenRunSpec,
+    DPGenSimplifySpec,
 )
 from metaharness_ext.deepmd.study import DeepMDStudyComponent
 from metaharness_ext.deepmd.train_config_compiler import DeepMDTrainConfigCompilerComponent
@@ -33,6 +34,8 @@ class _FakeExecutor:
         axis_value = plan.input_json.get("training", {}).get("numb_steps")
         if axis_value is None:
             axis_value = plan.param_json.get("model_devi_f_trust_lo")
+        if axis_value is None:
+            axis_value = plan.param_json.get("simplify", {}).get("pick_number")
         self.calls.append(axis_value)
         metric = self.values[axis_value]
         return DeepMDRunArtifact(
@@ -109,6 +112,17 @@ def _build_dpgen_spec() -> DPGenRunSpec:
     )
 
 
+def _build_simplify_spec() -> DPGenSimplifySpec:
+    return DPGenSimplifySpec(
+        task_id="dpgen-simplify-study-task",
+        executable=DeepMDExecutableSpec(binary_name="dpgen", execution_mode="dpgen_simplify"),
+        param={"type_map": ["H", "O"], "numb_models": 4},
+        machine=DPGenMachineSpec(local_root=".", python_path="python3"),
+        training_init_model=["models/model.pb"],
+        relabeling={"pick_number": 4},
+    )
+
+
 @pytest.mark.asyncio
 async def test_study_minimizes_train_metric(tmp_path: Path) -> None:
     component = DeepMDStudyComponent()
@@ -157,6 +171,32 @@ async def test_study_maximizes_dpgen_metric(tmp_path: Path) -> None:
     assert report.summary_metrics["best_candidate_count"] == pytest.approx(5.0)
 
 
+@pytest.mark.asyncio
+async def test_study_maximizes_simplify_pick_number_metric(tmp_path: Path) -> None:
+    component = DeepMDStudyComponent()
+    await component.activate(ComponentRuntime(storage_path=tmp_path))
+    compiler = DeepMDTrainConfigCompilerComponent()
+    executor = _FakeExecutor("candidate_count", {4: 2.0, 8: 5.0, 12: 4.0})
+    validator = _FakeValidator("candidate_count", {4: 2.0, 8: 5.0, 12: 4.0})
+
+    spec = DeepMDStudySpec(
+        study_id="study-simplify-pick-number",
+        task_id="dpgen-simplify-study-task",
+        base_task=_build_simplify_spec(),
+        axis=DeepMDMutationAxis(kind="relabeling.pick_number", values=[4, 8, 12]),
+        metric_key="candidate_count",
+        goal="maximize",
+    )
+
+    report = component.run_study(spec, compiler=compiler, executor=executor, validator=validator)
+
+    assert executor.calls == [4, 8, 12]
+    assert report.recommended_value == 8
+    assert report.summary_metrics["best_candidate_count"] == pytest.approx(5.0)
+    assert all(trial.evidence_bundle is not None for trial in report.trials)
+    assert all(trial.policy_report is not None for trial in report.trials)
+
+
 def test_study_axis_requires_values() -> None:
     with pytest.raises(ValueError, match="axis.values"):
         DeepMDMutationAxis(kind="numb_steps", values=[])
@@ -193,6 +233,28 @@ async def test_study_rejects_unsupported_dpgen_axis(tmp_path: Path) -> None:
         study_id="study-bad-dpgen",
         task_id="dpgen-study-task",
         base_task=_build_dpgen_spec(),
+        axis=DeepMDMutationAxis(kind="numb_steps", values=[1000]),
+        metric_key="candidate_count",
+    )
+
+    with pytest.raises(NotImplementedError, match="not supported"):
+        component.run_study(
+            spec,
+            compiler=DeepMDTrainConfigCompilerComponent(),
+            executor=_FakeExecutor("candidate_count", {1000: 1.0}),
+            validator=_FakeValidator("candidate_count", {1000: 1.0}),
+        )
+
+
+@pytest.mark.asyncio
+async def test_study_rejects_unsupported_simplify_axis(tmp_path: Path) -> None:
+    component = DeepMDStudyComponent()
+    await component.activate(ComponentRuntime(storage_path=tmp_path))
+
+    spec = DeepMDStudySpec(
+        study_id="study-bad-simplify",
+        task_id="dpgen-simplify-study-task",
+        base_task=_build_simplify_spec(),
         axis=DeepMDMutationAxis(kind="numb_steps", values=[1000]),
         metric_key="candidate_count",
     )
@@ -418,3 +480,70 @@ async def test_study_model_devi_trust_hi_runs_real_dpgen_chain(
     assert report.recommended_value == pytest.approx(0.4)
     assert report.summary_metrics["best_candidate_count"] == pytest.approx(6.0)
     assert all(trial.validation.status == "baseline_success" for trial in report.trials)
+
+
+@pytest.mark.asyncio
+async def test_study_simplify_pick_number_runs_real_chain(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    component = DeepMDStudyComponent()
+    await component.activate(ComponentRuntime(storage_path=tmp_path))
+    compiler = DeepMDTrainConfigCompilerComponent()
+    from metaharness_ext.deepmd.executor import DeepMDExecutorComponent
+    from metaharness_ext.deepmd.validator import DeepMDValidatorComponent
+
+    real_executor = DeepMDExecutorComponent()
+    real_validator = DeepMDValidatorComponent()
+    await real_executor.activate(ComponentRuntime(storage_path=tmp_path))
+
+    monkeypatch.setattr(
+        "metaharness_ext.deepmd.executor.shutil.which", lambda binary: f"/usr/bin/{binary}"
+    )
+
+    def fake_run(command, *, cwd, text, capture_output, check, timeout):
+        param_json = json.loads((cwd / "param.json").read_text())
+        pick_number = param_json["simplify"]["pick_number"]
+        candidate_count = 5 if pick_number == 8 else 2
+        accurate_count = 2 if pick_number == 8 else 1
+        failed_count = 0
+        iter_dir = cwd / "iter.000000"
+        (iter_dir / "00.train").mkdir(parents=True)
+        (iter_dir / "01.model_devi").mkdir(parents=True)
+        (iter_dir / "02.fp").mkdir(parents=True)
+        record = "candidate_count = {0}\naccurate_count = {1}\nfailed_count = {2}\n".format(
+            candidate_count, accurate_count, failed_count
+        )
+        if pick_number == 8:
+            record += "converged\n"
+        (cwd / "record.dpgen").write_text(record)
+        (iter_dir / "02.fp" / "relabel.out").write_text(
+            f"relabel pick_number = {pick_number}\n"
+        )
+        return _FakeCompletedProcess(returncode=0, stdout="simplify ok", stderr="")
+
+    monkeypatch.setattr("metaharness_ext.deepmd.executor.subprocess.run", fake_run)
+
+    spec = DeepMDStudySpec(
+        study_id="study-simplify-real",
+        task_id="dpgen-simplify-study-task",
+        base_task=_build_simplify_spec(),
+        axis=DeepMDMutationAxis(kind="relabeling.pick_number", values=[4, 8]),
+        metric_key="candidate_count",
+        goal="maximize",
+    )
+
+    report = component.run_study(
+        spec,
+        compiler=compiler,
+        executor=real_executor,
+        validator=real_validator,
+    )
+
+    assert [trial.axis_value for trial in report.trials] == [4, 8]
+    assert report.recommended_value == 8
+    assert report.summary_metrics["best_candidate_count"] == pytest.approx(5.0)
+    assert all(trial.evidence_bundle is not None for trial in report.trials)
+    assert all(trial.policy_report is not None for trial in report.trials)
+    assert all(
+        trial.policy_report.decision == "allow" for trial in report.trials if trial.policy_report is not None
+    )

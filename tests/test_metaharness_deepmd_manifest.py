@@ -128,3 +128,19 @@ def test_metaharness_deepmd_component_declarations_match_manifests() -> None:
         assert snapshot.slots[0].slot == expected["slot"]
         assert snapshot.outputs[0].name == expected["output"]
         assert sorted(cap.name for cap in snapshot.provides) == sorted(expected["capabilities"])
+
+
+def test_metaharness_deepmd_executor_manifest_preserves_extension_compatibility_shape() -> None:
+    manifest = ComponentManifest.model_validate(
+        json.loads((MANIFEST_DIR / "executor.json").read_text())
+    )
+
+    contracts = manifest.contracts
+    assert contracts.inputs[0].name == "plan"
+    assert contracts.inputs[0].type == "DeepMDRunPlan"
+    assert contracts.outputs[0].name == "run"
+    assert contracts.outputs[0].type == "DeepMDRunArtifact"
+    assert contracts.slots[0].slot == DEEPMD_EXECUTOR_SLOT
+    assert CAP_DPGEN_RUN in manifest.all_provided_capabilities()
+    assert CAP_DPGEN_SIMPLIFY in manifest.all_provided_capabilities()
+    assert CAP_DPGEN_AUTOTEST in manifest.all_provided_capabilities()
