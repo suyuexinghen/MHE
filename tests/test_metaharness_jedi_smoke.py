@@ -58,6 +58,52 @@ def test_jedi_gateway_issues_smoke_task_only_when_environment_ready() -> None:
     assert task.executable.binary_name == "qg4DVar.x"
 
 
+def test_jedi_gateway_issues_hofx_smoke_task_when_observation_stack_is_ready() -> None:
+    gateway = JediGatewayComponent()
+    environment = JediEnvironmentReport(
+        binary_available=True,
+        launcher_available=True,
+        shared_libraries_resolved=True,
+        required_paths_present=True,
+        workspace_testinput_present=True,
+        data_paths_present=True,
+        data_prerequisites_ready=True,
+        smoke_candidate="hofx",
+        smoke_ready=True,
+    )
+
+    task = gateway.issue_smoke_task(
+        environment,
+        background_path="/tmp/state.nc",
+        observation_paths=["/tmp/obs.ioda"],
+    )
+
+    assert task.application_family == "hofx"
+    assert task.executable.binary_name == "qgHofX4D.x"
+    assert task.state_path == "/tmp/state.nc"
+
+
+def test_jedi_gateway_falls_back_to_forecast_smoke_task() -> None:
+    gateway = JediGatewayComponent()
+    environment = JediEnvironmentReport(
+        binary_available=True,
+        launcher_available=True,
+        shared_libraries_resolved=True,
+        required_paths_present=True,
+        workspace_testinput_present=True,
+        data_paths_present=True,
+        data_prerequisites_ready=False,
+        smoke_candidate="variational",
+        smoke_ready=True,
+    )
+
+    task = gateway.issue_smoke_task(environment, background_path="/tmp/init.nc")
+
+    assert task.application_family == "forecast"
+    assert task.executable.binary_name == "qgForecast.x"
+    assert task.initial_condition_path == "/tmp/init.nc"
+
+
 def test_jedi_gateway_rejects_smoke_task_when_environment_not_ready() -> None:
     gateway = JediGatewayComponent()
     environment = JediEnvironmentReport(

@@ -213,6 +213,41 @@ def test_jedi_environment_checks_hofx_state_and_observations(tmp_path: Path, mon
     assert any(str(obs) in message for message in report.messages)
 
 
+def test_jedi_environment_hofx_without_observation_paths_does_not_invent_obs_prerequisites(
+    tmp_path: Path, monkeypatch
+) -> None:
+    binary = tmp_path / "qgHofX4D.x"
+    binary.write_text("binary")
+    state = tmp_path / "state.nc"
+    state.write_text("state")
+    spec = JediHofXSpec(
+        task_id="task-hofx-no-obs",
+        executable=JediExecutableSpec(binary_name=str(binary), execution_mode="validate_only"),
+        state_path=str(state),
+    )
+    probe = JediEnvironmentProbeComponent()
+    monkeypatch.setattr(
+        "metaharness_ext.jedi.environment.shutil.which", lambda name: "/usr/bin/ldd"
+    )
+
+    class _Result:
+        returncode = 0
+        stdout = ""
+
+    monkeypatch.setattr(
+        "metaharness_ext.jedi.environment.subprocess.run", lambda *args, **kwargs: _Result()
+    )
+
+    report = probe.probe(spec)
+
+    assert report.required_paths_present is True
+    assert report.data_paths_present is True
+    assert report.data_prerequisites_ready is True
+    assert report.environment_prerequisites == []
+    assert report.missing_prerequisites == []
+    assert report.smoke_candidate == "hofx"
+
+
 def test_jedi_environment_detects_workspace_testinput_and_ready_prerequisites(
     tmp_path: Path, monkeypatch
 ) -> None:

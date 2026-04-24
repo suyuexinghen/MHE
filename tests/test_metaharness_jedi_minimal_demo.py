@@ -13,6 +13,7 @@ from metaharness.sdk.manifest import ComponentManifest, ComponentType, ContractS
 from metaharness.sdk.registry import ComponentRegistry
 from metaharness.sdk.runtime import ComponentRuntime
 from metaharness_ext.jedi.config_compiler import JediConfigCompilerComponent
+from metaharness_ext.jedi.diagnostics import JediDiagnosticsCollectorComponent
 from metaharness_ext.jedi.environment import JediEnvironmentProbeComponent
 from metaharness_ext.jedi.evidence import build_evidence_bundle
 from metaharness_ext.jedi.executor import JediExecutorComponent
@@ -373,6 +374,7 @@ async def test_jedi_orchestration_happy_path_wires_runtime_evidence_policy_and_g
     compiler = JediConfigCompilerComponent()
     executor = JediExecutorComponent()
     validator = JediValidatorComponent()
+    diagnostics = JediDiagnosticsCollectorComponent()
     policy = JediEvidencePolicy()
     governance = JediGovernanceAdapter()
     session_store = InMemorySessionStore()
@@ -436,20 +438,41 @@ async def test_jedi_orchestration_happy_path_wires_runtime_evidence_policy_and_g
     def fake_run(command, *, cwd, text, capture_output, check, timeout):
         (cwd / "analysis.out").write_text("analysis")
         (cwd / "departures.json").write_text(
-            '{"rms_observation_minus_analysis": 0.5, "rms_observation_minus_background": 1.2}'
+            '{"MetaData": {"nlocs": 1}, '
+            '"ObsValue": {"temperature": [280.0]}, '
+            '"HofX": {"temperature": [279.5]}, '
+            '"rms_observation_minus_analysis": 0.5, '
+            '"rms_observation_minus_background": 1.2}'
         )
         (cwd / "reference.json").write_text('{"baseline": "orchestration-reference"}')
         return type(
             "_OrchestrationCompletedProcess",
             (),
-            {"returncode": 0, "stdout": "run ok", "stderr": ""},
+            {
+                "returncode": 0,
+                "stdout": (
+                    "run ok\n"
+                    "Outer iteration: 1\n"
+                    "Inner iteration: 3\n"
+                    "Minimizer iteration: 4\n"
+                    "Cost function: 12.5\n"
+                    "Gradient norm: 8.0\n"
+                    "Outer iteration: 2\n"
+                    "Inner iteration: 5\n"
+                    "Cost function: 3.125\n"
+                    "Gradient norm: 0.5\n"
+                    "observer summary available\n"
+                ),
+                "stderr": "",
+            },
         )()
 
     monkeypatch.setattr("metaharness_ext.jedi.executor.subprocess.run", fake_run)
 
     artifact = executor.execute_plan(plan, environment_report=environment_report)
-    validation = validator.validate_run(artifact)
-    bundle = build_evidence_bundle(artifact, validation)
+    diagnostic_summary = diagnostics.collect(artifact)
+    validation = validator.validate_run_with_diagnostics(artifact, diagnostic_summary)
+    bundle = build_evidence_bundle(artifact, validation, diagnostic_summary)
     policy_report = policy.evaluate(bundle)
     governance_refs = governance.emit_runtime_evidence(
         bundle,
@@ -486,7 +509,19 @@ async def test_jedi_orchestration_happy_path_wires_runtime_evidence_policy_and_g
     assert validation.summary_metrics["primary_output"].endswith("analysis.out")
     assert validation.summary_metrics["rms_observation_minus_analysis"] == 0.5
     assert validation.summary_metrics["rms_observation_minus_background"] == 1.2
+    assert validation.summary_metrics["ioda_groups_found"] == 3
+    assert validation.summary_metrics["gradient_norm_reduction"] == 0.0625
+    assert validation.summary_metrics["observer_output_detected"] == "True"
+    assert "IODA groups detected: HofX, MetaData, ObsValue." in validation.messages
+    assert "Gradient norm reduction: 0.062500." in validation.messages
+    assert diagnostic_summary.files_scanned == [
+        artifact.diagnostic_files[0],
+        artifact.stdout_path,
+    ]
     assert bundle.validation is validation
+    assert bundle.summary is diagnostic_summary
+    assert artifact.diagnostic_files[0] in bundle.evidence_files
+    assert artifact.stdout_path in bundle.evidence_files
     assert policy_report.passed is True
     assert policy_report.decision == "allow"
     assert candidate_record.promoted is True
