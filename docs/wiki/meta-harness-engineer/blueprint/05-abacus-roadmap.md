@@ -138,13 +138,12 @@ Phase 0: Environment Probe + SCF Minimal Baseline      [已完成]
 
 ### 5.6.3 当前剩余硬化项
 
-1. 把 manifest `policy.credentials` / `policy.sandbox` 补齐到 ABACUS manifests
-2. 把 validator 从 extension-local report 提升为 governance-grade output
-3. 让 validation 结果能显式表达 `blocks_promotion`
-4. 引入 canonical `evidence_refs` 与 `ScoredEvidence`
-5. 让 blueprint / roadmap / checklist 与代码现实保持一致
-6. 明确“promotion-ready validation semantics”不等于直接 graph promotion
-7. 持续把 docs 描述统一到当前 lifecycle object model：control files、runtime assets、workspace layout、artifact groups、lifecycle state
+1. 保持 ABACUS manifests 中已显式声明的 `policy.credentials` / `policy.sandbox` 与测试、example manifests、文档叙述持续一致
+2. 保持 validator 已落地的 governance-grade output（`issues`、`blocks_promotion`、`governance_state`、`ScoredEvidence`、canonical `evidence_refs`）与代码现实、测试叙述持续一致
+3. 让 blueprint / roadmap / handoff-facing 文档与代码现实保持一致
+4. 明确“promotion-ready validation semantics”不等于直接 graph promotion
+5. 持续把 docs 描述统一到当前 lifecycle object model：control files、runtime assets、workspace layout、artifact groups、lifecycle state
+6. 继续补强边界回归测试与语义收紧项，而不是回退去重做已完成的 family baseline
 
 ### 5.6.4 当前验收标准
 
@@ -165,14 +164,12 @@ Phase 0: Environment Probe + SCF Minimal Baseline      [已完成]
 
 ### 5.7.2 任务
 
-1. 为 `AbacusValidationReport` 增加治理面字段
-2. 让 validator 产出 structured issues / `blocks_promotion`
-3. 让 validator 产出 `ScoredEvidence`
-4. 让 artifact/report 并行保留文件路径与 canonical `evidence_refs`
-5. 为 ABACUS manifests 显式声明 `policy.credentials` / `policy.sandbox`
-6. 增加 governance-oriented regression tests
-7. 同步 `abacus-engine-wiki` 与 merged blueprint/roadmap
-8. 保持 blueprint、roadmap、handoff 文档对 nested lifecycle object model 的表述一致
+1. 继续增加 governance-oriented regression tests，锁定当前已落地的 `issues` / `blocks_promotion` / `governance_state` / `ScoredEvidence` / canonical `evidence_refs`
+2. 同步 `abacus-engine-wiki` 与 merged blueprint / roadmap / handoff
+3. 保持 blueprint、roadmap、handoff 文档对 nested lifecycle object model 的表述一致
+4. 明确 promotion-ready validation semantics 与 graph promotion authority 的边界
+5. 收紧仍偏宽松的 evidence / prerequisite 语义，并补齐对应边界测试
+6. 持续把 remaining work 表述限定在真实未完成项，避免把已落地能力写回 future plan
 
 ### 5.7.3 验收标准
 
@@ -209,7 +206,7 @@ Phase 0: Environment Probe + SCF Minimal Baseline      [已完成]
 当前路线的完成标准应更新为：
 
 - ABACUS docs 边界清晰
-- blueprint / roadmap / checklist / current code 四者一致
+- blueprint / roadmap / handoff / current code 四者一致
 - family/mode 命名在 wiki 和实现中一致
 - artifact/evidence 语义以 `OUT.<suffix>/` 为中心
 - ABACUS+DeePMD 被清晰建模为 ABACUS mode

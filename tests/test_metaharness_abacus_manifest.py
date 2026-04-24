@@ -39,6 +39,7 @@ EXPECTED_MANIFESTS = {
         "sandbox_tier": "workspace-write",
         "requires_subject": False,
         "allow_inline_credentials": True,
+        "required_claims": [],
     },
     "gateway.json": {
         "name": "abacus_gateway",
@@ -49,6 +50,7 @@ EXPECTED_MANIFESTS = {
         "sandbox_tier": "workspace-write",
         "requires_subject": False,
         "allow_inline_credentials": True,
+        "required_claims": [],
     },
     "environment.json": {
         "name": "abacus_environment",
@@ -59,6 +61,7 @@ EXPECTED_MANIFESTS = {
         "sandbox_tier": "read-only",
         "requires_subject": False,
         "allow_inline_credentials": True,
+        "required_claims": [],
     },
     "input_compiler.json": {
         "name": "abacus_input_compiler",
@@ -69,6 +72,7 @@ EXPECTED_MANIFESTS = {
         "sandbox_tier": "workspace-write",
         "requires_subject": False,
         "allow_inline_credentials": True,
+        "required_claims": [],
     },
     "executor.json": {
         "name": "abacus_executor",
@@ -84,6 +88,7 @@ EXPECTED_MANIFESTS = {
         "sandbox_tier": "workspace-write",
         "requires_subject": False,
         "allow_inline_credentials": True,
+        "required_claims": [],
     },
     "validator.json": {
         "name": "abacus_validator",
@@ -95,6 +100,7 @@ EXPECTED_MANIFESTS = {
         "protected": True,
         "requires_subject": False,
         "allow_inline_credentials": True,
+        "required_claims": [],
     },
 }
 
@@ -118,11 +124,13 @@ def test_metaharness_abacus_manifests_are_valid() -> None:
             assert manifest.contracts.outputs[0].name == expected["output"]
         assert sorted(manifest.all_provided_capabilities()) == sorted(expected["capabilities"])
         assert manifest.policy.sandbox.tier == expected["sandbox_tier"]
+        assert manifest.policy.sandbox.tier == manifest.safety.sandbox_profile
         assert manifest.policy.credentials.requires_subject == expected["requires_subject"]
         assert (
             manifest.policy.credentials.allow_inline_credentials
             == expected["allow_inline_credentials"]
         )
+        assert manifest.policy.credentials.required_claims == expected["required_claims"]
         if "protected" in expected:
             assert manifest.safety.protected is expected["protected"]
 
@@ -172,3 +180,4 @@ def test_metaharness_abacus_example_manifests_match_current_schema() -> None:
         assert manifest.policy.sandbox.tier == manifest.safety.sandbox_profile
         assert manifest.policy.credentials.requires_subject is False
         assert manifest.policy.credentials.allow_inline_credentials is True
+        assert manifest.policy.credentials.required_claims == []
