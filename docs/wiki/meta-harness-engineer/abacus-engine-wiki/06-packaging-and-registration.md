@@ -87,7 +87,14 @@ MHE/src/metaharness_ext/abacus/
 - `validator.json` 的 `safety.protected` 是 `true`
 - manifests 已开始显式包含 `policy.sandbox` / `policy.credentials`
 
-因此文档不应把整个 ABACUS 扩展误写成“全包 protected”。
+当前 credential policy 的边界应按字面理解：
+
+- `requires_subject: false` 表示 ABACUS 组件当前不要求宿主在 manifest 层绑定调用主体
+- `allow_inline_credentials: true` 表示现阶段不通过 ABACUS manifest 禁止 inline credential 字段，但 ABACUS contracts 当前也不定义需要消费的 credential payload
+- `required_claims: []` 表示当前没有 ABACUS-specific claim 要求；如果宿主 runtime 后续引入统一身份、队列账户或受管 credential claim，应在宿主 policy 层扩展，而不是由 ABACUS 私有化解释
+- sandbox tier 仍然是当前更强的本地执行边界：environment / validator 为 `read-only`，gateway / compiler / executor 为 `workspace-write`
+
+因此文档不应把整个 ABACUS 扩展误写成“全包 protected”，也不应把空 `required_claims` 解读成已经完成外部身份治理。
 
 ---
 

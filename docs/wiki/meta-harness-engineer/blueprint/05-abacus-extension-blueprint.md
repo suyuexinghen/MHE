@@ -102,7 +102,7 @@ AbacusGateway
 - 规范化 request
 - 选择 family
 - 拒绝超出当前支持边界的组合
-- manifest `policy.credentials` / `policy.sandbox` 已显式进入当前声明面；credential subject / claim 边界后续仍需随宿主策略细化
+- manifest `policy.credentials` / `policy.sandbox` 已显式进入当前声明面；当前 credential boundary 是 no-subject / no-required-claims / no ABACUS-private credential payload，后续 subject / claim 语义应随宿主 policy 统一细化
 
 ### Environment Probe
 - `abacus --version`
