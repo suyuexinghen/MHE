@@ -51,7 +51,7 @@ def test_abacus_compiler_builds_nscf_plan() -> None:
 
     assert plan.application_family == "nscf"
     assert plan.output_root == "OUT.ABACUS"
-    assert plan.expected_logs == ["running_nscf.log", "running_scf.log"]
+    assert plan.expected_logs == ["running_nscf.log"]
     assert plan.required_runtime_paths == ["/tmp/charge-density.cube"]
     assert plan.runtime_assets.charge_density_path == "/tmp/charge-density.cube"
     assert plan.runtime_assets.restart_inputs == []

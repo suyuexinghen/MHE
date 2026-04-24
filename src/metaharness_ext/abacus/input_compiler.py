@@ -75,7 +75,7 @@ class AbacusInputCompilerComponent(HarnessComponent):
             spec,
             environment=environment,
             application_family="nscf",
-            expected_logs=["running_nscf.log", "running_scf.log"],
+            expected_logs=["running_nscf.log"],
             required_runtime_paths=required_runtime_paths,
         )
 
