@@ -39,8 +39,13 @@
   "safety": {
     "protected": true,
     "mutability": "mutable",
-    "sandbox_profile": null,
+    "sandbox_profile": "read-only",
     "hot_swap": true
+  },
+  "policy": {
+    "sandbox": {
+      "tier": "read-only"
+    }
   },
   "state_schema_version": 1,
   "provides": [

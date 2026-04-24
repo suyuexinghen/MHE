@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from metaharness.core.models import ScoredEvidence
 from metaharness.sdk.api import HarnessAPI
 from metaharness.sdk.base import HarnessComponent
 from metaharness.sdk.runtime import ComponentRuntime
@@ -21,5 +22,12 @@ class EvaluationComponent(HarnessComponent):
         api.declare_input("task_result", "TaskResult")
         api.declare_output("performance_vector", "PerformanceVector", mode="async")
 
+    def build_scored_evidence(self, payload: dict[str, str]) -> ScoredEvidence:
+        return ScoredEvidence(
+            score=1.0,
+            metrics={"success": 1.0},
+            attributes={"source_status": payload["status"]},
+        )
+
     def handle_result(self, payload: dict[str, str]) -> dict[str, str]:
-        return {"score": "1.0", "source_status": payload["status"]}
+        return self.build_scored_evidence(payload).as_legacy_payload()

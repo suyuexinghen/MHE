@@ -11,6 +11,11 @@ from typing import Any
 
 EventHandler = Callable[["Event"], Any] | Callable[["Event"], Awaitable[Any]]
 
+# Promotion-related event names used by HarnessRuntime.commit_graph().
+BEFORE_COMMIT_GRAPH = "before_commit_graph"
+AFTER_COMMIT_GRAPH = "after_commit_graph"
+CANDIDATE_REJECTED = "candidate_rejected"
+
 
 @dataclass(slots=True)
 class Event:

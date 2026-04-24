@@ -5,6 +5,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from metaharness.core.models import BudgetState, ConvergenceState, ScoredEvidence
 from metaharness.sdk.api import HarnessAPI
 from metaharness.sdk.base import HarnessComponent
 from metaharness.sdk.runtime import ComponentRuntime
@@ -298,6 +299,34 @@ class SolverExecutorComponent(HarnessComponent):
         error_norms: dict[str, float] | None = None,
         result_summary: dict[str, object],
     ) -> NektarRunArtifact:
+        checkpoint_refs = list(dict.fromkeys([*plan.checkpoint_refs, *checkpoint_files]))
+        trace_refs = self._build_trace_refs(plan)
+        provenance_refs = list(
+            dict.fromkeys(
+                [
+                    *plan.provenance_refs,
+                    f"provenance://nektar/plan/{plan.plan_id}",
+                    f"provenance://nektar/run/{plan.task_id}",
+                    *trace_refs,
+                    *checkpoint_refs,
+                ]
+            )
+        )
+        scored_evidence = self._build_scored_evidence(
+            status=status,
+            result_summary=result_summary,
+            error_norms=error_norms or {},
+            trace_refs=trace_refs,
+            checkpoint_refs=checkpoint_refs,
+            provenance_refs=provenance_refs,
+        )
+        result_summary = {
+            **result_summary,
+            "trace_refs": list(trace_refs),
+            "checkpoint_refs": list(checkpoint_refs),
+            "provenance_refs": list(provenance_refs),
+            "scored_evidence": scored_evidence.model_dump(mode="json"),
+        }
         return NektarRunArtifact(
             run_id=f"run::{plan.task_id}",
             task_id=plan.task_id,
@@ -310,10 +339,23 @@ class SolverExecutorComponent(HarnessComponent):
             filter_output=FilterOutputSummary(
                 checkpoint_files=checkpoint_files,
                 error_norms=error_norms or {},
+                metadata={"trace_refs": list(trace_refs)},
             ),
             result_summary=result_summary,
             postprocess_plan=list(plan.postprocess_plan),
             status=status,
+            graph_metadata={
+                **plan.graph_metadata,
+                "plan_id": plan.plan_id,
+                "render_geometry_inline": plan.render_geometry_inline,
+            },
+            candidate_identity=plan.candidate_identity.model_copy(deep=True),
+            promotion_metadata=plan.promotion_metadata.model_copy(deep=True),
+            checkpoint_refs=checkpoint_refs,
+            provenance_refs=provenance_refs,
+            trace_refs=trace_refs,
+            scored_evidence=scored_evidence,
+            execution_policy=plan.execution_policy.model_copy(deep=True),
         )
 
     _COORDINATE_VARIABLES = frozenset({"x", "y", "z"})
@@ -354,3 +396,54 @@ class SolverExecutorComponent(HarnessComponent):
         if wall_match:
             metrics["wall_time"] = float(wall_match.group(1))
         return metrics
+
+    def _build_trace_refs(self, plan: NektarSessionPlan) -> list[str]:
+        task_trace = f"trace://nektar/task/{plan.task_id}"
+        plan_trace = f"trace://nektar/plan/{plan.plan_id}"
+        return list(dict.fromkeys([*plan.trace_refs, task_trace, plan_trace]))
+
+    def _build_scored_evidence(
+        self,
+        *,
+        status: NektarRunStatus,
+        result_summary: dict[str, object],
+        error_norms: dict[str, float],
+        trace_refs: list[str],
+        checkpoint_refs: list[str],
+        provenance_refs: list[str],
+    ) -> ScoredEvidence:
+        metric_values: dict[str, float] = {}
+        for key, value in error_norms.items():
+            try:
+                metric_values[key] = float(value)
+            except (TypeError, ValueError):
+                continue
+        exit_code = result_summary.get("exit_code")
+        ran_solver = bool(result_summary.get("ran_solver"))
+        success = status == "completed" and exit_code == 0
+        score = 1.0 if success else 0.0
+        reasons = [f"nektar_status:{status}"]
+        if exit_code is not None:
+            reasons.append(f"exit_code:{exit_code}")
+        fallback_reason = result_summary.get("fallback_reason")
+        if fallback_reason:
+            reasons.append(f"fallback:{fallback_reason}")
+        evidence_refs = list(dict.fromkeys([*checkpoint_refs, *trace_refs, *provenance_refs]))
+        return ScoredEvidence(
+            score=score,
+            metrics=metric_values,
+            safety_score=score,
+            budget=BudgetState(used=1, exhausted=not success),
+            convergence=ConvergenceState(
+                converged=success,
+                criteria_met=["solver_exit_clean"] if success else [],
+                reason="solver completed" if success else "solver unavailable or failed",
+            ),
+            evidence_refs=evidence_refs,
+            reasons=reasons,
+            attributes={
+                "status": status,
+                "ran_solver": ran_solver,
+                "solver_binary": result_summary.get("solver_binary"),
+            },
+        )

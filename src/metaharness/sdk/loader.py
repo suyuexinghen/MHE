@@ -54,7 +54,10 @@ def instantiate_component(manifest: ComponentManifest) -> HarnessComponent:
     component_type = getattr(module, class_name, None)
     if component_type is None:
         raise AttributeError(f"Component class '{class_name}' not found in module '{module_name}'")
-    return component_type()
+    try:
+        return component_type(manifest=manifest)
+    except TypeError:
+        return component_type()
 
 
 def declare_component(

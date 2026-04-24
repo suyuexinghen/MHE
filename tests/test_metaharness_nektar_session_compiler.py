@@ -36,6 +36,10 @@ def test_build_session_plan_adr_populates_render_fields() -> None:
     assert plan.boundary_regions
     assert plan.session_file_name == "session.xml"
     assert plan.expected_outputs[0] == "session.xml"
+    assert plan.graph_metadata["graph_family"] == "nektar-minimal"
+    assert plan.execution_policy.sandbox_profile == "workspace-write"
+    assert "ADRSolver" in plan.execution_policy.required_binaries
+    assert plan.provenance_refs[-1] == "provenance://nektar/problem/task-adr"
 
 
 def test_build_session_plan_incns_uses_family_defaults() -> None:
@@ -123,3 +127,32 @@ def test_build_session_plan_uses_user_postprocess_plan() -> None:
         "output": "vorticity.fld",
         "module": "vorticity",
     }
+    assert "FieldConvert" in plan.execution_policy.required_binaries
+
+
+def test_build_session_plan_preserves_candidate_and_provenance_metadata() -> None:
+    problem = NektarProblemSpec(
+        task_id="task-metadata",
+        title="helmholtz",
+        solver_family=NektarSolverFamily.ADR,
+        dimension=2,
+        variables=["u"],
+        graph_metadata={"graph_family": "nektar-promotion", "candidate_stage": "screening"},
+        candidate_identity={"candidate_id": "cand-23", "graph_version_id": 7, "actor": "planner"},
+        promotion_metadata={"outcome": "pending", "details": {"source_task": 23}},
+        checkpoint_refs=["checkpoint://nektar/task-metadata/base"],
+        provenance_refs=["provenance://seed/task-metadata"],
+    )
+
+    plan = build_session_plan(problem)
+
+    assert plan.graph_metadata["graph_family"] == "nektar-promotion"
+    assert plan.graph_metadata["candidate_stage"] == "screening"
+    assert plan.candidate_identity.candidate_id == "cand-23"
+    assert plan.candidate_identity.graph_version_id == 7
+    assert plan.promotion_metadata.details["source_task"] == 23
+    assert plan.checkpoint_refs == ["checkpoint://nektar/task-metadata/base"]
+    assert plan.provenance_refs == [
+        "provenance://seed/task-metadata",
+        "provenance://nektar/problem/task-metadata",
+    ]

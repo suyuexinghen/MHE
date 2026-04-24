@@ -32,6 +32,15 @@ class SandboxTier(str, Enum):
     FIRECRACKER = "firecracker"
 
 
+_SANDBOX_TIER_ALIASES: dict[str, SandboxTier] = {
+    "v8": SandboxTier.V8_WASM,
+    "wasm": SandboxTier.V8_WASM,
+    "v8_wasm": SandboxTier.V8_WASM,
+    "gvisor": SandboxTier.GVISOR,
+    "firecracker": SandboxTier.FIRECRACKER,
+}
+
+
 _TIER_ORDER: dict[SandboxTier, int] = {
     SandboxTier.V8_WASM: 0,
     SandboxTier.GVISOR: 1,
@@ -78,6 +87,17 @@ class InProcessAdapter:
             return SandboxExecutionResult(tier=self.tier, success=True, output=output)
         except Exception as exc:  # pragma: no cover - defensive
             return SandboxExecutionResult(tier=self.tier, success=False, error=str(exc))
+
+
+def parse_sandbox_tier(value: SandboxTier | str) -> SandboxTier:
+    """Normalize a declared sandbox tier string into a canonical enum."""
+
+    if isinstance(value, SandboxTier):
+        return value
+    normalized = _SANDBOX_TIER_ALIASES.get(value.strip().lower())
+    if normalized is None:
+        raise ValueError(f"Unknown sandbox tier '{value}'")
+    return normalized
 
 
 def v8_wasm_adapter() -> SandboxAdapter:

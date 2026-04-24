@@ -74,3 +74,32 @@ def test_component_type_backward_compat_alias() -> None:
     assert ComponentKind is ComponentType
     assert ComponentType.META.value == "meta"
     assert ComponentType.GOVERNANCE.value == "governance"
+
+
+def test_manifest_policy_defaults_are_backward_compatible() -> None:
+    manifest = ComponentManifest(
+        name="m",
+        version="0.1.0",
+        kind=ComponentType.CORE,
+        entry="x:X",
+        contracts=ContractSpec(),
+    )
+
+    assert manifest.policy.credentials.requires_subject is False
+    assert manifest.policy.credentials.allow_inline_credentials is True
+    assert manifest.policy.credentials.required_claims == []
+    assert manifest.policy.sandbox.tier is None
+
+
+def test_manifest_policy_inherits_legacy_sandbox_profile() -> None:
+    manifest = ComponentManifest(
+        name="m",
+        version="0.1.0",
+        kind=ComponentType.CORE,
+        entry="x:X",
+        contracts=ContractSpec(),
+        safety={"sandbox_profile": "gvisor"},
+    )
+
+    assert manifest.safety.sandbox_profile == "gvisor"
+    assert manifest.policy.sandbox.tier == "gvisor"

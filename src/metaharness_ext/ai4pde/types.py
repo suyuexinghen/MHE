@@ -31,6 +31,20 @@ class NextAction(str, Enum):
     REPLAN = "replan"
 
 
+class PromotionOutcome(str, Enum):
+    PENDING = "pending"
+    PROMOTED = "promoted"
+    REJECTED = "rejected"
+    ROLLED_BACK = "rolled_back"
+
+
+class SafetyOutcome(str, Enum):
+    UNKNOWN = "unknown"
+    ALLOWED = "allowed"
+    REJECTED = "rejected"
+    ROLLBACK_RECOMMENDED = "rollback_recommended"
+
+
 class TemplateStatus(str, Enum):
     DRAFT = "draft"
     CANDIDATE = "candidate"

@@ -77,7 +77,13 @@ async def test_solver_executor_runs_inline_session_and_collects_outputs(
         return f"/usr/bin/{binary}"
 
     def fake_run(
-        command: list[str], *, cwd: Path, text: bool, capture_output: bool, check: bool, timeout: float
+        command: list[str],
+        *,
+        cwd: Path,
+        text: bool,
+        capture_output: bool,
+        check: bool,
+        timeout: float,
     ) -> _FakeCompletedProcess:
         calls.append(
             {
@@ -104,6 +110,16 @@ async def test_solver_executor_runs_inline_session_and_collects_outputs(
     assert run_artifact.status == "completed"
     assert run_artifact.result_summary["ran_solver"] is True
     assert run_artifact.result_summary["exit_code"] == 0
+    assert run_artifact.graph_metadata["plan_id"] == plan.plan_id
+    assert run_artifact.execution_policy.sandbox_profile == "workspace-write"
+    assert any(
+        ref == f"provenance://nektar/run/{plan.task_id}" for ref in run_artifact.provenance_refs
+    )
+    assert any(ref == f"trace://nektar/task/{plan.task_id}" for ref in run_artifact.trace_refs)
+    assert run_artifact.scored_evidence is not None
+    assert run_artifact.scored_evidence.score == pytest.approx(1.0)
+    assert f"trace://nektar/task/{plan.task_id}" in run_artifact.scored_evidence.evidence_refs
+    assert run_artifact.result_summary["scored_evidence"]["score"] == pytest.approx(1.0)
     assert set(Path(path).name for path in run_artifact.log_files) == {
         "solver.log",
         "solver.stdout.log",
@@ -112,7 +128,9 @@ async def test_solver_executor_runs_inline_session_and_collects_outputs(
 
 
 @pytest.mark.asyncio
-async def test_solver_executor_runs_external_mesh_overlay(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_solver_executor_runs_external_mesh_overlay(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     mesh_path = tmp_path / "channel.xml"
     mesh_path.write_text("<NEKTAR />")
     problem = NektarProblemSpec(
@@ -135,7 +153,13 @@ async def test_solver_executor_runs_external_mesh_overlay(tmp_path: Path, monkey
     )
 
     def fake_run(
-        command: list[str], *, cwd: Path, text: bool, capture_output: bool, check: bool, timeout: float
+        command: list[str],
+        *,
+        cwd: Path,
+        text: bool,
+        capture_output: bool,
+        check: bool,
+        timeout: float,
     ) -> _FakeCompletedProcess:
         calls.append(command)
         (cwd / "session.chk").write_text("checkpoint")
@@ -149,6 +173,10 @@ async def test_solver_executor_runs_external_mesh_overlay(tmp_path: Path, monkey
     assert calls[0] == ["/usr/bin/IncNavierStokesSolver", str(mesh_path), str(session_path)]
     assert run_artifact.mesh_files == [str(mesh_path)]
     assert run_artifact.filter_output.checkpoint_files == [str(session_path.parent / "session.chk")]
+    assert run_artifact.checkpoint_refs == [str(session_path.parent / "session.chk")]
+    assert any(ref == f"trace://nektar/task/{plan.task_id}" for ref in run_artifact.trace_refs)
+    assert run_artifact.scored_evidence is not None
+    assert str(session_path.parent / "session.chk") in run_artifact.scored_evidence.evidence_refs
     assert run_artifact.status == "completed"
 
 
@@ -234,7 +262,9 @@ async def test_solver_executor_marks_timeout_as_failed(
     )
 
     def fake_run(command, *, cwd, text, capture_output, check, timeout):
-        raise subprocess.TimeoutExpired(command, timeout, output="partial-out", stderr="partial-err")
+        raise subprocess.TimeoutExpired(
+            command, timeout, output="partial-out", stderr="partial-err"
+        )
 
     monkeypatch.setattr("metaharness_ext.nektar.solver_executor.subprocess.run", fake_run)
 
@@ -347,6 +377,9 @@ def test_validator_uses_real_execution_metadata() -> None:
     assert report.solver_exited_cleanly is True
     assert report.field_files_exist is True
     assert report.error_vs_reference is None
+    assert report.scored_evidence is not None
+    assert report.scored_evidence.score == pytest.approx(1.0)
+    assert report.trace_refs == artifact.trace_refs
 
 
 def test_validator_reports_missing_binary_as_failure() -> None:
@@ -402,7 +435,9 @@ def test_validator_fails_when_solver_succeeds_without_outputs() -> None:
     assert report.passed is False
     assert report.solver_exited_cleanly is True
     assert report.field_files_exist is False
-    assert any("No field or checkpoint outputs were produced." in message for message in report.messages)
+    assert any(
+        "No field or checkpoint outputs were produced." in message for message in report.messages
+    )
 
 
 @pytest.mark.asyncio
@@ -426,7 +461,7 @@ async def test_solver_executor_extracts_error_norms_from_adr_stdout(
     )
 
     adr_output = (
-        "Writing: \"session.fld\" (0.000123s, XML)\n"
+        'Writing: "session.fld" (0.000123s, XML)\n'
         "-------------------------------------------\n"
         "Total Computation Time = 0.000123s\n"
         "-------------------------------------------\n"
@@ -664,7 +699,7 @@ async def test_solver_executor_extracts_wall_time_from_adr(
     )
 
     adr_output = (
-        "Writing: \"session.fld\" (0.000123s, XML)\n"
+        'Writing: "session.fld" (0.000123s, XML)\n'
         "-------------------------------------------\n"
         "Total Computation Time = 0.000456s\n"
     )

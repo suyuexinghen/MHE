@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 from pathlib import Path
 
+from metaharness.core.models import ScoredEvidence
 from metaharness.sdk.api import HarnessAPI
 from metaharness.sdk.base import HarnessComponent
 from metaharness.sdk.runtime import ComponentRuntime
@@ -73,10 +74,14 @@ class ConvergenceStudyComponent(HarnessComponent):
 
         recommended, converged, recommended_reason = self._evaluate_recommendation(trials, spec)
         metric_series = self._collect_metric_series(trials)
-        error_sequence = [trial.metric_value for trial in metric_series if trial.metric_value is not None]
+        error_sequence = [
+            trial.metric_value for trial in metric_series if trial.metric_value is not None
+        ]
         drop_ratios = self._compute_drop_ratios(metric_series)
         observed_order = self._compute_observed_order(metric_series)
-        messages = self._build_report_messages(trials, recommended, spec, recommended_reason, converged)
+        messages = self._build_report_messages(
+            trials, recommended, spec, recommended_reason, converged
+        )
         summary_metrics = self._build_summary_metrics(
             trials,
             recommended,
@@ -129,7 +134,9 @@ class ConvergenceStudyComponent(HarnessComponent):
         if spec.plateau_tolerance < 0:
             raise ValueError("plateau_tolerance must be non-negative")
 
-    def _mutate_problem_num_modes(self, spec: ConvergenceStudySpec, value: int) -> NektarProblemSpec:
+    def _mutate_problem_num_modes(
+        self, spec: ConvergenceStudySpec, value: int
+    ) -> NektarProblemSpec:
         problem = spec.base_problem.model_copy(deep=True)
         problem.task_id = self._build_trial_task_id(spec, value)
         problem.parameters["NumModes"] = value
@@ -187,6 +194,26 @@ class ConvergenceStudyComponent(HarnessComponent):
             filter_output=FilterOutputSummary(),
             result_summary={"fallback_reason": type(error).__name__},
             status="failed",
+            graph_metadata=dict(spec.base_problem.graph_metadata),
+            candidate_identity=spec.base_problem.candidate_identity.model_copy(deep=True),
+            promotion_metadata=spec.base_problem.promotion_metadata.model_copy(deep=True),
+            checkpoint_refs=list(spec.base_problem.checkpoint_refs),
+            provenance_refs=list(spec.base_problem.provenance_refs),
+            scored_evidence=ScoredEvidence(
+                score=0.0,
+                evidence_refs=list(
+                    dict.fromkeys(
+                        [
+                            *spec.base_problem.checkpoint_refs,
+                            *spec.base_problem.trace_refs,
+                            *spec.base_problem.provenance_refs,
+                        ]
+                    )
+                ),
+                reasons=[type(error).__name__],
+                attributes={"status": "failed", "task_id": trial_task_id},
+            ),
+            execution_policy=spec.base_problem.execution_policy.model_copy(deep=True),
         )
         validation = NektarValidationReport(
             task_id=trial_task_id,
@@ -196,6 +223,17 @@ class ConvergenceStudyComponent(HarnessComponent):
             error_vs_reference=None,
             messages=[str(error)],
             metrics={},
+            checkpoint_refs=list(run.checkpoint_refs),
+            provenance_refs=list(run.provenance_refs),
+            trace_refs=list(run.trace_refs),
+            scored_evidence=ScoredEvidence(
+                score=0.0,
+                evidence_refs=list(
+                    dict.fromkeys([*run.checkpoint_refs, *run.trace_refs, *run.provenance_refs])
+                ),
+                reasons=[str(error)],
+                attributes={"status": "failed", "fallback_reason": type(error).__name__},
+            ),
         )
         error_summary = ErrorSummary(
             status="no_reference_error",
@@ -252,7 +290,11 @@ class ConvergenceStudyComponent(HarnessComponent):
         run: NektarRunArtifact,
         metric_key: str,
     ) -> float | None:
-        for source in (validation.metrics, run.filter_output.error_norms, run.filter_output.metrics):
+        for source in (
+            validation.metrics,
+            run.filter_output.error_norms,
+            run.filter_output.metrics,
+        ):
             value = source.get(metric_key)
             if value is None:
                 continue
@@ -269,13 +311,19 @@ class ConvergenceStudyComponent(HarnessComponent):
         return [
             trial
             for trial in trials
-            if trial.status == "completed" and trial.metric_value is not None and trial.metric_value > 0
+            if trial.status == "completed"
+            and trial.metric_value is not None
+            and trial.metric_value > 0
         ]
 
     def _compute_drop_ratios(self, series: list[ConvergenceTrialReport]) -> list[float]:
         ratios: list[float] = []
         for previous, current in zip(series, series[1:], strict=False):
-            if previous.metric_value is None or current.metric_value is None or previous.metric_value <= 0:
+            if (
+                previous.metric_value is None
+                or current.metric_value is None
+                or previous.metric_value <= 0
+            ):
                 continue
             ratios.append(current.metric_value / previous.metric_value)
         return ratios
@@ -328,13 +376,19 @@ class ConvergenceStudyComponent(HarnessComponent):
                 and trial.metric_value is not None
                 and trial.metric_value <= float(spec.target_tolerance)
             ):
-                return trial, True, (
-                    f"First trial meeting absolute tolerance {float(spec.target_tolerance):.6g}."
+                return (
+                    trial,
+                    True,
+                    (f"First trial meeting absolute tolerance {float(spec.target_tolerance):.6g}."),
                 )
         fallback = self._fallback_trial(trials)
         if fallback is None:
             return None, False, None
-        return fallback, False, "No trial met the absolute tolerance; using the best available metric."
+        return (
+            fallback,
+            False,
+            "No trial met the absolute tolerance; using the best available metric.",
+        )
 
     def _evaluate_relative_drop_rule(
         self,
@@ -343,17 +397,29 @@ class ConvergenceStudyComponent(HarnessComponent):
         spec: ConvergenceStudySpec,
     ) -> tuple[ConvergenceTrialReport | None, bool, str | None]:
         for previous, current in zip(metric_series, metric_series[1:], strict=False):
-            if previous.metric_value is None or current.metric_value is None or previous.metric_value <= 0:
+            if (
+                previous.metric_value is None
+                or current.metric_value is None
+                or previous.metric_value <= 0
+            ):
                 continue
             ratio = current.metric_value / previous.metric_value
             if ratio <= spec.relative_drop_ratio and current.passed:
-                return current, True, (
-                    f"Error ratio {ratio:.6g} met relative_drop threshold {spec.relative_drop_ratio:.6g}."
+                return (
+                    current,
+                    True,
+                    (
+                        f"Error ratio {ratio:.6g} met relative_drop threshold {spec.relative_drop_ratio:.6g}."
+                    ),
                 )
         fallback = self._fallback_trial(trials)
         if fallback is None:
             return None, False, None
-        return fallback, False, "No adjacent trial pair met the relative_drop threshold; using the best available metric."
+        return (
+            fallback,
+            False,
+            "No adjacent trial pair met the relative_drop threshold; using the best available metric.",
+        )
 
     def _evaluate_plateau_rule(
         self,
@@ -365,25 +431,41 @@ class ConvergenceStudyComponent(HarnessComponent):
             fallback = self._fallback_trial(trials)
             if fallback is None:
                 return None, False, None
-            return fallback, False, "Metric sequence is not monotone non-increasing; plateau was not evaluated."
+            return (
+                fallback,
+                False,
+                "Metric sequence is not monotone non-increasing; plateau was not evaluated.",
+            )
         ratios = self._compute_drop_ratios(metric_series)
         for index in range(1, len(ratios)):
             delta = abs(ratios[index] - ratios[index - 1])
             if delta < spec.plateau_tolerance:
                 recommended = metric_series[index + 1]
                 if recommended.passed:
-                    return recommended, True, (
-                        f"Drop-ratio change {delta:.6g} was within plateau tolerance"
-                        f" {spec.plateau_tolerance:.6g}."
+                    return (
+                        recommended,
+                        True,
+                        (
+                            f"Drop-ratio change {delta:.6g} was within plateau tolerance"
+                            f" {spec.plateau_tolerance:.6g}."
+                        ),
                     )
         fallback = self._fallback_trial(trials)
         if fallback is None:
             return None, False, None
-        return fallback, False, "No plateau condition was detected; using the best available metric."
+        return (
+            fallback,
+            False,
+            "No plateau condition was detected; using the best available metric.",
+        )
 
-    def _fallback_trial(self, trials: list[ConvergenceTrialReport]) -> ConvergenceTrialReport | None:
+    def _fallback_trial(
+        self, trials: list[ConvergenceTrialReport]
+    ) -> ConvergenceTrialReport | None:
         completed_with_metric = [
-            trial for trial in trials if trial.status == "completed" and trial.metric_value is not None
+            trial
+            for trial in trials
+            if trial.status == "completed" and trial.metric_value is not None
         ]
         if completed_with_metric:
             return min(completed_with_metric, key=lambda trial: trial.metric_value or float("inf"))
@@ -393,7 +475,10 @@ class ConvergenceStudyComponent(HarnessComponent):
 
     def _is_monotone_nonincreasing(self, series: list[ConvergenceTrialReport]) -> bool:
         metric_values = [trial.metric_value for trial in series if trial.metric_value is not None]
-        return all(current <= previous for previous, current in zip(metric_values, metric_values[1:], strict=False))
+        return all(
+            current <= previous
+            for previous, current in zip(metric_values, metric_values[1:], strict=False)
+        )
 
     def _should_stop_after_trial(
         self,
@@ -420,7 +505,9 @@ class ConvergenceStudyComponent(HarnessComponent):
         if recommended_reason is not None:
             messages.append(recommended_reason)
         if not converged:
-            messages.append("Recommendation is a best-available fallback rather than a converged result.")
+            messages.append(
+                "Recommendation is a best-available fallback rather than a converged result."
+            )
         return messages
 
     def _build_summary_metrics(

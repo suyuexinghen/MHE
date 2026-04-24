@@ -65,6 +65,17 @@ def evaluate_triggers(
                 reason="candidate path diverges from baseline",
             )
         )
+    if validation_bundle.rollback_context.rollback_recommended:
+        signals.append(
+            MutationSignal(
+                signal="repeated_failure_family",
+                severity="high",
+                reason=(
+                    validation_bundle.rollback_context.rollback_reason
+                    or "rollback recommended after safety/protection review"
+                ),
+            )
+        )
     if budget.gpu_hours > 8.0 or budget.hpc_quota > 1.0:
         signals.append(
             MutationSignal(

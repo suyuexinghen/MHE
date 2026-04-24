@@ -7,12 +7,14 @@ from metaharness.optimizer.convergence import (
     DeadEndDetector,
     NonMarkovianGuard,
     TripleConvergence,
+    convergence_to_scored_evidence,
 )
 from metaharness.optimizer.fitness import (
     FitnessEvaluator,
     NegativeRewardLoop,
     RewardComponents,
     composite_fitness,
+    reward_components_to_scored_evidence,
 )
 
 
@@ -34,6 +36,26 @@ def test_fitness_evaluator_registers_and_dispatches() -> None:
     assert components.success == 0.8
     assert fitness > 0
     assert evaluator.last_score_of("proposal") == fitness
+
+
+def test_reward_components_convert_to_scored_evidence() -> None:
+    evidence = reward_components_to_scored_evidence(
+        RewardComponents(success=1.0, efficiency=0.5, safety=0.75, penalties=0.25),
+        evidence_refs=["prov://reward/1"],
+    )
+    assert evidence.score > 0
+    assert evidence.metrics["success"] == 1.0
+    assert evidence.safety_score == 0.75
+    assert evidence.evidence_refs == ["prov://reward/1"]
+
+
+def test_fitness_evaluator_can_emit_scored_evidence() -> None:
+    evaluator = FitnessEvaluator()
+    evaluator.register("proposal", lambda proposal: RewardComponents(success=proposal["score"]))
+    evidence = evaluator.score_evidence("proposal", {"score": 0.8}, evidence_refs=["proposal-1"])
+    assert evidence.score == 0.8
+    assert evidence.metrics["success"] == 0.8
+    assert evidence.evidence_refs == ["proposal-1"]
 
 
 def test_negative_reward_loop_accumulates_and_decays() -> None:
@@ -92,6 +114,31 @@ def test_triple_convergence_require_all_is_conservative() -> None:
         safety_score=1.0,
     )
     assert all_three.converged
+
+
+def test_convergence_result_converts_to_scored_evidence() -> None:
+    criteria = TripleConvergence(
+        fitness_window=3, fitness_epsilon=1e-6, budget_limit=3, safety_floor=0.5
+    )
+    result = criteria.evaluate(
+        fitness_history=[1.0, 1.0, 1.0],
+        budget_used=3,
+        safety_score=0.6,
+    )
+    evidence = convergence_to_scored_evidence(
+        result,
+        fitness_history=[1.0, 1.0, 1.0],
+        budget_used=3,
+        budget_limit=3,
+        safety_score=0.6,
+        evidence_refs=["conv-1"],
+    )
+    assert evidence.convergence is not None
+    assert evidence.convergence.converged is True
+    assert "fitness_plateau" in evidence.convergence.criteria_met
+    assert evidence.budget is not None
+    assert evidence.budget.exhausted is True
+    assert evidence.evidence_refs == ["conv-1"]
 
 
 def test_dead_end_detector_tracks_per_path() -> None:

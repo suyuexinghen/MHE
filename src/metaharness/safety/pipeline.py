@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from metaharness.core.models import PromotionContext
 from metaharness.core.mutation import MutationProposal
 from metaharness.safety.gates import GateDecision, GateResult, SafetyGate
 from metaharness.safety.hooks import HookRegistry
@@ -20,8 +21,9 @@ from metaharness.safety.hooks import HookRegistry
 class SafetyPipelineResult:
     """Record of a full pipeline execution against a single proposal."""
 
-    proposal: MutationProposal
-    allowed: bool
+    proposal: MutationProposal | None = None
+    promotion: PromotionContext | None = None
+    allowed: bool = True
     results: list[GateResult] = field(default_factory=list)
     rejected_by: str | None = None
     rejected_reason: str | None = None
@@ -90,3 +92,39 @@ class SafetyPipeline:
     ) -> list[SafetyPipelineResult]:
         reduced = self.hooks.apply_reducers(proposals)
         return [self.evaluate(p, context) for p in reduced]
+
+    def evaluate_graph_promotion(
+        self,
+        promotion: PromotionContext,
+        *,
+        reviewer: Any | None = None,
+    ) -> SafetyPipelineResult:
+        """Evaluate a candidate graph promotion through the safety authority."""
+
+        result = SafetyPipelineResult(promotion=promotion, allowed=True)
+        if reviewer is None:
+            return result
+
+        decision = reviewer(promotion)
+        if decision.decision != "allow":
+            result.allowed = False
+            result.rejected_by = "policy_review"
+            result.rejected_reason = decision.reason or "policy_veto"
+            result.results.append(
+                GateResult(
+                    gate="policy_review",
+                    decision=GateDecision.REJECT,
+                    reason=result.rejected_reason,
+                    evidence={"decision_id": decision.proposal_id},
+                )
+            )
+            return result
+
+        result.results.append(
+            GateResult(
+                gate="policy_review",
+                decision=GateDecision.ALLOW,
+                evidence={"decision_id": decision.proposal_id},
+            )
+        )
+        return result

@@ -6,6 +6,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from metaharness.core.models import ScoredEvidence
+
 
 @dataclass(slots=True)
 class RewardComponents:
@@ -48,6 +50,30 @@ def composite_fitness(
     )
 
 
+def reward_components_to_scored_evidence(
+    components: RewardComponents,
+    *,
+    weights: dict[str, float] | None = None,
+    evidence_refs: list[str] | None = None,
+) -> ScoredEvidence:
+    """Convert decomposed reward signals into the shared scored protocol."""
+
+    fitness = composite_fitness(components, weights=weights)
+    return ScoredEvidence(
+        score=fitness,
+        metrics={
+            "success": components.success,
+            "efficiency": components.efficiency,
+            "safety": components.safety,
+            "novelty": components.novelty,
+            "penalties": components.penalties,
+        },
+        safety_score=components.safety,
+        evidence_refs=list(evidence_refs or ()),
+        attributes=dict(components.attributes),
+    )
+
+
 Evaluator = Callable[[Any], RewardComponents]
 
 
@@ -83,6 +109,23 @@ class FitnessEvaluator:
         fitness = composite_fitness(components, weights=weights)
         self.history.append((kind, components, fitness))
         return components, fitness
+
+    def score_evidence(
+        self,
+        kind: str,
+        subject: Any,
+        *,
+        weights: dict[str, float] | None = None,
+        evidence_refs: list[str] | None = None,
+    ) -> ScoredEvidence:
+        """Return the shared scored evidence shape while reusing fitness logic."""
+
+        components, _ = self.score(kind, subject, weights=weights)
+        return reward_components_to_scored_evidence(
+            components,
+            weights=weights,
+            evidence_refs=evidence_refs,
+        )
 
     def last_score_of(self, kind: str) -> float | None:
         for k, _, score in reversed(self.history):

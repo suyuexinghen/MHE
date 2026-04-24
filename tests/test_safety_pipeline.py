@@ -8,8 +8,9 @@ from metaharness.components.policy import PolicyComponent
 from metaharness.config.xml_parser import parse_graph_xml
 from metaharness.core.connection_engine import ConnectionEngine
 from metaharness.core.graph_versions import GraphVersionStore
-from metaharness.core.models import PendingConnectionSet
+from metaharness.core.models import PendingConnectionSet, PromotionContext, ValidationIssue
 from metaharness.core.mutation import MutationProposal
+from metaharness.core.validators import validate_graph
 from metaharness.safety import (
     ABShadowTester,
     AutoRollback,
@@ -190,3 +191,125 @@ def test_pipeline_mutator_transforms_proposal(manifest_dir: Path, graphs_dir: Pa
     result = pipeline.evaluate(proposal)
     assert result.mutated is True
     assert result.proposal.description.endswith("!")
+
+
+def test_pipeline_evaluate_graph_promotion_delegates_to_reviewer(
+    manifest_dir: Path, graphs_dir: Path
+) -> None:
+    _, registry = _proposal(manifest_dir, graphs_dir)
+    snapshot = parse_graph_xml(graphs_dir / "minimal-happy-path.xml")
+    policy = PolicyComponent()
+    pipeline = SafetyPipeline()
+
+    allowed_promotion = PromotionContext(
+        candidate_id="candidate-1",
+        candidate_snapshot=snapshot,
+        validation_report=validate_graph(snapshot, registry),
+        proposed_graph_version=1,
+    )
+    allowed = pipeline.evaluate_graph_promotion(
+        allowed_promotion,
+        reviewer=policy.review_graph_promotion,
+    )
+    assert allowed.allowed is True
+    assert allowed.results[-1].decision == GateDecision.ALLOW
+
+    blocked_report = validate_graph(snapshot, registry)
+    blocked_report.issues.append(
+        ValidationIssue(
+            code="policy_block",
+            message="blocked",
+            subject="policy.primary",
+            blocks_promotion=True,
+        )
+    )
+    rejected = pipeline.evaluate_graph_promotion(
+        allowed_promotion.model_copy(update={"validation_report": blocked_report}),
+        reviewer=policy.review_graph_promotion,
+    )
+    assert rejected.allowed is False
+    assert rejected.rejected_by == "policy_review"
+
+
+def test_pipeline_rejects_promotion_when_protected_components_are_flagged(
+    manifest_dir: Path, graphs_dir: Path
+) -> None:
+    _, registry = _proposal(manifest_dir, graphs_dir)
+    snapshot = parse_graph_xml(graphs_dir / "minimal-happy-path.xml")
+    policy = PolicyComponent()
+
+    report = validate_graph(snapshot, registry)
+    report.issues.append(
+        ValidationIssue(
+            code="protected_component_change",
+            message="protected graph segment requires explicit authority",
+            subject="policy.primary",
+            blocks_promotion=True,
+        )
+    )
+    promotion = PromotionContext(
+        candidate_id="candidate-protected",
+        candidate_snapshot=snapshot,
+        validation_report=report,
+        proposed_graph_version=2,
+        rollback_target=1,
+        affected_protected_components=["policy.primary"],
+    )
+
+    result = SafetyPipeline().evaluate_graph_promotion(
+        promotion,
+        reviewer=policy.review_graph_promotion,
+    )
+
+    assert result.allowed is False
+    assert result.rejected_by == "policy_review"
+    assert "protected_component_change:policy.primary" == result.rejected_reason
+    assert result.promotion is promotion
+    assert result.results[-1].evidence["decision_id"] == "candidate-protected"
+
+
+def test_connection_engine_invalid_commit_preserves_active_graph(
+    manifest_dir: Path, graphs_dir: Path
+) -> None:
+    proposal, registry = _proposal(manifest_dir, graphs_dir)
+    engine = ConnectionEngine(registry, GraphVersionStore())
+
+    active_snapshot, active_report = engine.stage(proposal.pending)
+    committed_version = engine.commit("candidate-active", active_snapshot, active_report)
+
+    assert committed_version == active_snapshot.graph_version
+    assert engine.version_store.state.active_graph_version == active_snapshot.graph_version
+    assert registry.active_graph == active_snapshot
+
+    from metaharness.core.models import ComponentNode, ConnectionEdge
+
+    bad_pending = PendingConnectionSet(
+        nodes=[
+            ComponentNode(
+                component_id="runtime.primary",
+                component_type="Runtime",
+                implementation="x",
+                version="0.1.0",
+            )
+        ],
+        edges=[
+            ConnectionEdge(
+                connection_id="broken-edge",
+                source="ghost.primary.task",
+                target="runtime.primary.task",
+                payload="TaskRequest",
+                mode="sync",
+                policy="required",
+            )
+        ],
+    )
+    bad_snapshot, bad_report = engine.stage(bad_pending)
+
+    rejected_version = engine.commit("candidate-invalid", bad_snapshot, bad_report)
+
+    assert bad_report.valid is False
+    assert rejected_version == active_snapshot.graph_version
+    assert engine.version_store.state.active_graph_version == active_snapshot.graph_version
+    assert registry.active_graph == active_snapshot
+    assert engine.version_store.candidates[-1].candidate_id == "candidate-invalid"
+    assert engine.version_store.candidates[-1].promoted is False

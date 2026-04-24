@@ -6,14 +6,21 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from metaharness.core.models import PendingConnectionSet
+from metaharness.core.brain import BrainProvider, FunctionalBrainProvider
+from metaharness.core.models import PendingConnectionSet, ScoredEvidence
 from metaharness.core.mutation import MutationProposal, MutationRecord, MutationSubmitter
 from metaharness.optimizer.convergence import (
     ConvergenceResult,
     DeadEndDetector,
     TripleConvergence,
+    convergence_to_scored_evidence,
 )
-from metaharness.optimizer.fitness import FitnessEvaluator, NegativeRewardLoop
+from metaharness.optimizer.fitness import (
+    FitnessEvaluator,
+    NegativeRewardLoop,
+    RewardComponents,
+    reward_components_to_scored_evidence,
+)
 from metaharness.optimizer.triggers import LayeredTriggerSystem, TriggerEvent
 
 
@@ -33,6 +40,7 @@ class ProposalEvaluation:
     proposal_id: str
     score: float
     reasons: list[str] = field(default_factory=list)
+    evidence: ScoredEvidence | None = None
 
 
 ProposerFn = Callable[["OptimizerComponent", list[Observation]], list[MutationProposal]]
@@ -51,7 +59,17 @@ def _default_evaluator(
     # Treat any non-empty pending set as baseline candidate.
     score = 1.0 if proposal.pending.edges or proposal.pending.nodes else 0.0
     reasons = [] if score > 0 else ["empty_pending_set"]
-    return ProposalEvaluation(proposal_id=proposal.proposal_id, score=score, reasons=reasons)
+    components = RewardComponents(success=score, penalties=0.0 if score > 0 else 1.0)
+    evidence = reward_components_to_scored_evidence(
+        components,
+        evidence_refs=[proposal.proposal_id],
+    ).model_copy(update={"score": score, "reasons": reasons})
+    return ProposalEvaluation(
+        proposal_id=proposal.proposal_id,
+        score=score,
+        reasons=reasons,
+        evidence=evidence,
+    )
 
 
 class OptimizerComponent:
@@ -61,9 +79,9 @@ class OptimizerComponent:
     the version store. ``commit()`` is a thin delegate to a
     :class:`MutationSubmitter` which goes through the governance reviewer.
 
-    Plug-in strategies supply real proposers/evaluators; the defaults keep
-    unit tests deterministic while enforcing the invariant that an optimizer
-    can only propose, never write.
+    Plug-in strategies supply a typed brain provider (or legacy proposer /
+    evaluator callables); the defaults keep unit tests deterministic while
+    enforcing the invariant that an optimizer can only propose, never write.
     """
 
     def __init__(
@@ -71,6 +89,7 @@ class OptimizerComponent:
         *,
         proposer: ProposerFn | None = None,
         evaluator: EvaluatorFn | None = None,
+        brain_provider: BrainProvider | None = None,
         triggers: LayeredTriggerSystem | None = None,
         fitness: FitnessEvaluator | None = None,
         convergence: TripleConvergence | None = None,
@@ -79,8 +98,10 @@ class OptimizerComponent:
     ) -> None:
         self._counter = 0
         self._observations: list[Observation] = []
-        self._proposer: ProposerFn = proposer or _default_proposer
-        self._evaluator: EvaluatorFn = evaluator or _default_evaluator
+        self.brain_provider = brain_provider or FunctionalBrainProvider(
+            proposer=proposer or _default_proposer,
+            evaluator=evaluator or _default_evaluator,
+        )
         self.triggers = triggers or LayeredTriggerSystem()
         self.fitness = fitness or FitnessEvaluator()
         self.convergence = convergence or TripleConvergence()
@@ -125,16 +146,16 @@ class OptimizerComponent:
         )
 
     def propose_batch(self) -> list[MutationProposal]:
-        """Ask the configured proposer for proposals based on observations."""
+        """Ask the configured brain provider for proposals based on observations."""
 
-        return list(self._proposer(self, list(self._observations)))
+        return self.brain_provider.propose(self, list(self._observations))
 
     # ------------------------------------------------------------------ evaluate
 
     def evaluate(self, proposal: MutationProposal) -> ProposalEvaluation:
-        """Score a proposal using the configured evaluator."""
+        """Score a proposal using the configured brain provider."""
 
-        return self._evaluator(self, proposal, list(self._observations))
+        return self.brain_provider.evaluate(self, proposal, list(self._observations))
 
     # ------------------------------------------------------------------ commit
 
@@ -180,3 +201,15 @@ class OptimizerComponent:
         )
         self.last_convergence = result
         return result
+
+    def convergence_evidence(self, *, budget_used: int, safety_score: float) -> ScoredEvidence:
+        """Return convergence state in the shared scored evidence shape."""
+
+        result = self.check_convergence(budget_used=budget_used, safety_score=safety_score)
+        return convergence_to_scored_evidence(
+            result,
+            fitness_history=self.fitness_history,
+            budget_used=budget_used,
+            budget_limit=self.convergence.budget_limit,
+            safety_score=safety_score,
+        )

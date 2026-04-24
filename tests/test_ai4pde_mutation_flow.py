@@ -56,7 +56,9 @@ def test_ai4pde_mutation_proposals_remain_proposal_only(examples_dir: Path) -> N
     optimizer = OptimizerComponent()
 
     baseline_snapshot = parse_graph_xml(graphs_dir / "ai4pde-expanded.xml")
-    active_pending = PendingConnectionSet(nodes=baseline_snapshot.nodes, edges=baseline_snapshot.edges)
+    active_pending = PendingConnectionSet(
+        nodes=baseline_snapshot.nodes, edges=baseline_snapshot.edges
+    )
     candidate, report = engine.stage(active_pending)
     version = engine.commit("ai4pde-expanded", candidate, report)
 
@@ -68,6 +70,10 @@ def test_ai4pde_mutation_proposals_remain_proposal_only(examples_dir: Path) -> N
         violations=["baseline_divergence_exceeded"],
         next_action=NextAction.RETRY,
         summary={"status": "retry"},
+        rollback_context={
+            "rollback_recommended": True,
+            "rollback_reason": "baseline_divergence_exceeded",
+        },
     )
     evidence = ScientificEvidenceBundle(
         bundle_id="bundle-m5",
@@ -86,14 +92,15 @@ def test_ai4pde_mutation_proposals_remain_proposal_only(examples_dir: Path) -> N
 
     assert store.state.active_graph_version == 1
     assert proposals
+    assert any(signal.reason == "baseline_divergence_exceeded" for signal in signals)
     assert all(not proposal.pending.nodes and not proposal.pending.edges for proposal in proposals)
     assert all(proposal.pending.mutations for proposal in proposals)
 
     record = optimizer.commit(proposals[0], submitter)
 
-    assert record.decision.decision == "allow"
-    assert record.graph_version == 2
-    assert store.state.active_graph_version == 2
+    assert record.decision.decision == "reject"
+    assert record.graph_version is None
+    assert store.state.active_graph_version == 1
     assert record.proposal.pending.mutations
     assert not record.proposal.pending.nodes
     assert not record.proposal.pending.edges
@@ -115,7 +122,10 @@ def test_ai4pde_benchmark_runner_compares_candidate_and_active() -> None:
         validation_id="validation-bench",
         task_id=plan.task_id,
         graph_version_id=1,
-        reference_comparison={"status": "better_or_equal", "baseline_residual_l2": reference.summary["residual_l2"]},
+        reference_comparison={
+            "status": "better_or_equal",
+            "baseline_residual_l2": reference.summary["residual_l2"],
+        },
         summary={"status": "accept"},
     )
     evidence = ScientificEvidenceBundle(

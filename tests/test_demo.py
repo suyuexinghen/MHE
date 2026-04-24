@@ -1,3 +1,4 @@
+from metaharness.core.models import ScoredEvidence
 from metaharness.demo import DemoHarness
 from metaharness.sdk.lifecycle import ComponentPhase
 
@@ -47,3 +48,12 @@ def test_demo_async_run_produces_same_outputs() -> None:
     assert result.graph_version == 1
     assert result.evaluation_payload["source_status"] == "executed"
     assert result.memory_record == {"count": "1"}
+
+
+def test_scored_evidence_legacy_payload_round_trip() -> None:
+    evidence = ScoredEvidence(score=1.0, attributes={"source_status": "executed"})
+    payload = evidence.as_legacy_payload()
+    restored = ScoredEvidence.from_legacy_payload(payload)
+    assert payload == {"score": "1.0", "source_status": "executed"}
+    assert restored.score == 1.0
+    assert restored.attributes == {"source_status": "executed"}

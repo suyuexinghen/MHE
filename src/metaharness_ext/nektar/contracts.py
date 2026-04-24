@@ -4,6 +4,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from metaharness.core.models import ScoredEvidence
 from metaharness_ext.nektar.types import (
     NektarAdrEqType,
     NektarBoundaryConditionType,
@@ -15,6 +16,34 @@ from metaharness_ext.nektar.types import (
 )
 
 NektarRunStatus = Literal["planned", "completed", "failed", "unavailable"]
+NektarPromotionOutcome = Literal["pending", "approved", "rejected", "unknown"]
+
+
+class NektarCandidateIdentity(BaseModel):
+    candidate_id: str | None = None
+    proposed_graph_version: int | None = None
+    graph_version_id: int | None = None
+    actor: str | None = None
+    template_id: str | None = None
+    solver_family: NektarSolverFamily | None = None
+
+
+class NektarPromotionMetadata(BaseModel):
+    outcome: NektarPromotionOutcome = "pending"
+    candidate_identity: NektarCandidateIdentity = Field(default_factory=NektarCandidateIdentity)
+    affected_components: list[str] = Field(default_factory=list)
+    created_at: str | None = None
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+class NektarExecutionPolicy(BaseModel):
+    sandbox_profile: str | None = None
+    policy_tags: list[str] = Field(default_factory=list)
+    required_binaries: list[str] = Field(default_factory=list)
+    binary_constraints: dict[str, Any] = Field(default_factory=dict)
+    requires_network: bool = False
+    requires_workspace_write: bool = True
+    details: dict[str, Any] = Field(default_factory=dict)
 
 
 class NektarBoundaryCondition(BaseModel):
@@ -85,6 +114,13 @@ class NektarProblemSpec(BaseModel):
     postprocess_plan: list[dict[str, Any]] = Field(default_factory=list)
     objectives: list[str] = Field(default_factory=list)
     constraints: list[str] = Field(default_factory=list)
+    graph_metadata: dict[str, Any] = Field(default_factory=dict)
+    candidate_identity: NektarCandidateIdentity = Field(default_factory=NektarCandidateIdentity)
+    promotion_metadata: NektarPromotionMetadata = Field(default_factory=NektarPromotionMetadata)
+    checkpoint_refs: list[str] = Field(default_factory=list)
+    provenance_refs: list[str] = Field(default_factory=list)
+    trace_refs: list[str] = Field(default_factory=list)
+    execution_policy: NektarExecutionPolicy = Field(default_factory=NektarExecutionPolicy)
 
     @model_validator(mode="after")
     def validate_equation_type(self) -> "NektarProblemSpec":
@@ -144,6 +180,13 @@ class NektarSessionPlan(BaseModel):
     session_file_name: str = "session.xml"
     postprocess_plan: list[dict[str, Any]] = Field(default_factory=list)
     global_system_solution_info: dict[str, Any] = Field(default_factory=dict)
+    graph_metadata: dict[str, Any] = Field(default_factory=dict)
+    candidate_identity: NektarCandidateIdentity = Field(default_factory=NektarCandidateIdentity)
+    promotion_metadata: NektarPromotionMetadata = Field(default_factory=NektarPromotionMetadata)
+    checkpoint_refs: list[str] = Field(default_factory=list)
+    provenance_refs: list[str] = Field(default_factory=list)
+    trace_refs: list[str] = Field(default_factory=list)
+    execution_policy: NektarExecutionPolicy = Field(default_factory=NektarExecutionPolicy)
 
     @model_validator(mode="after")
     def validate_equation_type(self) -> "NektarSessionPlan":
@@ -248,6 +291,14 @@ class NektarRunArtifact(BaseModel):
     result_summary: dict[str, Any] = Field(default_factory=dict)
     postprocess_plan: list[dict[str, Any]] = Field(default_factory=list)
     status: NektarRunStatus = "planned"
+    graph_metadata: dict[str, Any] = Field(default_factory=dict)
+    candidate_identity: NektarCandidateIdentity = Field(default_factory=NektarCandidateIdentity)
+    promotion_metadata: NektarPromotionMetadata = Field(default_factory=NektarPromotionMetadata)
+    checkpoint_refs: list[str] = Field(default_factory=list)
+    provenance_refs: list[str] = Field(default_factory=list)
+    trace_refs: list[str] = Field(default_factory=list)
+    scored_evidence: ScoredEvidence | None = None
+    execution_policy: NektarExecutionPolicy = Field(default_factory=NektarExecutionPolicy)
 
 
 class NektarValidationReport(BaseModel):
@@ -258,6 +309,10 @@ class NektarValidationReport(BaseModel):
     error_vs_reference: bool | None = None
     messages: list[str] = Field(default_factory=list)
     metrics: dict[str, float | str] = Field(default_factory=dict)
+    checkpoint_refs: list[str] = Field(default_factory=list)
+    provenance_refs: list[str] = Field(default_factory=list)
+    trace_refs: list[str] = Field(default_factory=list)
+    scored_evidence: ScoredEvidence | None = None
 
 
 class ConvergenceTrialReport(BaseModel):

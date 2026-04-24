@@ -4,8 +4,84 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 
-from metaharness.core.models import GraphSnapshot, ValidationIssue, ValidationReport
+from metaharness.core.models import (
+    GraphSnapshot,
+    ValidationIssue,
+    ValidationIssueCategory,
+    ValidationReport,
+)
 from metaharness.sdk.registry import ComponentRegistry
+
+
+def _is_protected_component(
+    component_id: str,
+    snapshot: GraphSnapshot,
+    registry: ComponentRegistry,
+) -> bool:
+    node = next((node for node in snapshot.nodes if node.component_id == component_id), None)
+    if node is not None and node.protected:
+        return True
+    return registry.is_protected(component_id)
+
+
+def _incident_edges(
+    snapshot: GraphSnapshot, component_id: str
+) -> set[tuple[str, str, str, str, str]]:
+    return {
+        (
+            edge.connection_id,
+            edge.source,
+            edge.target,
+            edge.payload,
+            edge.mode.value,
+        )
+        for edge in snapshot.edges
+        if edge.source.rpartition(".")[0] == component_id
+        or edge.target.rpartition(".")[0] == component_id
+    }
+
+
+def _protected_boundary_issues(
+    snapshot: GraphSnapshot,
+    registry: ComponentRegistry,
+) -> list[ValidationIssue]:
+    active_graph = registry.active_graph
+    if active_graph is None:
+        return []
+
+    issues: list[ValidationIssue] = []
+    active_nodes = {node.component_id for node in active_graph.nodes}
+    candidate_nodes = {node.component_id for node in snapshot.nodes}
+    protected_components = {
+        component_id
+        for component_id in active_nodes | candidate_nodes
+        if _is_protected_component(component_id, active_graph, registry)
+        or _is_protected_component(component_id, snapshot, registry)
+    }
+
+    for component_id in sorted(protected_components):
+        if component_id in active_nodes and component_id not in candidate_nodes:
+            issues.append(
+                ValidationIssue(
+                    code="protected_component_removed",
+                    message="Protected component cannot be removed from the active graph",
+                    subject=component_id,
+                    category=ValidationIssueCategory.PROTECTED_COMPONENT,
+                    blocks_promotion=True,
+                )
+            )
+            continue
+        if _incident_edges(active_graph, component_id) != _incident_edges(snapshot, component_id):
+            issues.append(
+                ValidationIssue(
+                    code="protected_boundary_violation",
+                    message="Protected component connections cannot be rewired",
+                    subject=component_id,
+                    category=ValidationIssueCategory.PROTECTED_COMPONENT,
+                    blocks_promotion=True,
+                )
+            )
+    return issues
 
 
 def validate_graph(snapshot: GraphSnapshot, registry: ComponentRegistry) -> ValidationReport:
@@ -118,8 +194,12 @@ def validate_graph(snapshot: GraphSnapshot, registry: ComponentRegistry) -> Vali
                                 code="protected_slot_override",
                                 message="Protected primary slot has multiple bindings",
                                 subject=slot.slot,
+                                category=ValidationIssueCategory.PROTECTED_COMPONENT,
+                                blocks_promotion=True,
                             )
                         )
+
+    issues.extend(_protected_boundary_issues(snapshot, registry))
 
     visiting: set[str] = set()
     visited: set[str] = set()
@@ -139,7 +219,10 @@ def validate_graph(snapshot: GraphSnapshot, registry: ComponentRegistry) -> Vali
         if component_id not in visited and has_cycle(component_id):
             issues.append(
                 ValidationIssue(
-                    code="cycle_detected", message="Graph contains a cycle", subject=component_id
+                    code="cycle_detected",
+                    message="Graph contains a cycle",
+                    subject=component_id,
+                    blocks_promotion=True,
                 )
             )
             break
@@ -163,6 +246,7 @@ def validate_graph(snapshot: GraphSnapshot, registry: ComponentRegistry) -> Vali
                     code="orphan_component",
                     message="Component is not referenced by any connection",
                     subject=node.component_id,
+                    blocks_promotion=True,
                 )
             )
 

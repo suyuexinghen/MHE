@@ -1,3 +1,4 @@
+from metaharness.core.models import ScoredEvidence, SessionEvent
 from metaharness_ext.ai4pde.components.observability_hub import ObservabilityHubComponent
 from metaharness_ext.ai4pde.components.risk_policy import RiskPolicyComponent
 from metaharness_ext.ai4pde.contracts import (
@@ -80,6 +81,19 @@ def test_risk_policy_and_observability_components_record_state() -> None:
         graph_version_id=2,
         provenance_refs=["provenance://task-2"],
     )
+    validation.scored_evidence = ScoredEvidence(score=0.99, metrics={"residual_l2": 0.01})
+    validation.session_events = [
+        SessionEvent(
+            event_id="evt-1",
+            session_id=request.task_id,
+            event_type="candidate_validated",
+            graph_version=2,
+            candidate_id="run-2",
+            payload={},
+        )
+    ]
+    evidence.scored_evidence = validation.scored_evidence
+    evidence.session_events = validation.session_events
 
     policy = RiskPolicyComponent()
     observability = ObservabilityHubComponent()
@@ -88,5 +102,15 @@ def test_risk_policy_and_observability_components_record_state() -> None:
 
     assert decision["risk_level"] == "green"
     assert decision["budget_level"] == "green"
+    assert decision["promotion_outcome"] == "pending"
+    assert decision["safety_outcome"] == "unknown"
+    assert decision["rollback_recommended"] is False
+    assert decision["evidence_score"] == 0.99
+    assert decision["session_event_count"] == 1
     assert report["meets_minimums"] is False
     assert report["evidence_refs"] == 1
+    assert report["promotion_outcome"] == "pending"
+    assert report["safety_outcome"] == "unknown"
+    assert report["rollback_recommended"] is False
+    assert report["session_event_count"] == 1
+    assert report["scored_evidence"] == 0.99

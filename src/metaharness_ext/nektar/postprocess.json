@@ -39,9 +39,17 @@
   "safety": {
     "protected": false,
     "mutability": "mutable",
-    "sandbox_profile": null,
+    "sandbox_profile": "workspace-write",
     "hot_swap": true
   },
+  "policy": {
+    "sandbox": {
+      "tier": "workspace-write"
+    }
+  },
+  "bins": [
+    "FieldConvert"
+  ],
   "state_schema_version": 1,
   "provides": [
     "nektar.postprocess.fieldconvert"

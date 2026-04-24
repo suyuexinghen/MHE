@@ -37,12 +37,41 @@ class RiskPolicyComponent(HarnessComponent):
         validation_bundle: ValidationBundle | None = None,
     ) -> dict[str, object]:
         budget_state = check_budget(request.budget)
+        reproducibility = (
+            check_reproducibility(validation_bundle) if validation_bundle is not None else None
+        )
         decision = {
             "risk_level": classify_risk(request, plan).value,
             "budget_level": classify_budget(request.budget),
             "budget_state": budget_state,
-            "reproducibility": (
-                check_reproducibility(validation_bundle) if validation_bundle is not None else None
+            "reproducibility": reproducibility,
+            "candidate_id": (
+                validation_bundle.candidate_identity.candidate_id
+                if validation_bundle is not None
+                else None
+            ),
+            "promotion_outcome": (
+                validation_bundle.promotion_metadata.outcome.value
+                if validation_bundle is not None
+                else None
+            ),
+            "safety_outcome": (
+                validation_bundle.safety_evaluation.outcome.value
+                if validation_bundle is not None
+                else None
+            ),
+            "rollback_recommended": (
+                validation_bundle.rollback_context.rollback_recommended
+                if validation_bundle is not None
+                else False
+            ),
+            "evidence_score": (
+                validation_bundle.scored_evidence.score
+                if validation_bundle is not None and validation_bundle.scored_evidence is not None
+                else None
+            ),
+            "session_event_count": (
+                len(validation_bundle.session_events) if validation_bundle is not None else 0
             ),
         }
         self.decisions.append(decision)

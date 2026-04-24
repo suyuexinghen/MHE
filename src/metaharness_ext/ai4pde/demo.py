@@ -5,11 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from metaharness.config.xml_parser import parse_graph_xml
-from metaharness.core.connection_engine import ConnectionEngine
-from metaharness.core.graph_versions import GraphVersionStore
+from metaharness.core.boot import HarnessRuntime, bundled_discovery
 from metaharness.core.models import PendingConnectionSet
-from metaharness.sdk.loader import declare_component, load_manifest
-from metaharness.sdk.registry import ComponentRegistry
 from metaharness_ext.ai4pde.components.evidence_manager import EvidenceManagerComponent
 from metaharness_ext.ai4pde.components.experiment_memory import ExperimentMemoryComponent
 from metaharness_ext.ai4pde.components.method_router import MethodRouterComponent
@@ -25,20 +22,6 @@ from metaharness_ext.ai4pde.contracts import (
     ScientificEvidenceBundle,
     ValidationBundle,
 )
-
-AI4PDE_COMPONENTS = [
-    "pde_gateway",
-    "problem_formulator",
-    "method_router",
-    "solver_executor",
-    "reference_solver",
-    "physics_validator",
-    "evidence_manager",
-    "experiment_memory",
-    "risk_policy",
-    "observability_hub",
-    "knowledge_adapter",
-]
 
 
 @dataclass(slots=True)
@@ -73,59 +56,63 @@ class AI4PDECaseDemoHarness:
         self.examples_dir = self.root / "examples"
         self.manifest_dir = self.examples_dir / "manifests" / "ai4pde"
         self.graphs_dir = self.examples_dir / "graphs"
+        self.runtime = HarnessRuntime(bundled_discovery(self.manifest_dir))
+        self._booted = False
 
-        self.registry = ComponentRegistry()
-        self.store = GraphVersionStore()
-        self.engine = ConnectionEngine(self.registry, self.store)
+    def _ensure_booted(self) -> None:
+        if not self._booted:
+            self.runtime.boot()
+            self._booted = True
 
-        self.gateway = PDEGatewayComponent()
-        self.formulator = ProblemFormulatorComponent()
-        self.router = MethodRouterComponent()
-        self.executor = SolverExecutorComponent()
-        self.reference_solver = ReferenceSolverComponent()
-        self.validator = PhysicsValidatorComponent()
-        self.evidence = EvidenceManagerComponent()
-        self.memory = ExperimentMemoryComponent()
-
-    def _register_manifests(self) -> None:
-        for name in AI4PDE_COMPONENTS:
-            manifest = load_manifest(self.manifest_dir / f"{name}.json")
-            _, api = declare_component(f"{name}.primary", manifest)
-            self.registry.register(f"{name}.primary", manifest, api.snapshot())
+    def _get_component(self, component_id: str, component_type: type[object]) -> object:
+        self._ensure_booted()
+        component = self.runtime.components[component_id]
+        if not isinstance(component, component_type):
+            raise TypeError(f"Component {component_id} is not a {component_type.__name__}")
+        return component
 
     def _commit_graph(self, graph_path: Path) -> int:
+        self._ensure_booted()
         snapshot = parse_graph_xml(graph_path)
-        candidate, report = self.engine.stage(
-            PendingConnectionSet(nodes=snapshot.nodes, edges=snapshot.edges)
+        return self.runtime.commit_graph(
+            PendingConnectionSet(nodes=snapshot.nodes, edges=snapshot.edges),
+            candidate_id=graph_path.stem,
         )
-        if not report.valid:
-            raise ValueError(f"AI4PDE graph is invalid: {report.issues}")
-        return self.engine.commit(graph_path.stem, candidate, report)
 
     def run_case(self, case_path: str | Path) -> AI4PDECaseDemoResult:
         resolved_case_path = Path(case_path).resolve()
-        self._register_manifests()
-        task, compiled_plan = self.gateway.issue_task_from_case(resolved_case_path)
+        gateway = self._get_component("pde_gateway.primary", PDEGatewayComponent)
+        formulator = self._get_component("problem_formulator.primary", ProblemFormulatorComponent)
+        router = self._get_component("method_router.primary", MethodRouterComponent)
+        executor = self._get_component("solver_executor.primary", SolverExecutorComponent)
+        reference_solver = self._get_component("reference_solver.primary", ReferenceSolverComponent)
+        validator = self._get_component("physics_validator.primary", PhysicsValidatorComponent)
+        evidence = self._get_component("evidence_manager.primary", EvidenceManagerComponent)
+        memory = self._get_component("experiment_memory.primary", ExperimentMemoryComponent)
+
+        task, compiled_plan = gateway.issue_task_from_case(resolved_case_path)
         graph_template = compiled_plan.parameter_overrides.get("runtime", {}).get("graph_template")
-        graph_path = Path(graph_template) if graph_template else self.graphs_dir / "ai4pde-minimal.xml"
+        graph_path = (
+            Path(graph_template) if graph_template else self.graphs_dir / "ai4pde-minimal.xml"
+        )
         graph_version = self._commit_graph(graph_path)
 
-        formulated = self.formulator.formulate(task)
-        plan = self.router.build_plan(formulated)
-        run_artifact = self.executor.execute_plan(plan)
-        reference_result = self.reference_solver.run_reference(plan)
-        validation_bundle = self.validator.validate_run(
+        formulated = formulator.formulate(task)
+        plan = router.build_plan(formulated)
+        run_artifact = executor.execute_plan(plan)
+        reference_result = reference_solver.run_reference(plan)
+        validation_bundle = validator.validate_run(
             run_artifact,
             graph_version_id=graph_version,
             reference_result=reference_result,
         )
-        evidence_bundle = self.evidence.assemble_evidence(
+        evidence_bundle = evidence.assemble_evidence(
             run_artifact,
             validation_bundle,
             reference_result=reference_result,
             graph_family=plan.graph_family,
         )
-        memory_record = self.memory.remember(validation_bundle, evidence_bundle)
+        memory_record = memory.remember(validation_bundle, evidence_bundle)
         return AI4PDECaseDemoResult(
             case_path=str(resolved_case_path),
             graph_version=graph_version,

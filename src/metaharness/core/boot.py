@@ -10,16 +10,25 @@ import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from metaharness.core.connection_engine import ConnectionEngine
-from metaharness.core.event_bus import EventBus
+from metaharness.core.event_bus import (
+    AFTER_COMMIT_GRAPH,
+    BEFORE_COMMIT_GRAPH,
+    CANDIDATE_REJECTED,
+    EventBus,
+)
 from metaharness.core.graph_versions import GraphVersionManager, GraphVersionStore
 from metaharness.core.lifecycle_tracker import LifecycleTracker
-from metaharness.core.models import PendingConnectionSet
+from metaharness.core.models import PendingConnectionSet, PromotionContext, SessionEventType
 from metaharness.core.mutation import MutationSubmitter
 from metaharness.core.port_index import PortIndex, RouteTable
 from metaharness.hotreload.migration import MigrationAdapterRegistry
 from metaharness.identity import InMemoryIdentityBoundary
+from metaharness.observability.events import InMemorySessionStore, SessionStore, make_session_event
+from metaharness.provenance import AuditLog, ProvGraph, RelationKind
+from metaharness.safety import SafetyPipeline, parse_sandbox_tier
 from metaharness.sdk.base import HarnessComponent
 from metaharness.sdk.dependency import resolve_boot_order
 from metaharness.sdk.discovery import ComponentDiscovery, DiscoveryResult
@@ -61,6 +70,11 @@ class HarnessRuntime:
         runtime_factory: Callable[[ComponentManifest], ComponentRuntime] | None = None,
         enabled_overrides: dict[str, dict[str, object]] | None = None,
         instance_suffix: str = ".primary",
+        session_id: str = "runtime-session",
+        session_store: SessionStore | None = None,
+        trace_collector: Any | None = None,
+        audit_log: AuditLog | None = None,
+        provenance_graph: ProvGraph | None = None,
     ) -> None:
         self.discovery = discovery
         self.registry = registry or ComponentRegistry()
@@ -69,18 +83,111 @@ class HarnessRuntime:
         self.event_bus = event_bus or EventBus()
         self.lifecycle = LifecycleTracker()
         self.submitter = MutationSubmitter(engine=self.engine)
+        self.safety_pipeline = SafetyPipeline()
         self.migration_adapters = MigrationAdapterRegistry()
         self.components: dict[str, HarnessComponent] = {}
         self._default_identity_boundary = InMemoryIdentityBoundary()
         self._runtime_factory = runtime_factory
         self._enabled_overrides = enabled_overrides or {}
         self._instance_suffix = instance_suffix
+        self.session_id = session_id
+        self.session_store = session_store or InMemorySessionStore()
+        self.trace_collector = trace_collector
+        self.audit_log = audit_log or AuditLog()
+        self.provenance_graph = provenance_graph or ProvGraph()
 
     def _instance_id(self, manifest: ComponentManifest) -> str:
         base = manifest.resolved_id()
         if not self._instance_suffix or base.endswith(self._instance_suffix):
             return base
         return f"{base}{self._instance_suffix}"
+
+    def _serialize_validation_report(self, promotion: PromotionContext) -> dict[str, object]:
+        return {
+            "valid": promotion.validation_report.valid,
+            "issues": [
+                issue.model_dump(mode="json") for issue in promotion.validation_report.issues
+            ],
+        }
+
+    def _serialize_safety_result(self, safety_result: Any) -> dict[str, object]:
+        return {
+            "allowed": safety_result.allowed,
+            "rejected_by": safety_result.rejected_by,
+            "rejected_reason": safety_result.rejected_reason,
+            "results": [
+                {
+                    "gate": result.gate,
+                    "decision": result.decision.value,
+                    "reason": result.reason,
+                    "evidence": dict(result.evidence),
+                }
+                for result in safety_result.results
+            ],
+        }
+
+    def _append_runtime_evidence(
+        self,
+        event_type: SessionEventType,
+        promotion: PromotionContext,
+        *,
+        graph_version: int | None = None,
+        payload: dict[str, object] | None = None,
+    ) -> None:
+        event = make_session_event(
+            self.session_id,
+            event_type,
+            graph_version=graph_version,
+            candidate_id=promotion.candidate_id,
+            payload=payload,
+        )
+        self.session_store.append(event)
+
+        event_entity = self.provenance_graph.add_entity(
+            id=f"session-event:{event.event_id}",
+            kind="session_event",
+            event_type=event.event_type.value,
+            session_id=event.session_id,
+            candidate_id=event.candidate_id,
+            graph_version=event.graph_version,
+            payload=event.payload,
+            timestamp=event.timestamp.isoformat(),
+        )
+        candidate_entity = self.provenance_graph.add_entity(
+            id=f"graph-candidate:{promotion.candidate_id}",
+            kind="graph_candidate",
+            candidate_id=promotion.candidate_id,
+            proposed_graph_version=promotion.proposed_graph_version,
+            rollback_target=promotion.rollback_target,
+        )
+        self.provenance_graph.relate(
+            event_entity.id,
+            RelationKind.WAS_DERIVED_FROM,
+            candidate_entity.id,
+        )
+        if graph_version is not None:
+            version_entity = self.provenance_graph.add_entity(
+                id=f"graph-version:{graph_version}",
+                kind="graph_version",
+                graph_version=graph_version,
+            )
+            self.provenance_graph.relate(
+                event_entity.id,
+                RelationKind.WAS_DERIVED_FROM,
+                version_entity.id,
+            )
+
+        self.audit_log.append(
+            f"session.{event_type.value}",
+            actor="harness_runtime",
+            payload={
+                "event_id": event.event_id,
+                "session_id": event.session_id,
+                "candidate_id": event.candidate_id,
+                "graph_version": event.graph_version,
+                "payload": event.payload,
+            },
+        )
 
     # ------------------------------------------------------------------ boot
 
@@ -151,24 +258,140 @@ class HarnessRuntime:
             active_graph_version=self.version_manager.active_version,
         )
 
+    def _enforce_promotion_policies(self, pending: PendingConnectionSet) -> None:
+        """Enforce declared manifest policies at graph promotion boundaries."""
+
+        default_runtime = None
+        if self.components:
+            first_component = next(iter(self.components.values()))
+            default_runtime = getattr(first_component, "_runtime", None)
+        for node in pending.nodes:
+            registered = self.registry.components.get(node.component_id)
+            if registered is None:
+                continue
+            manifest = registered.manifest
+            policy = manifest.policy
+            if policy.credentials.requires_subject and not manifest.safety.protected:
+                raise ValueError(
+                    f"Candidate graph '{manifest.resolved_id()}' requires identity-bound credentials "
+                    "but is not protected"
+                )
+            declared_tier = policy.sandbox.tier
+            if declared_tier is None or default_runtime is None:
+                continue
+            tier = parse_sandbox_tier(declared_tier)
+            default_runtime.require_sandbox_tier(tier)
+
     def commit_graph(
         self, pending: PendingConnectionSet, *, candidate_id: str = "boot-graph"
     ) -> int:
         """Stage, validate, and commit a graph using the booted registry."""
 
+        self._enforce_promotion_policies(pending)
         candidate, report = self.engine.stage(pending)
-        if not report.valid:
+        proposed_version = candidate.graph_version
+        rollback_target = self.version_manager.active_version
+        affected_protected_components = sorted(
+            {
+                issue.subject
+                for issue in report.issues
+                if issue.category.value == "protected_component"
+            }
+        )
+        promotion = PromotionContext(
+            candidate_id=candidate_id,
+            candidate_snapshot=candidate,
+            validation_report=report,
+            proposed_graph_version=proposed_version,
+            rollback_target=rollback_target,
+            affected_protected_components=affected_protected_components,
+        )
+
+        self._append_runtime_evidence(
+            SessionEventType.CANDIDATE_CREATED,
+            promotion,
+            graph_version=proposed_version,
+            payload={
+                "node_ids": [node.component_id for node in candidate.nodes],
+                "edge_ids": [edge.connection_id for edge in candidate.edges],
+                "rollback_target": rollback_target,
+            },
+        )
+        self._append_runtime_evidence(
+            SessionEventType.CANDIDATE_VALIDATED,
+            promotion,
+            graph_version=proposed_version,
+            payload=self._serialize_validation_report(promotion),
+        )
+
+        self.event_bus.publish(BEFORE_COMMIT_GRAPH, promotion)
+
+        blocking_issues = [issue for issue in report.issues if issue.blocks_promotion]
+        policy_component = self.components.get("policy.primary")
+        reviewer = None
+        if policy_component is not None and hasattr(policy_component, "review_graph_promotion"):
+            reviewer = policy_component.review_graph_promotion
+        safety_result = self.safety_pipeline.evaluate_graph_promotion(
+            promotion,
+            reviewer=reviewer,
+        )
+        self._append_runtime_evidence(
+            SessionEventType.SAFETY_GATE_EVALUATED,
+            promotion,
+            graph_version=proposed_version,
+            payload=self._serialize_safety_result(safety_result),
+        )
+        if blocking_issues or not safety_result.allowed:
             self.engine.discard_candidate(candidate_id, candidate, report)
-            raise ValueError(
-                f"Candidate graph '{candidate_id}' failed validation: "
-                + "; ".join(f"{i.code}:{i.subject}" for i in report.issues)
+            for node in candidate.nodes:
+                phase = self.lifecycle.phase(node.component_id)
+                if phase != ComponentPhase.COMMITTED:
+                    self.lifecycle.record(node.component_id, ComponentPhase.VALIDATED_DYNAMIC)
+                self.lifecycle.record(node.component_id, ComponentPhase.FAILED)
+            rejection_reason = (
+                "; ".join(f"{issue.code}:{issue.subject}" for issue in blocking_issues)
+                if blocking_issues
+                else (safety_result.rejected_reason or "safety_rejected")
             )
-        version = self.engine.commit(candidate_id, candidate, report)
+            self._append_runtime_evidence(
+                SessionEventType.CANDIDATE_REJECTED,
+                promotion,
+                graph_version=proposed_version,
+                payload={
+                    "reason": rejection_reason,
+                    "blocking_issues": [issue.model_dump(mode="json") for issue in blocking_issues],
+                    "safety": self._serialize_safety_result(safety_result),
+                },
+            )
+            self.event_bus.publish(CANDIDATE_REJECTED, promotion)
+            if blocking_issues:
+                reason = "; ".join(f"{issue.code}:{issue.subject}" for issue in blocking_issues)
+            else:
+                reason = safety_result.rejected_reason or "safety_rejected"
+            raise ValueError(f"Candidate graph '{candidate_id}' failed promotion gate: {reason}")
+
+        commit_report = report if report.valid else report.model_copy(update={"valid": True})
+        version = self.engine.commit(candidate_id, candidate, commit_report)
         self.registry.record_graph_version(version)
         for node in candidate.nodes:
+            phase = self.lifecycle.phase(node.component_id)
+            if phase == ComponentPhase.COMMITTED:
+                continue
             self.lifecycle.record(node.component_id, ComponentPhase.VALIDATED_DYNAMIC)
             self.lifecycle.record(node.component_id, ComponentPhase.ACTIVATED)
             self.lifecycle.record(node.component_id, ComponentPhase.COMMITTED)
+        self._append_runtime_evidence(
+            SessionEventType.GRAPH_COMMITTED,
+            promotion,
+            graph_version=version,
+            payload={
+                "committed_graph_version": version,
+                "rollback_target": rollback_target,
+                "validation": self._serialize_validation_report(promotion),
+                "safety": self._serialize_safety_result(safety_result),
+            },
+        )
+        self.event_bus.publish(AFTER_COMMIT_GRAPH, promotion)
         return version
 
     # ---------------------------------------------------------------- indexes

@@ -15,6 +15,7 @@ from metaharness.safety.sandbox_tiers import (
     SandboxTier,
     firecracker_adapter,
     gvisor_adapter,
+    parse_sandbox_tier,
     v8_wasm_adapter,
 )
 from metaharness.safety.sandbox_validator import SandboxValidator
@@ -43,5 +44,6 @@ __all__ = [
     "ShadowTestResult",
     "firecracker_adapter",
     "gvisor_adapter",
+    "parse_sandbox_tier",
     "v8_wasm_adapter",
 ]

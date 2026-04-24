@@ -39,6 +39,20 @@ def test_optimizer_component_records_fitness_and_convergence() -> None:
     assert optimizer.dead_end.is_dead_end("default")
 
 
+def test_optimizer_component_exposes_convergence_evidence() -> None:
+    optimizer = OptimizerComponent()
+    optimizer.convergence.fitness_window = 3
+    optimizer.convergence.fitness_epsilon = 1e-6
+    for _ in range(3):
+        optimizer.record_fitness(1.0)
+    evidence = optimizer.convergence_evidence(budget_used=2, safety_score=0.7)
+    assert evidence.convergence is not None
+    assert evidence.convergence.converged is True
+    assert evidence.budget is not None
+    assert evidence.budget.used == 2
+    assert evidence.safety_score == 0.7
+
+
 def test_optimizer_component_negative_reward_updates() -> None:
     optimizer = OptimizerComponent()
     optimizer.negative_reward.threshold = 0.0

@@ -4,7 +4,15 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from metaharness_ext.ai4pde.types import NextAction, ProblemType, RiskLevel, SolverFamily
+from metaharness.core.models import ScoredEvidence, SessionEvent
+from metaharness_ext.ai4pde.types import (
+    NextAction,
+    ProblemType,
+    PromotionOutcome,
+    RiskLevel,
+    SafetyOutcome,
+    SolverFamily,
+)
 
 
 class BudgetRecord(BaseModel):
@@ -60,6 +68,47 @@ class ReferenceResult(BaseModel):
     summary: dict[str, Any] = Field(default_factory=dict)
 
 
+class CandidateIdentity(BaseModel):
+    candidate_id: str | None = None
+    proposed_graph_version: int | None = None
+    graph_version_id: int | None = None
+    actor: str | None = None
+    template_id: str | None = None
+    solver_family: SolverFamily | None = None
+
+
+class PromotionMetadata(BaseModel):
+    outcome: PromotionOutcome = PromotionOutcome.PENDING
+    candidate_identity: CandidateIdentity = Field(default_factory=CandidateIdentity)
+    affected_protected_components: list[str] = Field(default_factory=list)
+    created_at: str | None = None
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+class ProtectionOutcome(BaseModel):
+    protected_components: list[str] = Field(default_factory=list)
+    violations: list[str] = Field(default_factory=list)
+    allowed: bool | None = None
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+class SafetyEvaluation(BaseModel):
+    outcome: SafetyOutcome = SafetyOutcome.UNKNOWN
+    rejected_by: str | None = None
+    rejected_reason: str | None = None
+    guard_vetoed: bool = False
+    protection: ProtectionOutcome = Field(default_factory=ProtectionOutcome)
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+class RollbackContext(BaseModel):
+    rollback_target: int | None = None
+    rollback_recommended: bool = False
+    rollback_reason: str | None = None
+    applied: bool = False
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
 class ValidationBundle(BaseModel):
     validation_id: str
     task_id: str
@@ -74,6 +123,13 @@ class ValidationBundle(BaseModel):
     violations: list[str] = Field(default_factory=list)
     next_action: NextAction = NextAction.ACCEPT
     summary: dict[str, Any] = Field(default_factory=dict)
+    promotion_metadata: PromotionMetadata = Field(default_factory=PromotionMetadata)
+    candidate_identity: CandidateIdentity = Field(default_factory=CandidateIdentity)
+    safety_evaluation: SafetyEvaluation = Field(default_factory=SafetyEvaluation)
+    rollback_context: RollbackContext = Field(default_factory=RollbackContext)
+    scored_evidence: ScoredEvidence | None = None
+    session_events: list[SessionEvent] = Field(default_factory=list)
+    provenance: dict[str, Any] = Field(default_factory=dict)
 
 
 class ScientificEvidenceBundle(BaseModel):
@@ -90,3 +146,10 @@ class ScientificEvidenceBundle(BaseModel):
     benchmark_snapshot_refs: list[str] = Field(default_factory=list)
     baseline_metadata: dict[str, Any] = Field(default_factory=dict)
     graph_metadata: dict[str, Any] = Field(default_factory=dict)
+    promotion_metadata: PromotionMetadata = Field(default_factory=PromotionMetadata)
+    candidate_identity: CandidateIdentity = Field(default_factory=CandidateIdentity)
+    safety_evaluation: SafetyEvaluation = Field(default_factory=SafetyEvaluation)
+    rollback_context: RollbackContext = Field(default_factory=RollbackContext)
+    scored_evidence: ScoredEvidence | None = None
+    session_events: list[SessionEvent] = Field(default_factory=list)
+    provenance: dict[str, Any] = Field(default_factory=dict)

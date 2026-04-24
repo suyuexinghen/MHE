@@ -6,6 +6,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from metaharness.safety import parse_sandbox_tier
 from metaharness.sdk.api import HarnessAPI
 from metaharness.sdk.base import HarnessComponent
 from metaharness.sdk.runtime import ComponentRuntime
@@ -122,7 +123,24 @@ class ToolHubComponent(HarnessComponent):
             self.execution_log.append(record)
             return record
         try:
-            result = spec.callable(**arguments)
+            runtime = self._runtime
+            if runtime is not None:
+                declared_tier = parse_sandbox_tier(spec.sandbox_tier)
+                runtime.require_sandbox_tier(declared_tier)
+                client = runtime.sandbox_client
+                if client is not None and hasattr(client, "execute"):
+                    sandbox_result = client.execute(
+                        spec.callable, tier=declared_tier, arguments=arguments
+                    )
+                    if getattr(sandbox_result, "success", True) is False:
+                        raise RuntimeError(
+                            getattr(sandbox_result, "error", "sandbox execution failed")
+                        )
+                    result = getattr(sandbox_result, "output", sandbox_result)
+                else:
+                    result = spec.callable(**arguments)
+            else:
+                result = spec.callable(**arguments)
         except Exception as exc:  # noqa: BLE001
             record = ToolExecutionRecord(
                 name=name, arguments=arguments, result=None, error=str(exc), trace_id=trace_id

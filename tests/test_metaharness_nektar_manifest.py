@@ -85,6 +85,17 @@ def test_metaharness_nektar_manifests_are_valid() -> None:
         assert manifest.contracts.slots[0].slot == expected["slot"]
         assert manifest.contracts.outputs[0].name == expected["output"]
         assert manifest.all_provided_capabilities() == expected["capabilities"]
+        assert manifest.policy.sandbox.tier == manifest.safety.sandbox_profile
+
+        if filename == "validator.json":
+            assert manifest.safety.sandbox_profile == "read-only"
+            assert manifest.bins == []
+        elif filename == "session_compiler.json":
+            assert manifest.bins == ["ADRSolver", "IncNavierStokesSolver", "FieldConvert"]
+        elif filename == "solver_executor.json":
+            assert manifest.bins == ["ADRSolver", "IncNavierStokesSolver"]
+        elif filename == "postprocess.json":
+            assert manifest.bins == ["FieldConvert"]
 
 
 def test_metaharness_nektar_manifest_entries_are_importable() -> None:

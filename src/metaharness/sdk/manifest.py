@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from metaharness.sdk.contracts import (
     CapabilityRequirement,
@@ -34,6 +34,20 @@ class ComponentType(str, Enum):
 ComponentKind = ComponentType
 
 
+class CredentialPolicySpec(BaseModel):
+    """Credential policy requirements declared by a component."""
+
+    requires_subject: bool = False
+    allow_inline_credentials: bool = True
+    required_claims: list[str] = Field(default_factory=list)
+
+
+class SandboxPolicySpec(BaseModel):
+    """Sandbox policy requirements declared by a component."""
+
+    tier: str | None = None
+
+
 class SafetySpec(BaseModel):
     """Safety metadata for a component."""
 
@@ -41,6 +55,17 @@ class SafetySpec(BaseModel):
     mutability: str = "mutable"
     sandbox_profile: str | None = None
     hot_swap: bool = True
+
+
+class PolicySpec(BaseModel):
+    """Execution and promotion policies declared by a component."""
+
+    credentials: CredentialPolicySpec = Field(default_factory=CredentialPolicySpec)
+    sandbox: SandboxPolicySpec = Field(default_factory=SandboxPolicySpec)
+
+    @model_validator(mode="after")
+    def sync_legacy_sandbox_profile(self) -> "PolicySpec":
+        return self
 
 
 class ContractSpec(BaseModel):
@@ -66,8 +91,9 @@ class ComponentManifest(BaseModel):
 
     Mirrors the wiki schema plus the extended roadmap fields: stable ``id``
     (defaults to ``name``), required ``harness_version``, optional ``deps`` /
-    ``bins`` / ``env`` requirements, and module-level ``provides`` / ``requires``
-    capability strings used during dependency resolution.
+    ``bins`` / ``env`` requirements, module-level ``provides`` / ``requires``
+    capability strings used during dependency resolution, and backward-compatible
+    execution policy declarations for credentials and sandboxing.
     """
 
     model_config = ConfigDict(populate_by_name=True)
@@ -80,6 +106,7 @@ class ComponentManifest(BaseModel):
     harness_version: str = ">=0.1.0"
     contracts: ContractSpec
     safety: SafetySpec = Field(default_factory=SafetySpec)
+    policy: PolicySpec = Field(default_factory=PolicySpec)
     state_schema_version: int = 1
     deps: DependencySpec = Field(default_factory=DependencySpec)
     bins: list[str] = Field(default_factory=list)
@@ -88,6 +115,12 @@ class ComponentManifest(BaseModel):
     requires: list[str] = Field(default_factory=list)
     default_impl: str | None = None
     enabled: bool = True
+
+    @model_validator(mode="after")
+    def sync_legacy_policy_fields(self) -> "ComponentManifest":
+        if self.policy.sandbox.tier is None and self.safety.sandbox_profile is not None:
+            self.policy.sandbox.tier = self.safety.sandbox_profile
+        return self
 
     def resolved_id(self) -> str:
         """Return the stable component id (falls back to ``name``)."""

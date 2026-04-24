@@ -75,7 +75,9 @@ class _MetricExecutor:
             session_files=[str(run_dir / "session.xml")],
             field_files=[str(field_file)],
             log_files=[str(solver_log)],
-            filter_output=FilterOutputSummary(error_norms={"l2_error_u": metric}, metrics={"total_steps": 10}),
+            filter_output=FilterOutputSummary(
+                error_norms={"l2_error_u": metric}, metrics={"total_steps": 10}
+            ),
             result_summary={"exit_code": 0},
             status="completed",
         )
@@ -228,7 +230,9 @@ async def test_convergence_study_relative_drop_stops_on_first_match(tmp_path: Pa
 
 
 @pytest.mark.asyncio
-async def test_convergence_study_relative_drop_falls_back_when_threshold_not_met(tmp_path: Path) -> None:
+async def test_convergence_study_relative_drop_falls_back_when_threshold_not_met(
+    tmp_path: Path,
+) -> None:
     component = ConvergenceStudyComponent()
     await component.activate(ComponentRuntime(storage_path=tmp_path))
     executor = _MetricExecutor({2: 1.0, 4: 0.8, 8: 0.7})
@@ -320,7 +324,9 @@ async def test_convergence_study_plateau_rejects_nonmonotone_series(tmp_path: Pa
 
 
 @pytest.mark.asyncio
-async def test_convergence_trial_includes_analyzer_outputs_and_observed_order(tmp_path: Path) -> None:
+async def test_convergence_trial_includes_analyzer_outputs_and_observed_order(
+    tmp_path: Path,
+) -> None:
     component = ConvergenceStudyComponent()
     await component.activate(ComponentRuntime(storage_path=tmp_path))
     spec = ConvergenceStudySpec(
@@ -374,6 +380,13 @@ async def test_convergence_study_handles_trial_failure_without_crashing(tmp_path
     assert report.recommended_value == 8
     assert report.converged is False
     assert report.observed_order is None
+    assert all(trial.run.execution_policy.requires_workspace_write for trial in report.trials)
+    assert all(trial.run.graph_metadata == {} for trial in report.trials)
+    assert all(trial.run.scored_evidence is not None for trial in report.trials)
+    assert all(trial.validation.scored_evidence is not None for trial in report.trials)
+    assert all(
+        "failed" == trial.validation.scored_evidence.attributes["status"] for trial in report.trials
+    )
 
 
 @pytest.mark.asyncio

@@ -5,6 +5,7 @@ import pytest
 from metaharness.components.optimizer import Observation, OptimizerComponent, ProposalEvaluation
 from metaharness.components.policy import PolicyComponent
 from metaharness.config.xml_parser import parse_graph_xml
+from metaharness.core.brain import BrainProvider
 from metaharness.core.connection_engine import ConnectionEngine
 from metaharness.core.graph_versions import GraphVersionStore
 from metaharness.core.models import PendingConnectionSet
@@ -60,6 +61,9 @@ def test_optimizer_observe_and_evaluate() -> None:
     assert isinstance(eval_empty, ProposalEvaluation)
     assert eval_empty.score == 0.0
     assert "empty_pending_set" in eval_empty.reasons
+    assert eval_empty.evidence is not None
+    assert eval_empty.evidence.score == 0.0
+    assert eval_empty.evidence.evidence_refs == [empty.proposal_id]
 
 
 def test_optimizer_commit_routes_through_submitter(manifest_dir: Path, graphs_dir: Path) -> None:
@@ -81,3 +85,45 @@ def test_optimizer_commit_routes_through_submitter(manifest_dir: Path, graphs_di
 
     assert record.decision.decision == "allow"
     assert record.graph_version == 1
+
+
+class _RecordingBrainProvider(BrainProvider):
+    def __init__(self) -> None:
+        self.propose_calls: list[list[Observation]] = []
+        self.evaluate_calls: list[tuple[str, list[Observation]]] = []
+
+    def propose(
+        self, optimizer: OptimizerComponent, observations: list[Observation]
+    ) -> list[MutationProposal]:
+        self.propose_calls.append(list(observations))
+        pending = PendingConnectionSet()
+        return [optimizer.propose("provider proposal", pending=pending, proposer_id="brain")]
+
+    def evaluate(
+        self,
+        optimizer: OptimizerComponent,
+        proposal: MutationProposal,
+        observations: list[Observation],
+    ) -> ProposalEvaluation:
+        self.evaluate_calls.append((proposal.proposal_id, list(observations)))
+        return ProposalEvaluation(proposal_id=proposal.proposal_id, score=0.75, reasons=["brain"])
+
+
+def test_optimizer_brain_provider_overrides_default_planning_and_evaluation() -> None:
+    provider = _RecordingBrainProvider()
+    optimizer = OptimizerComponent(brain_provider=provider)
+    observation = Observation(source="runtime", value={"latency": 12}, tags=("metrics",))
+    optimizer.observe(observation)
+
+    proposals = optimizer.propose_batch()
+
+    assert len(proposals) == 1
+    assert proposals[0].description == "provider proposal"
+    assert proposals[0].proposer_id == "brain"
+    assert provider.propose_calls == [[observation]]
+
+    evaluation = optimizer.evaluate(proposals[0])
+
+    assert evaluation.score == 0.75
+    assert evaluation.reasons == ["brain"]
+    assert provider.evaluate_calls == [(proposals[0].proposal_id, [observation])]

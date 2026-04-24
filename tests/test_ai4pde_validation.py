@@ -1,3 +1,4 @@
+from metaharness_ext.ai4pde.components.physics_validator import PhysicsValidatorComponent
 from metaharness_ext.ai4pde.components.reference_solver import ReferenceSolverComponent
 from metaharness_ext.ai4pde.contracts import PDEPlan, PDETaskRequest
 from metaharness_ext.ai4pde.executors import run_pinn_strong
@@ -65,3 +66,31 @@ def test_ai4pde_template_status_promotion_is_threshold_based() -> None:
     assert promote_template_status(template, successful_benchmarks=0) == TemplateStatus.DRAFT
     assert promote_template_status(template, successful_benchmarks=1) == TemplateStatus.CANDIDATE
     assert promote_template_status(template, successful_benchmarks=3) == TemplateStatus.STABLE
+
+
+def test_ai4pde_validator_populates_promotion_and_rollback_metadata() -> None:
+    plan = PDEPlan(
+        plan_id="plan-validate",
+        task_id="task-validate",
+        selected_method=SolverFamily.PINN_STRONG,
+    )
+    artifact = run_pinn_strong(plan)
+    reference = ReferenceSolverComponent().run_reference(plan)
+
+    validation = PhysicsValidatorComponent().validate_run(
+        artifact,
+        graph_version_id=4,
+        reference_result=reference,
+    )
+
+    assert validation.candidate_identity.candidate_id == artifact.run_id
+    assert validation.candidate_identity.graph_version_id == 4
+    assert validation.promotion_metadata.candidate_identity.candidate_id == artifact.run_id
+    assert validation.safety_evaluation.protection.protected_components == ["physics_validator"]
+    assert validation.rollback_context.rollback_recommended is False
+    assert validation.scored_evidence is not None
+    assert validation.scored_evidence.score > 0.0
+    assert validation.scored_evidence.metrics["residual_l2"] == 0.01
+    assert len(validation.session_events) == 1
+    assert validation.session_events[0].event_type.value == "candidate_validated"
+    assert validation.provenance["candidate_id"] == artifact.run_id

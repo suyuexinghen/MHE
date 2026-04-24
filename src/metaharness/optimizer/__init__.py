@@ -1,5 +1,6 @@
 """Optimizer & self-growth engine for Meta-Harness."""
 
+from metaharness.core.brain import BrainProvider, FunctionalBrainProvider
 from metaharness.optimizer.action_space import (
     ActionLayer,
     ActionSpaceFunnel,
@@ -11,6 +12,7 @@ from metaharness.optimizer.convergence import (
     DeadEndDetector,
     NonMarkovianGuard,
     TripleConvergence,
+    convergence_to_scored_evidence,
 )
 from metaharness.optimizer.encoder import GINEncoder, GraphEmbedding, NodeFeatures
 from metaharness.optimizer.fitness import (
@@ -18,6 +20,7 @@ from metaharness.optimizer.fitness import (
     NegativeRewardLoop,
     RewardComponents,
     composite_fitness,
+    reward_components_to_scored_evidence,
 )
 from metaharness.optimizer.search.bayesian import BayesianOptimizer
 from metaharness.optimizer.search.phase_a import LocalParameterSearch
@@ -46,6 +49,7 @@ __all__ = [
     "ActionLayer",
     "ActionSpaceFunnel",
     "BayesianOptimizer",
+    "BrainProvider",
     "CandidateAction",
     "CodegenPipeline",
     "ComponentTemplate",
@@ -54,6 +58,7 @@ __all__ = [
     "ConvergenceResult",
     "DeadEndDetector",
     "FitnessEvaluator",
+    "FunctionalBrainProvider",
     "GINEncoder",
     "GeneratedArtifact",
     "GraphEmbedding",
@@ -66,6 +71,7 @@ __all__ = [
     "NonMarkovianGuard",
     "RLEnhancement",
     "RewardComponents",
+    "reward_components_to_scored_evidence",
     "SlotBinding",
     "SlotFillingEngine",
     "TemplateRegistry",
@@ -75,5 +81,6 @@ __all__ = [
     "TriggerKind",
     "TriggerThreshold",
     "TripleConvergence",
+    "convergence_to_scored_evidence",
     "composite_fitness",
 ]

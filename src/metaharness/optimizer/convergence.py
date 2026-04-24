@@ -7,6 +7,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 
+from metaharness.core.models import BudgetState, ConvergenceState, ScoredEvidence
+
 
 class ConvergenceCriterion(str, Enum):
     """Three convergence criteria mandated by the roadmap."""
@@ -23,6 +25,15 @@ class ConvergenceResult:
     converged: bool
     criteria_met: list[ConvergenceCriterion] = field(default_factory=list)
     reason: str = ""
+
+    def to_state(self) -> ConvergenceState:
+        """Convert the dataclass result into the shared core state model."""
+
+        return ConvergenceState(
+            converged=self.converged,
+            criteria_met=[criterion.value for criterion in self.criteria_met],
+            reason=self.reason,
+        )
 
 
 @dataclass(slots=True)
@@ -67,6 +78,38 @@ class TripleConvergence:
 
         reason = ", ".join(c.value for c in met) or "no criterion satisfied"
         return ConvergenceResult(converged=converged, criteria_met=met, reason=reason)
+
+
+def convergence_to_scored_evidence(
+    result: ConvergenceResult,
+    *,
+    fitness_history: Sequence[float],
+    budget_used: int,
+    budget_limit: int | None,
+    safety_score: float,
+    evidence_refs: list[str] | None = None,
+) -> ScoredEvidence:
+    """Project convergence state into the shared scored evidence protocol."""
+
+    remaining = None if budget_limit is None else max(budget_limit - budget_used, 0)
+    budget = BudgetState(
+        used=budget_used,
+        limit=budget_limit,
+        remaining=remaining,
+        exhausted=budget_limit is not None and budget_used >= budget_limit,
+    )
+    last_fitness = fitness_history[-1] if fitness_history else 0.0
+    metrics = {"fitness": last_fitness, "safety": safety_score, "budget_used": float(budget_used)}
+    if fitness_history:
+        metrics["fitness_history_length"] = float(len(fitness_history))
+    return ScoredEvidence(
+        score=last_fitness,
+        metrics=metrics,
+        safety_score=safety_score,
+        budget=budget,
+        convergence=result.to_state(),
+        evidence_refs=list(evidence_refs or ()),
+    )
 
 
 @dataclass(slots=True)

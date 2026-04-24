@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
+
+import pytest
+
 from metaharness.components.toolhub import ToolHubComponent
+from metaharness.safety import SandboxExecutionResult, SandboxTier
+from metaharness.sdk.runtime import ComponentRuntime
 
 
 def test_tool_registration_and_lookup() -> None:
@@ -43,7 +49,43 @@ def test_execute_unknown_tool() -> None:
 def test_duplicate_registration_fails() -> None:
     hub = ToolHubComponent()
     hub.register_tool("x", callable=lambda: None)
-    import pytest
 
     with pytest.raises(ValueError):
         hub.register_tool("x", callable=lambda: None)
+
+
+class _SandboxClient:
+    def __init__(self, *, supported: set[SandboxTier]) -> None:
+        self.supported = supported
+        self.calls: list[tuple[SandboxTier, dict[str, object]]] = []
+
+    def supports_tier(self, tier: SandboxTier) -> bool:
+        return tier in self.supported
+
+    def execute(self, callable, *, tier: SandboxTier, arguments: dict[str, object]):  # noqa: ANN001
+        self.calls.append((tier, dict(arguments)))
+        return SandboxExecutionResult(tier=tier, success=True, output=callable(**arguments))
+
+
+def test_execute_uses_runtime_sandbox_client() -> None:
+    hub = ToolHubComponent()
+    client = _SandboxClient(supported={SandboxTier.GVISOR})
+    asyncio.run(hub.activate(ComponentRuntime(sandbox_client=client)))
+    hub.register_tool("add", sandbox_tier="gvisor", callable=lambda a, b: a + b)
+
+    record = hub.execute("add", {"a": 2, "b": 3})
+
+    assert record.result == 5
+    assert client.calls == [(SandboxTier.GVISOR, {"a": 2, "b": 3})]
+
+
+def test_execute_rejects_unavailable_sandbox_tier() -> None:
+    hub = ToolHubComponent()
+    client = _SandboxClient(supported={SandboxTier.V8_WASM})
+    asyncio.run(hub.activate(ComponentRuntime(sandbox_client=client)))
+    hub.register_tool("add", sandbox_tier="firecracker", callable=lambda a, b: a + b)
+
+    record = hub.execute("add", {"a": 2, "b": 3})
+
+    assert record.result is None
+    assert record.error == "sandbox policy requires tier 'firecracker'"

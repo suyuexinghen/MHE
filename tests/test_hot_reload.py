@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import Mapping
 from typing import Any
 
+from metaharness.core.models import SessionEventType
 from metaharness.hotreload import (
     CheckpointManager,
     HotSwapOrchestrator,
@@ -16,6 +17,8 @@ from metaharness.hotreload import (
     forbidden_event_probe,
     max_metric_probe,
 )
+from metaharness.observability.events import InMemorySessionStore
+from metaharness.provenance import AuditLog, ProvGraph, RelationKind
 from metaharness.sdk.api import HarnessAPI
 from metaharness.sdk.base import HarnessComponent
 from metaharness.sdk.runtime import ComponentRuntime
@@ -62,6 +65,10 @@ class _StatefulComponent(HarnessComponent):
         return await super().transform_state(old_state, delta)
 
 
+class _ProtectedStatefulComponent(_StatefulComponent):
+    protected = True
+
+
 def test_checkpoint_capture_and_restore() -> None:
     comp = _StatefulComponent(initial={"a": 1})
     manager = CheckpointManager(retention=2)
@@ -87,6 +94,50 @@ def test_checkpoint_retention_bounds_history() -> None:
     history = manager.history("x")
     assert len(history) == 2
     assert history[-1].state == {"v": 4}
+
+
+def test_checkpoint_capture_records_lineage_and_session_evidence() -> None:
+    comp = _StatefulComponent(initial={"v": 1})
+    session_store = InMemorySessionStore()
+    audit_log = AuditLog()
+    provenance = ProvGraph()
+    manager = CheckpointManager(retention=4)
+    manager.bind_evidence_runtime(
+        session_id="hotreload-session",
+        session_store=session_store,
+        audit_log=audit_log,
+        provenance_graph=provenance,
+    )
+
+    first = asyncio.run(
+        manager.capture(
+            comp, component_id="runtime.primary", graph_version=3, candidate_id="swap-a"
+        )
+    )
+    comp.state = {"v": 2}
+    second = asyncio.run(
+        manager.capture(
+            comp, component_id="runtime.primary", graph_version=4, candidate_id="swap-b"
+        )
+    )
+
+    assert second.parent_checkpoint_id == first.checkpoint_id
+    events = session_store.get_events("hotreload-session")
+    assert [event.event_type for event in events] == [
+        SessionEventType.CHECKPOINT_SAVED,
+        SessionEventType.CHECKPOINT_SAVED,
+    ]
+    assert events[-1].payload["parent_checkpoint_id"] == first.checkpoint_id
+    assert len(second.evidence_refs) == 2
+    assert len(audit_log.by_kind("session.checkpoint_saved")) == 2
+    data = provenance.to_dict()
+    assert f"checkpoint:{second.checkpoint_id}" in data["entities"]
+    assert any(
+        relation["subject"] == f"checkpoint:{second.checkpoint_id}"
+        and relation["kind"] == RelationKind.WAS_DERIVED_FROM.value
+        and relation["object"] == f"checkpoint:{first.checkpoint_id}"
+        for relation in data["relations"]
+    )
 
 
 def test_hot_swap_preserves_state_through_migration() -> None:
@@ -239,7 +290,9 @@ def test_observation_window_evaluator_rejects_metric_and_event_failures() -> Non
     assert metric_failure.rejected_by == "latency"
     assert metric_failure.evidence["value"] == 250.0
 
-    event_failure = evaluator.evaluate(metrics={"latency_p95_ms": 100.0}, events=[{"name": "panic"}])
+    event_failure = evaluator.evaluate(
+        metrics={"latency_p95_ms": 100.0}, events=[{"name": "panic"}]
+    )
     assert event_failure.passed is False
     assert event_failure.rejected_by == "events"
     assert event_failure.evidence["seen"] == ["panic"]
@@ -266,6 +319,89 @@ def test_hot_swap_observation_window_allows_healthy_swap() -> None:
     assert incoming.state["counter"] == 7
 
 
+def test_hot_swap_requires_explicit_approval_for_protected_component() -> None:
+    outgoing = _ProtectedStatefulComponent(initial={"counter": 7})
+    incoming = _ProtectedStatefulComponent()
+
+    report = HotSwapOrchestrator().swap_sync(
+        component_id="policy.primary",
+        outgoing=outgoing,
+        incoming=incoming,
+    )
+
+    assert report.success is False
+    assert report.error == "protected component requires explicit hot-swap approval"
+    assert report.affected_protected_components == ["policy.primary"]
+    assert outgoing.suspended == 0
+
+
+def test_hot_swap_records_governed_completion_evidence() -> None:
+    outgoing = _ProtectedStatefulComponent(initial={"counter": 7})
+    incoming = _ProtectedStatefulComponent()
+    session_store = InMemorySessionStore()
+    audit_log = AuditLog()
+    provenance = ProvGraph()
+    orchestrator = HotSwapOrchestrator(
+        session_id="hotreload-session",
+        session_store=session_store,
+        audit_log=audit_log,
+        provenance_graph=provenance,
+    )
+
+    report = orchestrator.swap_sync(
+        component_id="policy.primary",
+        outgoing=outgoing,
+        incoming=incoming,
+        candidate_id="swap-protected",
+        graph_version=9,
+        rollback_target=8,
+        allow_protected=True,
+    )
+
+    assert report.success is True
+    events = session_store.get_events("hotreload-session")
+    assert [event.event_type for event in events] == [
+        SessionEventType.HOT_SWAP_INITIATED,
+        SessionEventType.CHECKPOINT_SAVED,
+        SessionEventType.HOT_SWAP_COMPLETED,
+    ]
+    assert events[-1].payload["affected_protected_components"] == ["policy.primary"]
+    assert events[-1].payload["rollback_target"] == 8
+    assert any(ref.startswith("session-event:") for ref in report.evidence_refs)
+    assert len(audit_log.by_kind("session.hot_swap_completed")) == 1
+    data = provenance.to_dict()
+    assert "hot-swap:policy.primary" in data["entities"]
+    checkpoint_entity = f"checkpoint:{report.checkpoint.checkpoint_id}"
+    session_event_entities = [
+        entity_id
+        for entity_id, entity in data["entities"].items()
+        if entity["kind"] == "session_event"
+    ]
+    assert any(
+        relation["subject"] in session_event_entities
+        and relation["kind"] == RelationKind.WAS_DERIVED_FROM.value
+        and relation["object"] == checkpoint_entity
+        for relation in data["relations"]
+    )
+
+
+def test_hot_swap_rejected_protected_swap_preserves_outgoing_state() -> None:
+    outgoing = _ProtectedStatefulComponent(initial={"counter": 7})
+    incoming = _ProtectedStatefulComponent(initial={"counter": 0})
+
+    report = HotSwapOrchestrator().swap_sync(
+        component_id="policy.primary",
+        outgoing=outgoing,
+        incoming=incoming,
+    )
+
+    assert report.success is False
+    assert outgoing.state == {"counter": 7}
+    assert incoming.state == {"counter": 0}
+    assert outgoing.deactivated == 0
+    assert incoming.resumed == 0
+
+
 def test_hot_swap_observation_window_rolls_back_failed_swap() -> None:
     outgoing = _StatefulComponent(initial={"counter": 7})
     incoming = _StatefulComponent()
@@ -288,6 +424,52 @@ def test_hot_swap_observation_window_rolls_back_failed_swap() -> None:
     assert "exceeded threshold" in (report.error or "")
     assert outgoing.resumed == 1
     assert incoming.deactivated == 1
+
+
+def test_hot_swap_records_rollback_evidence_on_failed_observation() -> None:
+    outgoing = _StatefulComponent(initial={"counter": 7})
+    incoming = _StatefulComponent()
+    evaluator = ObservationWindowEvaluator(
+        probes=[("latency", max_metric_probe("latency_p95_ms", 200.0))]
+    )
+    session_store = InMemorySessionStore()
+    audit_log = AuditLog()
+    provenance = ProvGraph()
+    orchestrator = HotSwapOrchestrator(
+        observation_evaluator=evaluator,
+        session_id="hotreload-session",
+        session_store=session_store,
+        audit_log=audit_log,
+        provenance_graph=provenance,
+    )
+
+    report = orchestrator.swap_sync(
+        component_id="runtime.primary",
+        outgoing=outgoing,
+        incoming=incoming,
+        candidate_id="swap-rollback",
+        graph_version=11,
+        rollback_target=10,
+        observation_metrics={"latency_p95_ms": 250.0},
+    )
+
+    assert report.success is False
+    events = session_store.get_events("hotreload-session")
+    assert [event.event_type for event in events] == [
+        SessionEventType.HOT_SWAP_INITIATED,
+        SessionEventType.CHECKPOINT_SAVED,
+        SessionEventType.HOT_SWAP_ROLLED_BACK,
+    ]
+    assert events[-1].payload["rollback_target"] == 10
+    assert events[-1].payload["checkpoint_id"] == report.checkpoint.checkpoint_id
+    assert len(audit_log.by_kind("session.hot_swap_rolled_back")) == 1
+    data = provenance.to_dict()
+    assert any(
+        relation["subject"].startswith("session-event:")
+        and relation["kind"] == RelationKind.WAS_DERIVED_FROM.value
+        and relation["object"] == f"checkpoint:{report.checkpoint.checkpoint_id}"
+        for relation in data["relations"]
+    )
 
 
 def test_saga_rollback_compensates_on_failure() -> None:

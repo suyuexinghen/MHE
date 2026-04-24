@@ -6,6 +6,7 @@ from metaharness.sdk.runtime import ComponentRuntime
 from metaharness_ext.nektar.capabilities import CAP_NEKTAR_CASE_COMPILE, CAP_NEKTAR_MESH_PREPARE
 from metaharness_ext.nektar.contracts import (
     NektarBoundaryCondition,
+    NektarExecutionPolicy,
     NektarExpansionSpec,
     NektarGeometrySection,
     NektarMeshSpec,
@@ -206,6 +207,33 @@ def _build_top_level_forcing(problem: NektarProblemSpec) -> list[dict[str, str]]
     return forcing_blocks
 
 
+def _default_execution_policy(
+    problem: NektarProblemSpec, *, solver_binary: str
+) -> NektarExecutionPolicy:
+    policy = problem.execution_policy.model_copy(deep=True)
+    if policy.sandbox_profile is None:
+        policy.sandbox_profile = "workspace-write"
+    for tag in ("scientific-runtime", f"solver-family:{problem.solver_family.value}"):
+        if tag not in policy.policy_tags:
+            policy.policy_tags.append(tag)
+    required_binaries = [solver_binary]
+    if problem.postprocess_plan:
+        required_binaries.append("FieldConvert")
+    for binary in required_binaries:
+        if binary not in policy.required_binaries:
+            policy.required_binaries.append(binary)
+    policy.binary_constraints.setdefault(
+        "solver_binary",
+        {"allow_absolute_path": True, "resolve_on_path": True, "must_exist_at_runtime": True},
+    )
+    if problem.postprocess_plan:
+        policy.binary_constraints.setdefault(
+            "fieldconvert_binary",
+            {"allow_absolute_path": True, "resolve_on_path": True, "must_exist_at_runtime": False},
+        )
+    return policy
+
+
 class SessionCompilerComponent(HarnessComponent):
     async def activate(self, runtime: ComponentRuntime) -> None:
         self._runtime = runtime
@@ -265,7 +293,9 @@ class SessionCompilerComponent(HarnessComponent):
             geometry_mode=geometry_mode,
             geometry=geometry,
         )
-        boundary_conditions = list(problem.boundary_conditions) or _default_boundary_conditions(variables)
+        boundary_conditions = list(problem.boundary_conditions) or _default_boundary_conditions(
+            variables
+        )
         boundary_regions = _build_boundary_regions(geometry, boundary_conditions)
         functions = _build_functions(problem, variables)
         top_level_forcing = _build_top_level_forcing(problem)
@@ -283,6 +313,18 @@ class SessionCompilerComponent(HarnessComponent):
         ]
         session_file_name = str(problem.domain.get("session_file_name", "session.xml"))
         expected_outputs = [session_file_name, "solution.fld"]
+        execution_policy = _default_execution_policy(problem, solver_binary=solver_binary)
+        graph_metadata = {
+            "graph_family": problem.graph_metadata.get("graph_family", "nektar-minimal"),
+            "graph_kind": problem.graph_metadata.get("graph_kind", "session-plan"),
+            "solver_family": problem.solver_family.value,
+            **problem.graph_metadata,
+        }
+        provenance_refs = [
+            *problem.provenance_refs,
+            f"provenance://nektar/problem/{problem.task_id}",
+        ]
+        trace_refs = [*problem.trace_refs, f"trace://nektar/problem/{problem.task_id}"]
 
         return NektarSessionPlan(
             plan_id=f"plan::{problem.task_id}",
@@ -313,6 +355,13 @@ class SessionCompilerComponent(HarnessComponent):
             session_file_name=session_file_name,
             postprocess_plan=list(problem.postprocess_plan)
             or [{"type": "fieldconvert", "output": "solution.vtu"}],
+            graph_metadata=graph_metadata,
+            candidate_identity=problem.candidate_identity.model_copy(deep=True),
+            promotion_metadata=problem.promotion_metadata.model_copy(deep=True),
+            checkpoint_refs=list(problem.checkpoint_refs),
+            provenance_refs=provenance_refs,
+            trace_refs=trace_refs,
+            execution_policy=execution_policy,
         )
 
     def render_session(self, plan: NektarSessionPlan) -> str:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from metaharness.core.models import ValidationReport
+from metaharness.core.models import PromotionContext, ValidationReport
 from metaharness.core.mutation import MutationDecision, MutationProposal
 from metaharness.sdk.api import HarnessAPI
 from metaharness.sdk.base import HarnessComponent
@@ -39,7 +39,9 @@ class PolicyComponent(HarnessComponent):
         boundary = getattr(getattr(self, "_runtime", None), "identity_boundary", None)
         if attestation_id is not None:
             payload["attestation_id"] = attestation_id
-            credential_bound = boundary is not None and boundary.credentials_for(attestation_id) is not None
+            credential_bound = (
+                boundary is not None and boundary.credentials_for(attestation_id) is not None
+            )
             payload["credential_bound"] = "true" if credential_bound else "false"
         self.decisions.append(payload)
         return payload
@@ -63,4 +65,28 @@ class PolicyComponent(HarnessComponent):
             )
         self.proposal_reviews.append(decision)
         self.record(decision.decision, proposal.proposal_id)
+        return decision
+
+    def review_graph_promotion(self, context: PromotionContext) -> MutationDecision:
+        """Governance hook: allow/reject a candidate graph promotion."""
+
+        blocking_issues = [
+            issue for issue in context.validation_report.issues if issue.blocks_promotion
+        ]
+        if not blocking_issues:
+            decision = MutationDecision(
+                proposal_id=context.candidate_id,
+                decision="allow",
+                report=context.validation_report,
+            )
+        else:
+            reasons = "; ".join(f"{issue.code}:{issue.subject}" for issue in blocking_issues)
+            decision = MutationDecision(
+                proposal_id=context.candidate_id,
+                decision="reject",
+                reason=reasons,
+                report=context.validation_report,
+            )
+        self.proposal_reviews.append(decision)
+        self.record(decision.decision, context.candidate_id)
         return decision

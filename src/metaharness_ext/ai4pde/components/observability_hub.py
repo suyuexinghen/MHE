@@ -33,23 +33,32 @@ class ObservabilityHubComponent(HarnessComponent):
         validation_bundle: ValidationBundle,
         evidence_bundle: ScientificEvidenceBundle,
     ) -> dict[str, object]:
+        scored_evidence = evidence_bundle.scored_evidence or validation_bundle.scored_evidence
         event = {
             "task_id": validation_bundle.task_id,
             "graph_version_id": validation_bundle.graph_version_id,
             "status": validation_bundle.summary.get("status", "unknown"),
             "evidence_refs": len(evidence_bundle.provenance_refs),
+            "candidate_id": validation_bundle.candidate_identity.candidate_id,
+            "promotion_outcome": evidence_bundle.promotion_metadata.outcome.value,
+            "safety_outcome": evidence_bundle.safety_evaluation.outcome.value,
+            "rollback_recommended": evidence_bundle.rollback_context.rollback_recommended,
+            "session_event_count": len(evidence_bundle.session_events),
+            "scored_evidence": scored_evidence.score if scored_evidence is not None else None,
         }
         self.scientific_events.append(event)
         self.lifecycle.append(
             {
                 "task_id": validation_bundle.task_id,
                 "graph_version_id": validation_bundle.graph_version_id,
+                "session_event_count": len(evidence_bundle.session_events),
             }
         )
         self.telemetry.append(
             {
                 "task_id": validation_bundle.task_id,
                 "residual_l2": validation_bundle.summary.get("residual_l2", 1.0),
+                "score": scored_evidence.score if scored_evidence is not None else None,
             }
         )
         observation = evaluate_observation_window(
