@@ -131,7 +131,7 @@ Phase 0: Environment Probe + SCF Minimal Baseline
 
 ## 5.6 Phase 4：Examples / Study / Governance Hardening
 
-> 当前状态：已完成首批交付。`examples/manifests/abacus/`、`examples/graphs/abacus-minimal.xml`、executor/validator/minimal-demo 回归覆盖已经落地；future study / mutation axis 仍作为后续扩展入口保留。
+> 当前状态：已完成首批交付。`examples/manifests/abacus/`、`examples/graphs/abacus-minimal.xml`、executor/validator/minimal-demo 回归覆盖已经落地；本阶段的重点不再是抽象意义上的“未来治理硬化”，而是把 ABACUS 文档与行为对齐到当前 strengthened MHE governance primitives。future study / mutation axis 仍作为后续扩展入口保留。
 
 ### 5.6.1 目标
 
@@ -144,6 +144,10 @@ Phase 0: Environment Probe + SCF Minimal Baseline
 3. 增加更真实的 artifact / diagnostics 测试
 4. 评估 future study / mutation axis
 5. 明确 launcher / HPC / feature gate 的 policy 边界
+6. 补齐 manifest `policy.credentials` / `policy.sandbox` 的文档语义
+7. 明确 validator 作为 protected governance component 的边界
+8. 对齐 session / audit / provenance evidence 接口预期
+9. 写清 promotion-ready validation semantics，而不把通过条件等同于直接 graph promotion
 
 ### 5.6.3 验收标准
 
@@ -162,6 +166,9 @@ Phase 0: Environment Probe + SCF Minimal Baseline
 3. executor command / workspace tests
 4. validator tests
 5. minimal demo test
+6. governance-oriented tests
+
+治理相关测试目标应至少覆盖：promotion blocker、protected boundary、environment prerequisite evidence，以及 validator / policy / promotion-ready 语义之间的衔接。
 
 ### 首版重点测试文件
 
@@ -180,3 +187,6 @@ Phase 0: Environment Probe + SCF Minimal Baseline
 - environment / compiler / executor / validator 职责不混淆
 - artifact 与 evidence 面以 `OUT.<suffix>/` 为中心
 - ABACUS+DeePMD 被清楚定义为 ABACUS mode，而不是另一套扩展实现
+- evidence 结构可被 runtime session / audit / provenance 路径稳定消费
+- 关键治理语义已写入文档，而不只存在于代码或测试
+- 已实现能力与 roadmap 表述保持一致，不再把现有能力继续写成纯规划

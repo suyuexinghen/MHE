@@ -104,6 +104,8 @@ class DeepMDStudyComponent(HarnessComponent):
                 task.training["numb_steps"] = int(value)
             elif spec.axis.kind == "rcut":
                 task.descriptor.rcut = float(value)
+            elif spec.axis.kind == "rcut_smth":
+                task.descriptor.rcut_smth = float(value)
             elif spec.axis.kind == "sel":
                 task.descriptor.sel = [int(value)]
             else:

@@ -395,6 +395,7 @@ class DeepMDMutationAxis(BaseModel):
     kind: Literal[
         "numb_steps",
         "rcut",
+        "rcut_smth",
         "sel",
         "model_devi_f_trust_lo",
         "model_devi_f_trust_hi",

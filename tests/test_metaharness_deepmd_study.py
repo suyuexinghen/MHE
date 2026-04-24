@@ -33,6 +33,8 @@ class _FakeExecutor:
     def execute_plan(self, plan):
         axis_value = plan.input_json.get("training", {}).get("numb_steps")
         if axis_value is None:
+            axis_value = plan.input_json.get("model", {}).get("descriptor", {}).get("rcut_smth")
+        if axis_value is None:
             axis_value = plan.param_json.get("model_devi_f_trust_lo")
         if axis_value is None:
             axis_value = plan.param_json.get("simplify", {}).get("pick_number")

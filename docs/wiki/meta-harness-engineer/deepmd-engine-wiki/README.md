@@ -32,7 +32,23 @@
 - **证据面**：`lcurve.out`、checkpoint、frozen/compressed model、`model_devi.out`、`record.dpgen`、autotest 输出
 - **治理面**：typed contracts、validator、预算 / HPC / relabeling 风险控制、审计与后续参数研究
 
-这意味着首版会优先采取 **"JSON config + executable wrapper"** 路线，而不是训练框架内嵌或底层 TensorFlow/PyTorch API 直连路线。
+当前它已不只是 “JSON config + executor wrapper”。现有实现已经覆盖 DeePMD minimal train/test、DP-GEN `run` / `simplify` / `autotest`、typed validator、evidence bundle、policy evaluation 与 study baseline，并且这些输出预期进入 MHE 的统一 promotion / policy / provenance authority path，而不是停留在 extension-local 的局部判断。
+
+这意味着首版会优先采取 **"JSON config + executable wrapper"** 路线，而不是训练框架内嵌或底层 TensorFlow/PyTorch API 直连路线；但在当前实现现实里，这条路线已经自然延伸到了 evidence / policy / study / governance-bearing delivery。
+
+---
+
+## 当前状态
+
+当前 DeepMD 扩展已经完成并受测试覆盖或直接实现支撑的基线包括：
+
+- DeePMD `train` / `freeze` / `compress` / `test` / `model_devi` / `neighbor_stat`
+- DP-GEN `dpgen_run` / `dpgen_simplify` / `dpgen_autotest`
+- mode-aware validator、DP-GEN iteration collection、autotest property summary
+- evidence bundle 与 policy `allow` / `defer` / `reject` 决策
+- study baseline 与 mutation white-list
+
+因此本目录后续阅读不应再把 DeepMD wiki 视为纯前瞻设计文档。当前剩余工作主要是继续把这些现有能力与 strengthened MHE 的 promotion context、protected governance boundary、session / audit / provenance evidence path 写得更一致、更明确。
 
 ---
 
@@ -72,6 +88,8 @@
 
 ## 阅读建议
 
+阅读本目录时，建议把 [05-路线图](05-roadmap.md) 理解为“已实现基线 + 待对齐 strengthened MHE 的剩余缺口”，而不是纯未来 phase plan。
+
 ### 如果你想先理解 DeepMD 为什么适合接入 MHE
 
 先看：[01-概述与定位](01-overview.md)
@@ -92,7 +110,7 @@
 
 ## 与其他 wiki 的关系
 
-- 与 [meta-harness-wiki](../meta-harness-wiki/README.md) 的关系：后者描述通用 `Meta-Harness SDK / Runtime / ConnectionEngine`；本目录描述其上的 `DeepMD / DP-GEN` 域扩展方案。
+- 与 [meta-harness-wiki](../meta-harness-wiki/README.md) 的关系：后者描述通用 `Meta-Harness SDK / Runtime / ConnectionEngine`；本目录描述其上的 `DeepMD / DP-GEN` 域扩展方案。当前 DeepMD validator / policy / evidence 语义应依赖 runtime-level promotion / policy / provenance authority，而不是只停留在 extension-local validator 结论。
 - 与 [nektar-engine-wiki](../nektar-engine-wiki/README.md) 的关系：两者都采用 `compiler -> executor -> diagnostics / validator` 的受控求解器/训练器扩展模式，但 DeepMD 的配置面是 JSON + 多阶段目录工作流，而非 XML + 单 solver binary。
 - 与 [jedi-engine-wiki](../jedi-engine-wiki/README.md) 的关系：两者都更适合包装“声明式配置 + 外部可执行程序”的稳定控制面；JEDI 偏向 `YAML + MPI executable`，DeepMD 偏向 `JSON + training/iteration workspace`。
 - 与 [ai4pde-agent-wiki](../ai4pde-agent-wiki/README.md) 的关系：后者是上层科学智能体 / runtime，本目录是其中可接入的一类 ML potential / concurrent learning 后端。

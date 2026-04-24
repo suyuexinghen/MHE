@@ -21,6 +21,7 @@ INPUT / STRU / KPT + assets + launcher + executable
 4. 收集 artifacts、diagnostics 与 mode-aware evidence
 5. 生成工程结果与科学证据导向的 validator/report
 6. 为后续 study / mutation / policy gate 预留稳定边界
+7. 作为 strengthened MHE 的宿主内扩展，对齐统一 promotion authority、manifest policy、protected governance boundary 与 runtime evidence flow
 
 ---
 
@@ -45,6 +46,8 @@ INPUT / STRU / KPT + assets + launcher + executable
 ## 4.3 组件链
 
 首版建议的组件链如下：
+
+除执行闭环外，blueprint 还应明确一个治理集成前提：ABACUS 不是独立 pipeline，而是运行在 strengthened MHE 宿主中的 extension。它的 gateway / environment / executor / validator 必须把结果汇入统一的 promotion、policy 与 evidence authority，而不是自行形成另一套 graph governance。
 
 ```text
 AbacusGateway
@@ -91,6 +94,7 @@ AbacusGateway
 - 运行 launcher + `abacus`
 - 收集 stdout/stderr/return code
 - 发现 `OUT.<suffix>/` 和关键输出文件
+- 声明并遵守 manifest policy 中的 launcher capability、binary boundary 与 sandbox tier，不把运行扩权隐藏在 executor 实现细节里
 
 ### `AbacusValidator`
 
@@ -100,6 +104,8 @@ AbacusGateway
 - 将 artifacts 统一映射到稳定判定
 - 按 family 给出最小成功规则
 - 给出可审计 `evidence_files`
+- 作为 protected governance component 参与 promotion blocker 判断，而不是普通 helper
+- 将 validator 结果与 policy review / promotion authority 协作起来，支持 allow / defer / reject 风格的后续治理决策
 
 ---
 
@@ -203,6 +209,10 @@ pot_file = model.pb
 
 这能让 validator 和后续 evidence manager 不必重新扫描整个目录树。
 
+### runtime evidence integration
+
+ABACUS artifact/evidence 的设计，不应只服务于 extension-local report。更合理的接口形状是：关键 artifact 路径、environment prerequisite 结果、validation outcome 与补充 diagnostics，能够被映射到 session event、audit record、provenance ref 与 candidate/graph version evidence anchor。当前不要求 ABACUS 自己实现这些 runtime 设施，但 blueprint 必须保证本地 evidence 结构可被它们稳定消费。
+
 ---
 
 ## 4.8 failure taxonomy
@@ -217,11 +227,12 @@ pot_file = model.pb
 
 解释：
 
-- **environment_invalid**：缺 binary / launcher / feature / required path
+- **environment_invalid**：缺 binary / launcher / feature / required path；其中 prerequisite missing 应能形成治理证据
 - **input_invalid**：compiler 生成前或 `--check-input` 暴露的输入前提问题
 - **runtime_failed**：return code 非零、timeout、launcher 崩溃
-- **validation_failed**：返回码为零但没有足够 artifact/evidence
-- **executed**：满足 family 最小成功标准
+- **validation_failed**：返回码为零但没有足够 artifact/evidence；其中关键缺口可升级为 promotion blocker
+- **executed**：满足 family 最小成功标准，但不自动等于已经通过统一治理门
+- **protected_boundary_violation**：试图绕过 protected validator / policy / governed path 的违规情况
 
 ---
 
@@ -238,3 +249,5 @@ pot_file = model.pb
 - 建立 ABACUS 在 MHE 中的正确边界
 - 打通一条真实、最小、可验证的执行链
 - 给后续 family 扩展、artifact 强化和 DPMD mode 留出稳定接口
+
+当前同样不要求 ABACUS 自己实现 hot-swap / recovery 机制，但要求 environment / executor / validator 的语义能被 runtime 的 hot-swap governance、checkpoint 与 audit/provenance path 正确消费，而不会在扩展层形成冲突或信息丢失。

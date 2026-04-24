@@ -1,8 +1,18 @@
 # 05. 路线图
 
-> 状态：proposed | 面向 `metaharness_ext.deepmd` 的正式执行路线图
+> 状态：mixed baseline + remaining alignment | 面向 `metaharness_ext.deepmd` 的正式执行路线图
 
 ## 5.1 推荐执行顺序
+
+### 当前实现快照
+
+截至当前实现，DeepMD wiki 对应的代码基线已经不再是纯 phase-0 规划：
+
+- DeePMD `train` / `freeze` / `compress` / `test` / `model_devi` / `neighbor_stat` 已实现
+- DP-GEN `run` / `simplify` / `autotest` 已实现
+- validator status 已覆盖 `baseline_success`、`simplify_success`、`converged`、`autotest_validated` 等模式结果
+- evidence bundle、policy `allow` / `defer` / `reject`、study baseline 已存在
+- 当前主要缺口是继续与 strengthened MHE 的 promotion context、session event/store、manifest policy、scored evidence 与 provenance authority 做更完整对齐
 
 建议执行顺序如下：
 
@@ -28,6 +38,8 @@ Phase 0: Environment Probe + DeePMD Minimal Train/Test Foundation
 ---
 
 ## 5.2 Phase 0：Environment Probe + DeePMD Minimal Train/Test Foundation
+
+> 状态：已完成
 
 ### 5.2.1 目标
 
@@ -65,6 +77,8 @@ Phase 0: Environment Probe + DeePMD Minimal Train/Test Foundation
 
 ## 5.3 Phase 1：DeePMD Artifact & Diagnostics Strengthening
 
+> 状态：已大体完成
+
 ### 5.3.1 目标
 
 把 Phase 0 从“能运行 DeePMD”推进到“能结构化解释训练与测试结果”。
@@ -88,6 +102,8 @@ Phase 0: Environment Probe + DeePMD Minimal Train/Test Foundation
 ---
 
 ## 5.4 Phase 2：DP-GEN Run Baseline
+
+> 状态：已完成
 
 ### 5.4.1 目标
 
@@ -118,6 +134,8 @@ param/machine compile -> workspace -> dpgen run -> iteration collect -> validate
 
 ## 5.5 Phase 3：DP-GEN Simplify / Transfer Learning Baseline
 
+> 状态：已完成基础闭环，仍需继续对齐治理证据语义
+
 ### 5.5.1 目标
 
 让 `simplify` / transfer-learning 进入同一套 typed workflow，支持 relabeling 风格迭代。
@@ -139,6 +157,8 @@ param/machine compile -> workspace -> dpgen run -> iteration collect -> validate
 ---
 
 ## 5.6 Phase 4：Autotest & Property Validation Layer
+
+> 状态：已完成最小实现，仍需继续补齐治理整合
 
 ### 5.6.1 目标
 
@@ -162,6 +182,8 @@ param/machine compile -> workspace -> dpgen run -> iteration collect -> validate
 ---
 
 ## 5.7 Phase 5：Study / Mutation Layer
+
+> 状态：已建立 baseline，仍待补齐 `ScoredEvidence` / `BrainProvider` 等更上层接缝
 
 ### 5.7.1 目标
 
@@ -193,6 +215,8 @@ param/machine compile -> workspace -> dpgen run -> iteration collect -> validate
 
 ## 5.8 Phase 6：HPC / Governance Hardening
 
+> 状态：待对齐 strengthened MHE 的重点剩余项
+
 ### 5.8.1 目标
 
 补强真实外部环境与高成本 relabeling 场景下的稳定性和治理边界。
@@ -204,6 +228,9 @@ param/machine compile -> workspace -> dpgen run -> iteration collect -> validate
 3. 引入高成本 `fp` 与长时训练审批 gate
 4. 引入 reproducibility / budget / relabeling 风险检查
 5. 明确 observation window 与 candidate promotion 语义
+6. 把 manifest `policy.credentials` / `policy.sandbox`、HPC / credential boundary 与当前 manifest 兼容策略写清楚
+7. 把 validation / evidence 与 session event、audit、provenance refs 的预期形状进一步对齐
+8. 视需要把 extension evidence 与 `ScoredEvidence`、`BrainProvider` seam 对齐，而不是继续停留在 extension-local report
 
 ### 5.8.3 验收标准
 
@@ -225,6 +252,13 @@ param/machine compile -> workspace -> dpgen run -> iteration collect -> validate
 5. `test_metaharness_dpgen_compiler.py`
 6. `test_metaharness_dpgen_collector.py`
 7. `test_metaharness_deepmd_validator.py`
+
+这里还应显式加入 governance-oriented coverage：
+
+- promotion blocker 候选失败态是否被稳定表达
+- protected validator boundary 是否不会被普通组件语义绕开
+- DP-GEN iteration evidence、autotest property evidence 不完整时是否进入 `defer`
+- environment prerequisite / workspace prerequisite 是否能与 runtime governance 证据对齐
 
 ### e2e 测试优先级
 
@@ -256,15 +290,15 @@ param/machine compile -> workspace -> dpgen run -> iteration collect -> validate
 
 ### M5：Autotest Layer
 
-交付：Phase 4 完成。至少一类性质验证结果可被结构化消费。
+交付：Phase 4 的最小实现已存在。至少一类性质验证结果可被结构化消费；后续重点转为把这些结果接到更完整的 governance / provenance path。
 
 ### M6：Study Layer
 
-交付：Phase 5 完成。至少一种参数轴可做 typed sweep。
+交付：Phase 5 的 baseline 已存在。至少一种参数轴可做 typed sweep；后续重点转为 scored evidence 与上层决策接缝。
 
 ### M7：Governance Hardening
 
-交付：Phase 6 完成。高成本步骤与外部环境治理更清晰稳健。
+交付：Phase 6 完成。高成本步骤与外部环境治理更清晰稳健，并与 strengthened MHE 的 promotion context、session evidence、manifest policy 和 provenance authority 一致。
 
 ---
 

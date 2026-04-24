@@ -209,12 +209,18 @@ phase-two 在不新增 task family 的前提下，引入了一层轻量 mode-spe
 - `passed: bool`
 - `status: Literal[
     "environment_invalid",
+    "workspace_failed",
     "trained",
     "frozen",
     "tested",
     "compressed",
     "model_devi_computed",
     "neighbor_stat_computed",
+    "baseline_success",
+    "simplify_success",
+    "converged",
+    "autotest_validated",
+    "run_failed",
     "runtime_failed",
     "validation_failed",
   ]`
@@ -222,17 +228,23 @@ phase-two 在不新增 task family 的前提下，引入了一层轻量 mode-spe
 - `summary_metrics: dict[str, float | str]`
 - `evidence_files: list[str]`
 
-这里的 validator 语义已经与 phase-two 模式对齐：
+这里的 validator 语义已经与当前 mode surface 对齐：
 
 - 缺失 binary 或环境不可用时返回 `environment_invalid`
-- 非零退出、超时或运行期失败返回 `runtime_failed`
+- workspace 准备失败时返回 `workspace_failed`
+- 非零退出、超时或运行期失败时，DeePMD 单体命令通常返回 `runtime_failed`，而 DP-GEN `run` / `simplify` 返回 `run_failed`
 - 零退出但没有足够 evidence 时返回 `validation_failed`
 - `freeze` 成功状态是 `frozen`，而不是复用 `trained`
 - `compress` 成功状态是 `compressed`
 - `model_devi` 成功状态是 `model_devi_computed`
 - `neighbor_stat` 成功状态是 `neighbor_stat_computed`
+- `dpgen_run` 成功状态是 `baseline_success`
+- `dpgen_simplify` 成功状态是 `simplify_success`，若 evidence 明确表明收敛则升级为 `converged`
+- `dpgen_autotest` 成功状态是 `autotest_validated`
 
-`summary_metrics` 也已经承担 phase-two 的对外汇总职责：
+这些状态不只是“本地跑完了没有”，也是后续 policy / promotion path 的治理输入：失败态通常意味着 candidate 暂不具备 promotion readiness，成功态则只说明其具备进入统一 authority path 的资格。
+
+`summary_metrics` 也已经承担当前实现的对外汇总职责：
 
 - `compress` 会同步 `compressed_model_path`
 - `model_devi` 会同步 `model_devi_metrics`
@@ -248,6 +260,8 @@ phase-two 在不新增 task family 的前提下，引入了一层轻量 mode-spe
 ```python
 Literal["init_bulk", "init_surf", "run", "simplify", "autotest"]
 ```
+
+与当前实现对齐时，文档还应明确区分 DP-GEN 的 workflow surface 与统一 executor surface：typed task family 仍可使用 `run` / `simplify` / `autotest` 表达领域语义，但真正进入 `DeepMDExecutionMode` 的执行模式已经落到 `dpgen_run`、`dpgen_simplify`、`dpgen_autotest`，从而与 DeePMD 自身的 `train` / `freeze` / `compress` / `test` / `model_devi` / `neighbor_stat` 共享一套 mode-aware validator / evidence pipeline。
 
 ### `DPGenRunSpec`
 
@@ -394,7 +408,15 @@ artifact provenance 最好还能回答“哪个命令产生了什么”：
 - `dp test` -> RMSE 摘要与可选 detail outputs
 - `dp model-devi` / `dpgen run` -> `model_devi.out`、candidate/accurate/failed 证据
 
-否则 evidence bundle 很容易只剩“文件存在性列表”，而失去可解释性。
+当前实现还要求 evidence bundle 能表达 completeness 与 downstream governance 线索，而不只是 artifact refs：
+
+- validation 是否已附着到 evidence bundle
+- DP-GEN `run` / `simplify` 是否带有 iteration collection；缺失时应形成 warning / defer 线索
+- `autotest` 是否带有结构化 property results；缺失时不应伪装成“已验证”
+- 是否出现 relabeling / transfer-learning 线索，需要作为风险提示保留下来
+- 后续需要映射到的 session / audit / provenance refs 预期形状，例如 candidate id、graph version、session event linkage、policy decision refs
+
+否则 evidence bundle 很容易只剩“文件存在性列表”，而失去可解释性，也难以支撑治理路径消费。
 
 ---
 
@@ -420,7 +442,18 @@ artifact provenance 最好还能回答“哪个命令产生了什么”：
 - `dp neighbor_stat` 是否能解析最小邻居统计，如 `min_nbor_dist`、`max_nbor_size` 与 `sel`
 - 当 workflow 提供必要信息时，validator 能返回 mode-specific 成功状态，而不仅是 `return_code == 0`
 
-### 3.6.3 不应延后的领域判据
+### 3.6.3 工程通过、科学通过与 promotion-ready 的边界
+
+这里至少要区分四层边界：
+
+- **工程通过**：命令运行、workspace 布局、必要 artifact 与日志存在
+- **科学通过**：训练、偏差或性质结果提供了最小可解释判据，如 RMSE、`model_devi` 指标、autotest property summary
+- **promotion-ready**：validation 与 evidence 已足够完整，可以进入统一 promotion / policy authority path 审核
+- **policy-defer**：运行或验证未必失败，但 evidence completeness、session/provenance linkage、iteration detail、property detail 等仍不足，因而只能延后而不能直接晋升
+
+这四层边界不应被压扁成一个布尔结果。DeepMD validator 的职责是把这些边界信号表达清楚，而不是绕开 runtime governance 直接做 graph 级裁决。
+
+### 3.6.4 不应延后的领域判据
 
 以下判据不应全都推迟到“高级 diagnostics phase”：
 
@@ -432,14 +465,22 @@ artifact provenance 最好还能回答“哪个命令产生了什么”：
 
 ---
 
-## 3.7 未来 mutation / study 约束
+## 3.7 study / mutation：当前实现与后续约束
 
-后续 study / mutation 必须遵守：
+当前 DeepMD 扩展已经有最小 study baseline：
+
+- `DeepMDStudySpec` / `DeepMDStudyReport` / `DeepMDStudyTrial` 已存在
+- mutation 仅允许作用于白名单 typed axis，如 `numb_steps`、`rcut`、`sel`、`model_devi_f_trust_lo`、`model_devi_f_trust_hi`、`relabeling.pick_number`
+- 每个 trial 会串联 compiler -> executor -> validator -> evidence bundle -> policy evaluation
+- study report 会给出推荐值、推荐 trial 与最小理由
+
+后续 study / mutation 仍必须遵守：
 
 - 只允许对白名单 typed fields 做 mutation
 - 不直接在生成后的 JSON 文本上做 patch
 - 不直接绕过 `machine.json` 资源与安全边界
 - 对高成本 relabeling / HPC 提交要显式进入 policy gate
+- 后续还应继续向 strengthened MHE 对齐 `ScoredEvidence` 与 `BrainProvider` seam，但这部分目前仍属于待补齐项，而不是现有 contracts 已完成的能力
 
 建议的首批参数轴：
 

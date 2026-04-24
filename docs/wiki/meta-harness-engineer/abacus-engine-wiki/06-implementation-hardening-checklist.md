@@ -62,6 +62,7 @@
 - **unsupported** 与 **failed** 必须区分
 - 缺少某个 probe 子命令，不自动等于环境非法
 - 但若某个 family/mode 明确依赖某探针能力，则缺失应升级为 environment prerequisite failure
+- probe 输出必须能区分“运行前提缺失”与“已经尝试运行但失败”，并能被映射为治理证据，而不是只生成本地诊断消息
 
 ### 6.3.2 launcher 检查必须和 `abacus` binary 检查分离
 
@@ -230,6 +231,8 @@
 
 不要让 executor 接收任意 shell command。首版应只接受结构化 command parts：
 
+同时，command / launcher / binary / sandbox tier 语义必须与 manifest policy 对齐。也就是说，executor 看到的可执行边界，必须已经被 manifest `policy.credentials`、`policy.sandbox` 与相关 capability 声明收紧，而不是到运行时再临时扩写权限面。
+
 - launcher 段
 - launcher args 段
 - `abacus` binary 段
@@ -314,6 +317,8 @@ validator 必须采用 **多证据联合判定**。
 - 缺 DeePMD support 却请求 `md + dp`，应优先视作前提不足，而不是 runtime failure
 
 ### 6.7.4 validator 输出必须便于审计
+
+validator 输出还应能表达 promotion-blocking 条件，至少要区分“普通失败”与“足以阻断 promotion 的治理级失败”。如果 validator 已被声明为 protected governance component，其边界也不能被隐式绕开，例如用局部 helper、直接 artifact 猜测或跳过 policy review 的方式替代正式验证。
 
 `ValidationReport` 至少应携带：
 
@@ -408,6 +413,9 @@ supported_combinations = {
 - workspace 是如何准备与归档的
 - 每个 family 的最小成功证据到底是什么
 - 哪些失败属于 environment，哪些属于 input，哪些属于 runtime，哪些属于 validation
+- evidence 如何被 runtime session / audit / provenance 消费
+- 哪些 validator / policy 语义属于 protected governance boundary，且不可被隐式绕过
+- 关键治理语义是否已经写进 wiki，而不是只存在于代码或测试
 
 如果这些问题仍然只能用自然语言解释，而不能被翻译成 schema、表格或测试断言，就说明实现前的 rigor 还不够。
 

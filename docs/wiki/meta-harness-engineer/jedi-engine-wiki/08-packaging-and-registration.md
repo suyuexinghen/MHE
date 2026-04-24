@@ -78,8 +78,11 @@ JEDI extension 的 capability 命名应围绕：
 
 - gateway 挂在哪个 slot
 - environment/compiler/executor/validator 分别用什么稳定名字注册
+- 哪些 slot 承担 protected / governance responsibility
 
 slot 的价值在于：让 wiring、manifest 和 reviewer 讨论的是同一组固定名称，而不是隐式约定。
+
+对 JEDI 而言，尤其要避免把 validator、smoke policy 或后续 policy-bearing 组件误写成“普通 helper slot”。其中 validator 所在 slot 应被理解为 governance slot：其产出会进入更高层 promotion / policy 路径，不能被 wiring 侧随意替换成弱语义实现。
 
 ---
 
@@ -103,6 +106,14 @@ manifest 的主要目标不是“方便动态魔法”，而是：
 - 让 importability 可测
 - 让组件边界可审计
 - 让注册关系不依赖读者猜测
+
+当前 strengthened MHE 语义下，manifest 还应承担明确的治理声明责任。JEDI 文档层至少应把以下字段语义写清：
+
+- `kind`：区分 `core` 与 `governance` 组件；当前 validator manifest 已属于 `governance`
+- `safety.protected`：标识 protected boundary；当前 validator 已是 protected component
+- `policy.credentials`：描述凭证/主体边界的预留 policy surface
+- `policy.sandbox`：描述 launcher / binary / sandbox 约束的 policy surface
+- legacy `safety.sandbox_profile`：作为兼容字段保留，但不应再被误解为完整 policy 模型
 
 ---
 
@@ -133,6 +144,8 @@ JEDI extension 应尽量对齐现有扩展模式，尤其是：
 - manifest 与类名一一对齐
 - tests 以 `test_metaharness_<extension>_<topic>.py` 命名
 - capability / slot / component 边界一致可读
+
+同时还应与 ABACUS / DeepMD / Nektar 等扩展共享一致的治理基线：manifest 不只是注册元数据，还要能表达 protected boundary、component kind、以及后续 policy/evidence integration 的宿主语义。
 
 ---
 

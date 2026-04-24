@@ -42,17 +42,20 @@
 
 ### Phase 1
 
-目标：
+当前实现基线已经包含：
 
-- toy smoke baseline
-- richer diagnostics interpretation
-- scientific acceptance checks
+- toy smoke baseline / smoke policy 组件
+- diagnostics enrichment
+- study 组件与基础 mutation/recommendation 流程
+
+因此这里更准确的理解不是“这些能力还没开始做”，而是：它们已经作为当前 JEDI extension 的现状存在，后续工作重点是把这些现有能力继续收敛为更清晰的 governance-bearing surface。
 
 验收重点：
 
 - 至少一个 toy executable 的 smoke policy 能稳定落地
 - artifact/evidence interpretation 稳定
 - validator/report 可区分 executed 与更高层 scientific conclusion
+- smoke / diagnostics / study 的输出不与 strengthened MHE promotion authority 冲突
 
 需要额外强调的是：Phase 1 的 smoke baseline 不能预先硬编码为“必然是 `hofx`”。更稳妥的设计约束应是：
 
@@ -64,13 +67,17 @@
 
 ### Phase 2+
 
-后续再进入：
+后续剩余对齐项应集中在：
 
+- promotion governance compatibility
+- manifest policy hardening
+- session / evidence integration
+- richer scored evidence
 - real variational baseline
 - local ensemble DA baseline
-- diagnostics strengthening
-- study / mutation layer
 - environment / HPC hardening
+
+也就是说，`smoke policy`、`diagnostics`、`study / mutation layer` 不再应继续写成“未来才会有”，而应被视为已落地能力之上的后续治理对齐工作。
 
 ---
 
@@ -118,6 +125,7 @@
 - validator 是否稳定区分 environment / validation / runtime
 - 测试是否覆盖 executable name 与 CTest name 的分离
 - 文档是否仍然坚持“设计 MHE extension”，而不是回到软件综述
+- 设计与测试语义是否与 strengthened MHE governance model 对齐，而不是只满足 extension-local correctness
 
 ---
 

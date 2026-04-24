@@ -140,6 +140,8 @@ class AbacusEnvironmentReport(BaseModel):
 
 这个报告的作用不是取代 validator，而是把“环境是否满足运行前提”前移为显式判据。
 
+在当前治理语义下，它也不只是本地 preflight 记录。环境报告应能承载 promotion prerequisites / missing prerequisite evidence，例如 launcher 缺失、feature support 为 `unknown`、required path 不完整等事实，以便后续 validator、policy review 与 runtime governance path 共享同一前提证据。
+
 ---
 
 ## 3.6 运行计划
@@ -196,6 +198,8 @@ class AbacusRunArtifact(BaseModel):
     result_summary: dict[str, Any] = Field(default_factory=dict)
 ```
 
+这些 artifact 不仅服务于 extension-local 调试与验证，也应成为 session evidence、audit anchor 与 provenance linkage 的上游输入。关键运行输出若被 validator 采信，就应能稳定映射到 candidate / graph version / checkpoint / audit refs 等统一治理对象，而不是停留在“目录里有文件”的局部事实。
+
 推荐 summary 中保留：
 
 - `suffix`
@@ -225,6 +229,8 @@ class AbacusValidationReport(BaseModel):
 
 validator 的职责是将环境、执行与 artifact 统一映射到稳定语义，而不是负责重新解析整个 workspace。
 
+在首版 contract 语义里，`AbacusValidationReport` 还应表达 promotion-readiness / governance-readiness：哪些问题只是工程失败，哪些已经足以形成 `blocks_promotion` 候选，哪些情况虽然 `passed=true` 但仍需交给 policy review 做 allow / defer 判断。这样 validator 的结果才能自然衔接 runtime governance，而不是停留在 extension 内部的二元通过/失败。
+
 ---
 
 ## 3.9 证据面
@@ -242,12 +248,19 @@ ABACUS extension 的 evidence-first 原则应强调：
 - effective input snapshot
 - main logs
 - final structure / MD / restart 产物
+- environment prerequisite evidence
+- candidate / graph version / checkpoint / audit refs 的上游锚点
+- session event linkage 预期使用的稳定路径或标识
 
 ---
 
 ## 3.10 首版 contract 边界
 
-首版 contracts 不应过度建模，也不应过度自由：
+首版 contracts 不应过度建模，也不应过度自由。
+
+同时，当前并不要求 ABACUS extension 自己实现 `SessionStore` 或独立的 runtime audit layer，但要求它的 contracts、artifact 命名与 evidence 组织方式不能与统一 runtime evidence flow 冲突。也就是说，本地 contracts 可以保持轻量，但必须预留能被 session / audit / provenance 消费的稳定接口。
+
+具体来说：
 
 - 不把所有 ABACUS 参数都拆成强类型字段
 - 也不允许完全无约束的 `INPUT` 文本透传成为默认路径

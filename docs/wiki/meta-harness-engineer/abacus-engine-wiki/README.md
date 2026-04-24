@@ -85,6 +85,7 @@
 - Phase 4：examples / graph / regression hardening
 
 同时，本目录需要与 strengthened MHE 的 governance / evidence 基线继续对齐，尤其是 promotion authority、protected validator / policy boundary、manifest credential / sandbox policy，以及 session / audit / provenance evidence integration 的叙述。
+
 ## 阅读前提与当前文档缺口
 
 阅读本目录时，建议同时带着 strengthened MHE 的统一治理语义来理解。尤其是 `03` / `04` / `05` / `06` 中涉及 validator、policy、evidence、roadmap 的段落，需要按 promotion / protected boundary / runtime evidence integration 的视角吸收，而不能只按 extension-local pipeline 理解。

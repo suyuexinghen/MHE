@@ -119,6 +119,9 @@ DPGenGateway
 - 区分环境失败、配置失败、训练失败、测试失败与已验证成功
 - 生成 `DeepMDValidationReport`
 - 不直接承担 config compiler 与 process execution 逻辑
+- 作为 `kind = governance` 且 `protected = true` 的 validator boundary，负责把 extension-local 运行结果提升为 promotion-aware validation signal
+- 将 `environment_invalid`、`workspace_failed`、`run_failed`、`runtime_failed`、`validation_failed` 等失败态显式暴露给后续 policy / promotion path；这些结果在 strengthened MHE 中应被视为潜在 promotion blockers，而不是普通提示
+- 对成功态继续保留 mode-aware 语义：`trained`、`frozen`、`tested`、`compressed`、`model_devi_computed`、`neighbor_stat_computed`、`baseline_success`、`simplify_success`、`converged`、`autotest_validated`
 
 ### `DeepMDEvidenceManager`
 
@@ -133,6 +136,8 @@ DPGenGateway
   - validation summary
   - graph version / provenance refs
 - 形成稳定 `DeepMDEvidenceBundle`
+- 不把 evidence 退化成“文件归档列表”；当前 evidence bundle 还承担 governance-bearing 输入责任，用于后续 policy `allow` / `defer` / `reject` 决策
+- 对 DP-GEN `run` / `simplify` 缺失 iteration collection、对 `autotest` 缺失 property results 等情况发出 evidence-completeness warning，为 runtime-level review、session event 与 provenance linkage 提供上游信号
 
 ---
 
@@ -215,6 +220,8 @@ DPGenGateway
   - converged
   - scientific check failed
 - 对 `simplify` / `autotest` 也返回统一状态模型
+- 对当前实现而言，DP-GEN 路径已经统一收敛到 `DeepMDValidationReport` 的 mode-aware status surface：`baseline_success`、`simplify_success`、`converged`、`autotest_validated` 与各类失败态共同组成 allow / defer / reject 前的治理输入
+- 与 `DeepMDValidator` 一样，这里应被理解为 protected governance boundary 的一部分：它负责陈述 iteration evidence 是否足够、收敛是否成立、autotest 性质证据是否存在，而不是自己决定 graph promotion
 
 ---
 
@@ -266,6 +273,18 @@ DP-GEN 的 `run` 不是黑盒。至少应显式表达：
 - compiler 只从 typed spec 生成受控 JSON
 - study / mutation 只能作用于 typed spec
 - 不直接在已生成 `input.json` / `param.json` 上做无约束 patch
+
+### 2.4.4 与 MHE graph promotion 的关系
+
+DeepMD / DP-GEN 组件链的本地输出，最终都不应直接等价于“可提升到 active graph”。更准确的关系是：
+
+- executor 负责产生 mode-aware run artifact
+- validator 负责把运行结果整理成 promotion-aware validation status
+- evidence bundle 负责把 artifacts、diagnostics、iteration state、autotest results 与 warning 收敛成可审查输入
+- policy 负责基于 evidence completeness 和 validation status 给出 `allow` / `defer` / `reject`
+- 真正的 graph candidate promotion authority 仍属于 strengthened MHE runtime 的统一 path，例如 `PromotionContext`、policy-gated `commit_graph()` 与后续 audit / provenance 流
+
+因此 extension-local 的 “通过” 只表示 DeepMD 侧已提供了足够好的候选证据；它仍需要进入 runtime-level authority path 才能成为正式 graph 变更。
 
 ---
 
@@ -356,6 +375,8 @@ DPGenRunSpec
 - `training_init_model`、`--restart`、`--init-frz-model`、finetune 等初始化路径
 - `record.dpgen` 与 `iter.*` 目录共同定义 resume/recover 语义
 - 高成本 `fp`、remote root、scheduler 仅应在环境与 policy 层被显式放行后进入执行链
+
+从这个最小 happy path 到真正的 promotion-ready outcome 之间，还隔着统一治理门：validation status、evidence completeness、policy decision、candidate/session/provenance linkage 都需要满足 runtime authority path 的要求，不能把 workspace 成功直接写成 graph promotion 成功。
 
 ---
 

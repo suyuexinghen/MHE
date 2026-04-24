@@ -38,6 +38,10 @@ JSON config + workspace + executable
 - hot reload / checkpoint / migration
 - provenance / audit
 - mutation proposal safety pipeline
+- promotion context 与 policy-gated graph commit authority
+- session evidence 流、audit linkage、provenance anchoring
+- protected-component enforcement
+- manifest-level policy surface，包括 `kind`、`safety.protected`、`policy.credentials`、`policy.sandbox` 等当前 strengthened MHE 的治理入口
 
 ### 领域层：DeepMD 扩展自己负责
 
@@ -103,8 +107,10 @@ MHE/src/metaharness_ext/deepmd/
 
 理由：
 
-- validator 决定什么叫“训练通过 / 科学上够用”
+- validator 决定什么叫“训练通过 / 科学上够用”，并把结果升级成 promotion-aware governance signal
 - evidence manager 决定交付证据结构，不能被普通 proposal 静默弱化
+- 当前实现中 validator manifest 已经是 `kind = governance` 且 `protected = true`；文档应把它明确写成治理边界，而不是普通 helper
+- policy / review responsibility 可以继续由 runtime-level gate 或 extension-local policy evaluator 承担，但不应允许其绕开 protected validator 所陈述的失败或证据缺口
 
 ### 建议 capability IDs
 
@@ -221,6 +227,15 @@ validator 需要至少区分：
 - scientific check pass / fail
 - convergence reached / not reached
 
+并且这些结论还要进一步进入 promotion authority：
+
+- validator 提供 mode-aware status 与失败原因
+- evidence bundle 提供 artifacts、iteration details、autotest properties 与 completeness warning
+- policy 根据 validation + evidence 给出 `allow` / `defer` / `reject`
+- runtime 再基于 promotion context、candidate state、session / provenance 证据决定是否允许 graph promotion
+
+这保证 DeepMD 的 validator / policy / study 能服务于统一治理路径，而不是形成一个私有的、不可追溯的本地裁决面。
+
 ---
 
 ## 4.7 首版验证与 evidence 蓝图
@@ -248,6 +263,18 @@ validator 需要至少区分：
 - 使用了哪些 machine / scheduler / remote 资源
 - 是否发生 resume / recover
 - 当前配置是否属于 transfer-learning / simplify 特殊模式
+- validation status 与 policy decision 是什么
+- evidence 是否存在 completeness warning，例如 iteration evidence 缺失、autotest property 缺失、stdout/stderr 缺失
+- 后续 session / audit / provenance 需要挂接哪些引用，例如 candidate、graph version、session event、policy gate 记录
+
+### runtime evidence integration
+
+DeepMD extension 侧不要求自己实现 session store、audit store 或 graph promotion engine，但它必须保证产物形状与这些 runtime evidence 流兼容：
+
+- run artifact 要有稳定的 run id、working directory、stdout/stderr 与 command provenance
+- validation 要能表达 promotion-blocking 失败态与 mode-aware 成功态
+- evidence bundle 要能容纳 warning、policy refs 与后续 provenance linkage
+- roadmap 中尚未落地的部分，应明确标注为“待对齐 strengthened MHE”，而不是假装 extension 已经自带完整 session / scored-evidence 子系统
 
 ---
 
@@ -261,6 +288,8 @@ validator 需要至少区分：
 - 在线 DP Library 同步与写回
 - 无约束 autotuning / neural architecture search
 - 把 DeePMD 训练框架内核作为 MHE 子组件直接嵌入
+
+这里也要澄清：当前不要求 DeepMD 扩展自己实现完整 hot-swap / recovery / session-store 基建，但必须保证 validator、evidence、policy、workspace/provenance 语义可以被 runtime 的 hot-swap governance、checkpoint、audit、promotion path 正确消费。
 
 ---
 
