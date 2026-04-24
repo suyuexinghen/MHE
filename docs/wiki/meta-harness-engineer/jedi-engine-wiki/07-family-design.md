@@ -2,16 +2,14 @@
 
 ## 7.1 为什么 family 是一等设计对象
 
-本文档中的概念层术语统一使用 **application family**；代码字段继续使用 `application_family`。phase mapping 以 [06-实施路径](06-implementation-phases.md) 为准，contract 形状以 [03-contracts 设计](03-contracts.md) 为准。
-
-`metaharness_ext.jedi` 的首版如果不把 `application_family` 当成一等对象，后续几乎所有能力都会退化：
+如果 `metaharness_ext.jedi` 不把 `application_family` 当成一等对象，后续几乎所有能力都会退化：
 
 - compiler 会变成条件分支堆积
 - validator 会失去稳定 failure taxonomy
-- study/mutation 会绕过 typed boundary
-- 文档与测试会不断混淆“family”与“具体 YAML 样例”
+- study / mutation 会绕过 typed boundary
+- 文档与测试会不断混淆 family 与具体 baseline
 
-因此，`application_family` 必须成为 gateway、contracts、compiler、executor 和测试命名的共同主轴。
+因此，`application_family` 必须成为 gateway、contracts、compiler、executor 与测试命名的共同主轴。
 
 ---
 
@@ -24,7 +22,7 @@
 - `hofx`
 - `forecast`
 
-它们不是“JEDI 全宇宙应用的完整分类”，而是 **MHE 首版正式支持边界**。
+它们不是 JEDI 全部应用的完整分类，而是 **MHE 对 JEDI extension 的首版正式支持边界**。
 
 ---
 
@@ -32,11 +30,11 @@
 
 ### 设计定位
 
-`variational` 是首个正式 scientific baseline 的核心 family，也是最容易暴露 compiler/validator 边界是否合理的 family。
+`variational` 是一个独立 family，用来承载 3D-Var / 4D-Var / 4DEnsVar / 4D-Weak 这一组具有共同结构的应用。
 
 ### 首版需要承载的差异
 
-- `cost_type` 差异：`3D-Var` / `4D-Var` / `4DEnsVar` / `4D-Weak`
+- `cost_type`：`3D-Var` / `4D-Var` / `4DEnsVar` / `4D-Weak`
 - `window begin` / `window length`
 - `background` / `background error`
 - `observations`
@@ -46,7 +44,7 @@
 ### 需要刻意避免的错误
 
 - 把 `3DFGAT` 当成独立 `cost_type`
-- 把 `variational` family 和某个单一 toy YAML 样例绑定死
+- 把 `variational` family 与某个 toy YAML 样例绑定死
 - 把 minimizer 细节下沉到 executor
 
 ---
@@ -55,7 +53,7 @@
 
 ### 设计定位
 
-这是第二类正式 family，不应被视作“variational 的可选模式”。
+`local_ensemble_da` 是与 `variational` 并列的独立 family，而不是后者的可选模式。
 
 ### 首版需要承载的差异
 
@@ -67,7 +65,7 @@
 
 ### 设计提醒
 
-当 `local_ensemble_da` 进入同一 extension 时，contracts 的优劣会立刻暴露：如果当前 contract 过于 variational-centric，这个 family 会变得异常别扭。
+如果 contracts 过于 variational-centric，这个 family 会立即暴露设计问题。因此 family 划分不仅是命名问题，也是 contract 形状与 compiler 结构的约束条件。
 
 ---
 
@@ -75,21 +73,27 @@
 
 ### 设计定位
 
-`hofx` 不只是辅助功能，而是最适合作为 smoke baseline 的 family。
+`hofx` 是一个独立 family，用于表达 observation-oriented 的运行路径。
 
-### 作为首个 smoke baseline 的原因
+### 结构特征
 
-- 比完整 variational / ensemble DA 更轻
-- 能更快暴露 observations/input/diagnostics 路径问题
-- 仍然覆盖 YAML -> executable -> outputs/diagnostics 主链
+相较于 `variational` 与 `local_ensemble_da`，`hofx` 的结构重点更集中在：
 
-### 依赖前提
+- geometry / state
+- time window
+- observations
+- model（若 workflow 需要）
+- observation-side outputs / diagnostics
 
-`hofx` 作为首个 smoke baseline 的成立前提，不是“它逻辑上更轻”这一点本身，而是 **observation stack 与对应 test data 在当前环境中确实可用**。如果这些前提未被 environment probe 证实，则 `hofx` 只能是优先候选，而不能是硬编码的 Phase 1 必经路径。
+### 设计意义
 
-### 工程意义
+把 `hofx` 作为独立 family，而不是把它折叠进其他 family，有助于：
 
-因此更准确的表达是：`hofx` 应被设计为 **首选 smoke baseline candidate**，并由 environment probe + data readiness 决定是否成为当前环境下的首批真实运行路径。
+- 保持 contracts 的边界清晰
+- 让 compiler 明确生成不同顶层块
+- 让 validator 与 diagnostics surface 更自然地表达 observation-side evidence
+
+是否把某个 `hofx` 样例选为 smoke baseline，属于 roadmap / implementation plan 的问题，而不是 family 定义本身。
 
 ---
 
@@ -97,41 +101,41 @@
 
 ### 设计定位
 
-`forecast` 在首版中优先级低于 `hofx` / `variational` / `local_ensemble_da`，但仍值得先纳入 contract 边界。
+`forecast` 在首版中优先级较低，但仍值得先纳入 contract 边界。
 
 ### 原因
 
-- 它提供另一类非 observation-centric 的应用面
-- 提前纳入 family 列表，可以避免未来再破坏 discriminated union
-- 它是扩展完整性的一部分，即使不作为首批 baseline
+- 它代表另一类非 observation-centric 应用面
+- 提前纳入 family 集合，可以避免未来破坏 discriminated union
+- 它有助于保持扩展模型的完整性，即使不是首批 baseline
 
 ---
 
 ## 7.7 family 与 baseline 的关系
 
-必须区分：
+必须严格区分：
 
 - **family**：扩展层支持的应用族边界
-- **baseline**：当前 phase 选择来跑通或验证的具体样例路径
+- **baseline**：某个 family 下被选中的具体运行样例
 
 例如：
 
 - `hofx` 是 family
-- `qgHofX4D.x` smoke 是 baseline
+- `qgHofX4D.x` 是某个可能的 baseline
 - `variational` 是 family
-- `qg4DVar.x + 4dvar_rpcg.yaml` 是 baseline
+- `qg4DVar.x + 4dvar_rpcg.yaml` 是某个可能的 baseline
 
-如果这两个概念混掉，roadmap、tests 和 validator 语义都会失真。
+如果这两个概念混掉，contracts、roadmap、tests 与 validator 语义都会失真。
 
 ---
 
 ## 7.8 family 扩展规则
 
-新增 family 之前，至少回答以下问题：
+新增 family 之前，至少要回答以下问题：
 
 - 顶层 YAML 结构是否独立到足以形成新 family
-- execution mode 是否有新差异
-- diagnostics / evidence 是否需要新 validator 逻辑
-- 是否需要新 baseline 与新测试层次
+- execution mode 是否有新的语义差异
+- diagnostics / evidence 是否需要新的 validator 逻辑
+- 是否需要新的 baseline 与测试层次
 
-只有在这些问题答案明确时，才值得把它提升为新的一等 family。
+只有这些问题有了明确答案，才值得把它提升为新的一级 family。

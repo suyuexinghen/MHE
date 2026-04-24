@@ -74,6 +74,8 @@ JEDI workflow 的早期失败，很多并不是 YAML 逻辑错误，而是环境
 
 也就是说，JEDI 的 failure taxonomy 不能只回答“extension-local 哪一步失败了”，还要回答“这一结果对 promotion / policy 路径意味着什么”。其中 validator 作为 protected governance component，其失败结论不应被 executor 或调用侧隐式降级。
 
+对接 strengthened MHE 时，这类 failure taxonomy 还应被理解为 session / audit / provenance evidence 的分类入口：环境前提缺失、evidence 不完整、promotion blocker 候选与 protected boundary 违规，不应只留在消息文本里，而应能稳定映射到上层的 candidate review 与 runtime evidence flow。
+
 这组 taxonomy 对当前 Phase 0 是足够且刻意收敛的；进入 Phase 1+ 后，通常还需要扩展为更细的 runtime/result interpretation，例如：
 
 - run 完成但需要 richer diagnostics interpretation

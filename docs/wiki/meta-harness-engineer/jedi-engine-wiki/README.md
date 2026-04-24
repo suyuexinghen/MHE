@@ -1,15 +1,20 @@
 # JEDI Extension for MHE Wiki
 
-> 版本：v1.0 | 最后更新：2026-04-22
+> 版本：v1.1 | 最后更新：2026-04-24
 
-本目录只讨论 **如何在 `MHE` 中设计、实现和演进 `metaharness_ext.jedi`**，不再承担 JEDI 软件本体（如 OOPS / IODA / UFO / SABER 架构综述、构建细节、算法百科）的通用软件 wiki 职责。
+本目录只讨论 **如何在 `MHE` 中设计 `metaharness_ext.jedi`**。
 
-适合以下读者：
+它关注的是扩展层的设计边界：contracts、execution semantics、environment/validation surface、family model、packaging 与 review invariants。
 
-- 需要设计 `MHE/src/metaharness_ext/jedi/` 的工程师
-- 需要评审 `contracts / compiler / executor / validator` 边界的架构师
-- 需要把 JEDI workflow 以受控方式接入 MHE runtime 的扩展开发者
-- 需要基于 JEDI extension 做 smoke baseline、study 或 agent orchestration 的维护者
+本目录**不再承载**以下内容作为主线：
+
+- 分阶段实施细节
+- 文件级脚手架清单
+- 当前实现状态盘点
+- roadmap / milestone 推进说明
+- 混合在设计文档中的 implementation plan 叙述
+
+这些内容统一下沉到 `blueprint/` 目录中的正式文档。
 
 ---
 
@@ -21,107 +26,84 @@
 | [02-架构总览](02-architecture.md) | gateway / environment / compiler / executor / validator 的组件链 | 架构师 / 核心开发 |
 | [03-contracts 设计](03-contracts.md) | family-aware typed contracts、运行/验证报告、typed boundary | 核心开发 |
 | [04-执行链设计](04-execution-pipeline.md) | schema / validate-only / real-run 的分层执行语义 | 运行时工程师 |
-| [05-环境与验证](05-environment-and-validation.md) | environment probe、artifact 归档、failure taxonomy、evidence | 运行时 / 平台工程师 |
-| [06-实施路径](06-implementation-phases.md) | blueprint / roadmap / implementation plan 的映射与 Phase 拆分 | 实现负责人 / reviewer |
+| [05-环境与验证](05-environment-and-validation.md) | environment probe、failure taxonomy、evidence/report semantics | 运行时 / 平台工程师 |
+| [06-设计文档分工](06-implementation-phases.md) | wiki 与 blueprint / roadmap / implementation plan 的职责分工 | 文档维护者 / reviewer |
 | [07-family 设计](07-family-design.md) | variational / local_ensemble_da / hofx / forecast 的 family 边界 | 架构师 / compiler 维护者 |
 | [08-封装与注册](08-packaging-and-registration.md) | 包结构、exports、capabilities、slots、manifest 设计 | 核心开发 / reviewer |
-| [09-测试与评审](09-testing-and-review.md) | 测试层次、review checklist、phase-aware 验证策略 | reviewer / 测试维护者 |
+| [09-测试与评审](09-testing-and-review.md) | 测试边界、review checklist、设计不变量 | reviewer / 测试维护者 |
 
 ---
 
-## 术语与交叉引用约定
+## 术语约定
 
-为保持整套 wiki 的 PR-ready 风格，本文档集统一采用以下约定：
-
-- prose 中使用 **application family** 表示概念层；代码字段一律写作 `application_family`
-- prose 中使用 **execution mode** 表示概念层；代码字面量一律写作 `schema`、`validate_only`、`real_run`
-- prose 中使用 **validate-only**、**real run** 作为自然语言写法，不把 snake_case 代码字面量直接混入叙述句
-- **smoke baseline** 指轻量、低成本、优先验证执行链的 baseline；**scientific baseline** 指带最小科学证据或正式科学判据的 baseline；**toy baseline** 指刻意缩小问题规模的 baseline
-- **run artifact** 指一次执行产生的结构化运行产物集合；`evidence_files` 指 validator/report 对外暴露的关键证据文件列表
-- Phase 0 中 **diagnostics** 已进入 evidence surface 与 artifact layout；首版要求 evidence-first outcome classification，但不要求 richer scientific interpretation
-
-交叉引用规则：
-
-- 组件职责以 [02-架构总览](02-architecture.md) 为主
-- contract 定义以 [03-contracts 设计](03-contracts.md) 为主
-- execution mode 语义以 [04-执行链设计](04-execution-pipeline.md) 为主
-- failure taxonomy 与 evidence 语义以 [05-环境与验证](05-environment-and-validation.md) 为主
-- phase mapping 与 baseline 节奏以 [06-实施路径](06-implementation-phases.md) 为主
-- application family 边界以 [07-family 设计](07-family-design.md) 为主
-- packaging / manifest / capability / slot 约定以 [08-封装与注册](08-packaging-and-registration.md) 为主
-- tests 与 reviewer checklist 以 [09-测试与评审](09-testing-and-review.md) 为主
+- prose 中使用 **application family**；代码字段写作 `application_family`
+- prose 中使用 **execution mode**；代码字面量写作 `schema`、`validate_only`、`real_run`
+- prose 中使用 **validate-only**、**real run** 作为自然语言写法
+- **family** 表示扩展层支持的应用族边界；**baseline** 表示某个 family 下被选中的具体运行样例
+- **run artifact** 指一次运行产出的结构化证据集合；`evidence_files` 指 report 对外暴露的关键证据文件
 
 ---
 
-## 本目录的设计原则
+## 设计原则
 
-`metaharness_ext.jedi` 的首版不是：
-
-- JEDI C++ API 的 Python binding
-- 任意 YAML 透传器
-- 任意 executable 的黑盒 launcher 包装层
-- JEDI 软件百科或构建教程的替代品
-
-`metaharness_ext.jedi` 的首版是：
+`metaharness_ext.jedi` 的首版应被理解为：
 
 - **family-aware** 的 typed extension
 - 以 **YAML** 为稳定控制面
 - 以 **launcher + executable** 为执行面
-- 以 **environment probe + validator** 为失败边界
+- 以 **environment probe + validation report** 为失败边界
 - 以 **artifact / diagnostics / report** 为证据面
-- 以与 strengthened MHE **promotion / policy / provenance governance** 兼容为约束
+
+因此本目录的写作重点是 **设计边界**，而不是交付顺序或实现脚手架。
 
 ---
 
-## 与 blueprint / roadmap 的关系
+## 与 `blueprint/` 的分工
 
-本目录服务于 `metaharness_ext.jedi` 的工程实现，和 blueprint 文档形成如下分工：
+JEDI 扩展的正式实施材料位于 `MHE/docs/wiki/meta-harness-engineer/blueprint/`：
 
-- `blueprint/01-jedi-extension-blueprint.md`：正式设计蓝图
-- `blueprint/01-jedi-extension-roadmap.md`：分阶段路线图
-- `blueprint/01-jedi-extension-implementation-plan.md`：当前可执行实施计划（以当前 Phase 0 边界为准）
-- 本目录：把上述正式文档拆解成便于实现、维护和代码评审的工程设计 wiki
+- `01-jedi-extension-blueprint.md`：正式设计蓝图
+- `01-jedi-extension-roadmap.md`：阶段路线与里程碑
+- `01-jedi-extension-implementation-plan.md`：实施计划与验收面
+- `01-jedi-extension-wiki-refocus-report.md`：本次 wiki 重构后的内容分流说明
 
-如果 blueprint / roadmap 与当前环境事实存在未决差异，本目录的策略是：
+分工原则如下：
 
-- Phase 0 承诺 `spec -> environment probe -> controlled compile -> explicit preprocessing -> mode-aware execution -> evidence-first validation` 的基础闭环
-- Phase 0 的 execution mode 包含 `schema`、`validate_only`、`real_run`
-- 当前代码已经落地 smoke policy、diagnostics enrichment、study 组件，因此本目录不再把这些能力表述成远期想法，而是把它们写成当前基线之上的治理集成入口
-- Phase 1 之后的新增工作，重点是把这些现有能力继续对齐 strengthened MHE 的 promotion / manifest policy / session-provenance evidence path
-- 不把尚未验证的外部构建/安装状态直接写死成实现前提
+- **本 wiki**：回答“这个扩展应如何被设计”
+- **blueprint**：回答“正式设计主张是什么”
+- **roadmap**：回答“按什么顺序推进”
+- **implementation plan**：回答“当前阶段具体怎么做、改哪些文件、怎么验收”
 
 ---
 
-## 当前推荐阅读顺序
+## 推荐阅读顺序
 
-### 如果你要先理解扩展做什么
+### 想先理解扩展边界
 
-先看：[01-扩展定位](01-extension-positioning.md)
+先看：[01-扩展定位](01-extension-positioning.md) → [02-架构总览](02-architecture.md) → [03-contracts 设计](03-contracts.md)
 
-### 如果你要开始写代码
+### 想理解运行与失败语义
 
-先看：[02-架构总览](02-architecture.md) → [03-contracts 设计](03-contracts.md) → [04-执行链设计](04-execution-pipeline.md) → [08-封装与注册](08-packaging-and-registration.md)
+先看：[04-执行链设计](04-execution-pipeline.md) → [05-环境与验证](05-environment-and-validation.md)
 
-### 如果你要设计 family 边界与 baseline
+### 想设计 family 与注册面
 
-先看：[07-family 设计](07-family-design.md) → [06-实施路径](06-implementation-phases.md)
+先看：[07-family 设计](07-family-design.md) → [08-封装与注册](08-packaging-and-registration.md)
 
-### 如果你要评审失败语义与测试策略
+### 想看实施材料
 
-先看：[05-环境与验证](05-environment-and-validation.md) → [09-测试与评审](09-testing-and-review.md)
-
-阅读 [05-环境与验证](05-environment-and-validation.md)、[06-实施路径](06-implementation-phases.md)、[08-封装与注册](08-packaging-and-registration.md)、[09-测试与评审](09-testing-and-review.md) 时，建议始终带着“当前实现 + governance integration”的视角，而不是只把 JEDI 理解成 extension-local pipeline。
+转到：`blueprint/01-jedi-extension-blueprint.md`、`blueprint/01-jedi-extension-roadmap.md`、`blueprint/01-jedi-extension-implementation-plan.md`
 
 ---
 
 ## 不在本目录展开的内容
 
-以下内容已不再作为本目录主线：
+以下内容不再作为本目录主线：
 
-- JEDI 软件本体的通用背景介绍
-- OOPS / IODA / UFO / SABER 的完整架构综述
-- JEDI bundle 的构建教程与 GCC 兼容性细节
+- JEDI 软件本体的通用背景综述
+- OOPS / IODA / UFO / SABER 的完整软件架构说明
+- 构建教程与环境兼容性细节
 - 极小化器算法百科
-- 观测系统的领域知识型长篇说明
+- 分阶段执行清单与当前实现盘点
 
-这些内容应保留在外部 JEDI 文档或单独的软件 wiki 中；本目录只在 **设计 `metaharness_ext.jedi` 所必需** 的地方引用它们。
+本目录只保留 **设计 `metaharness_ext.jedi` 所必需** 的内容。

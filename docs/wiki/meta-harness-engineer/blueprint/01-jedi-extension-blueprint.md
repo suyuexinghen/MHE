@@ -417,6 +417,11 @@ Annotated[
 - `messages: list[str]`
 - `summary_metrics: dict[str, float | str]`
 - `evidence_files: list[str]`
+- `blocking_reasons: list[str]`
+- `policy_decision: Literal["allow", "defer", "reject"] | None`
+- `prerequisite_evidence: dict[str, list[str]]`
+- `provenance_refs: list[str]`
+- `checkpoint_refs: list[str]`
 
 ---
 
@@ -539,8 +544,11 @@ runtime.storage_path / "jedi_runs" / <task_id> / <run_id>/
 - `executed`：`real_run` 完成且存在最小 runtime evidence
 - `validation_failed`：配置或当前 mode 的最小 evidence 判定未通过
 - `runtime_failed`：运行失败、超时、缺少退出信息或未形成必要运行证据
+- `blocking_reasons`：显式列出当前会阻断 promotion/policy 消费的缺口
+- `policy_decision`：首版只提供轻量 allow/defer/reject 语义，为后续 policy layer 铺路
+- report 还应被理解为 runtime evidence handoff 面：它不是 extension-local 的一次性终端输出，而是 candidate review、graph lifecycle、session/audit 记录与 provenance link 的上游输入
 
-> `executed` 表示“runtime completed with evidence”，不等于 scientific success。更高层 scientific acceptance 与 richer diagnostics interpretation 属于 Phase 1+ 的增强层。
+> `executed` 表示“runtime completed with evidence”，不等于 scientific success。当前 blueprint 还要求 validator 逐步从 extension-local report 升级为 governance-bearing surface：先补 blocker / policy / prerequisite evidence / provenance refs，再衔接独立的 evidence bundle 与 policy layer。candidate / graph version / session-event / audit / provenance 这类 runtime-level handoff 在本阶段先保留稳定接口语义，后续由统一治理路径继续承接。
 
 ---
 

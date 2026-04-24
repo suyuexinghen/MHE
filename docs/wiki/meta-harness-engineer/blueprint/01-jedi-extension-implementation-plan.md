@@ -337,6 +337,11 @@ class JediValidationReport(BaseModel):
     messages: list[str] = Field(default_factory=list)
     summary_metrics: dict[str, float | str] = Field(default_factory=dict)
     evidence_files: list[str] = Field(default_factory=list)
+    blocking_reasons: list[str] = Field(default_factory=list)
+    policy_decision: Literal["allow", "defer", "reject"] | None = None
+    prerequisite_evidence: dict[str, list[str]] = Field(default_factory=dict)
+    provenance_refs: list[str] = Field(default_factory=list)
+    checkpoint_refs: list[str] = Field(default_factory=list)
 ```
 
 ---
@@ -486,12 +491,16 @@ class JediValidationReport(BaseModel):
 - 以 execution mode 区分 `validated` / `validation_failed`
 - 在环境缺失时返回 `environment_invalid`
 - 保持消息稳定且适合 agent / CLI 消费
+- 首版补出轻量 governance-bearing fields（`blocking_reasons` / `policy_decision` / `prerequisite_evidence` / refs）
+- 明确 `JediValidationReport` 是 runtime evidence handoff 面，而不是 extension-local 的一次性终端输出
 
 完成标志：
 
 - validator 不承担编译或执行职责
 - 失败语义清晰且稳定
 - evidence_files 指向 YAML / stdout / stderr / schema 等可审计文件
+- 对 promotion/policy 消费方可直接暴露 blocker / policy / prerequisite evidence 的最小治理输入
+- candidate / graph version / session-event / audit / provenance 等 handoff 面在 Slice 1 先保持稳定语义，后续 Slice 2+ 再接独立 evidence bundle 与 policy layer
 
 ## Step 8：补测试与回归保障
 

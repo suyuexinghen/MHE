@@ -77,10 +77,6 @@ class JediExecutableSpec(BaseModel):
 
 ## 3.4 family specs
 
----
-
-## 3.4 family specs
-
 首版至少需要以下 family：
 
 - `JediVariationalSpec`
@@ -150,6 +146,7 @@ class JediExecutableSpec(BaseModel):
 - validator 结果要能为 promotion-readiness 提供信号，而不只是给 extension 内部自用
 - diagnostics、reference files、prerequisite evidence 要能升级成 governance-grade evidence
 - validator 作为 protected governance component，其结论应可被上游 policy / promotion authority 消费，而不是被 executor 或调用侧隐式绕开
+- report 侧至少应预留稳定的 candidate / graph version / session-event / audit / provenance handoff 面，避免文档继续把 `JediValidationReport` 理解成一次性终端输出
 
 当前 taxonomy 至少包括：
 
