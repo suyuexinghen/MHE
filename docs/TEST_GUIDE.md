@@ -1,193 +1,187 @@
- User-Level Testing Guide for MHE
+# MHE Test Guide
 
-  Based on the documentation, here are the testing approaches from a user's
-  perspective:
+This guide describes the current verification layers for `MHE`, with an emphasis on the implemented DeepMD / DP-GEN extension APIs and their regression coverage.
 
-  ---
-  1. Run the Built-in Demos
+## Prerequisites
 
-  Minimal topology (simplest path):
-  PYTHONPATH=MHE/src python -m metaharness.demo
+- Python `>=3.11`
+- `PYTHONPATH=MHE/src` when running from the repository root without an editable install
+- Dev tools from `MHE[dev]` or equivalent local installs of `pytest` and `ruff`
 
-  Expanded topology (with planner, memory, async):
-  PYTHONPATH=MHE/src python -m metaharness.cli demo --topology expanded --async-mode
+Typical setup:
 
-  Verify: Both should produce structured output with runtime_status=runtime-ok and
-  lifecycle states.
+```bash
+pip install -e ./MHE[dev]
+```
 
-  ---
-  ABACUS directed test tier
+## Core repo checks
 
-  The ABACUS extension has a focused directed suite that does not require a local
-  ABACUS binary. Environment and execution behavior is covered with typed specs,
-  patched probes, structured artifacts, and evidence-first validator fixtures.
+Run the focused quality gates from the repository root:
 
-  Run the full ABACUS directed suite from the repository root:
-  PYTHONPATH=MHE/src pytest MHE/tests/test_metaharness_abacus_*.py -q
+```bash
+ruff check MHE
+ruff format --check MHE
+PYTHONPATH=MHE/src pytest MHE/tests
+```
 
-  Focused ABACUS files:
-  PYTHONPATH=MHE/src pytest \
-    MHE/tests/test_metaharness_abacus_manifest.py \
-    MHE/tests/test_metaharness_abacus_gateway.py \
-    MHE/tests/test_metaharness_abacus_environment.py \
-    MHE/tests/test_metaharness_abacus_compiler.py \
-    MHE/tests/test_metaharness_abacus_executor.py \
-    MHE/tests/test_metaharness_abacus_validator.py \
-    MHE/tests/test_metaharness_abacus_minimal_demo.py
+By default, `pytest` excludes Nektar++ tests unless local solver binaries are installed.
 
-  Coverage focus:
-  - explicit manifest policy.sandbox / policy.credentials semantics
-  - typed SCF / NSCF / relax / MD task boundaries
-  - relax restart compatibility through typed restart_file_path
-  - deterministic INPUT rendering for params and relax controls
-  - required runtime asset grouping for pseudo, orbital, restart,
-    charge-density, and pot_file inputs
-  - family-aware executor artifact discovery under OUT.<suffix>/
-  - evidence-first validator behavior, including strict NSCF running_nscf.log
-    evidence and MD characteristic artifacts
-  - protected validator governance outputs: issues, blocks_promotion,
-    governance_state, ScoredEvidence, and canonical evidence_refs
+## ABACUS directed test tier
 
-  ---
-  2. Validate Graph XML Files
+The ABACUS extension has a focused directed suite that does not require a local ABACUS binary. Environment and execution behavior is covered with typed specs, patched probes, structured artifacts, and evidence-first validator fixtures.
 
-  Structural validation only (checks XML shape):
-  PYTHONPATH=MHE/src python -m metaharness.cli validate
-  MHE/examples/graphs/minimal-happy-path.xml
+Run the full ABACUS directed suite from the repository root:
 
-  Structural + semantic validation (validates against manifests):
-  PYTHONPATH=MHE/src python -m metaharness.cli validate \
-    MHE/examples/graphs/minimal-expanded.xml \
-    --manifests MHE/examples/manifests/baseline
+```bash
+PYTHONPATH=MHE/src pytest MHE/tests/test_metaharness_abacus_*.py -q
+```
 
-  Test invalid graphs (expect non-zero exit codes):
-  # Cycle detection (exit 3)
-  PYTHONPATH=MHE/src python -m metaharness.cli validate
-  MHE/examples/graphs/minimal-cycle.xml
+Focused ABACUS files:
 
-  # Protected slot override (exit 3)
-  PYTHONPATH=MHE/src python -m metaharness.cli validate
-  MHE/examples/graphs/minimal-protected-slot-override.xml
+```bash
+PYTHONPATH=MHE/src pytest \
+  MHE/tests/test_metaharness_abacus_manifest.py \
+  MHE/tests/test_metaharness_abacus_gateway.py \
+  MHE/tests/test_metaharness_abacus_environment.py \
+  MHE/tests/test_metaharness_abacus_compiler.py \
+  MHE/tests/test_metaharness_abacus_executor.py \
+  MHE/tests/test_metaharness_abacus_validator.py \
+  MHE/tests/test_metaharness_abacus_minimal_demo.py
+```
 
-  # Invalid contract (exit 3)
-  PYTHONPATH=MHE/src python -m metaharness.cli validate
-  MHE/examples/graphs/minimal-invalid-contract.xml
+Coverage focus:
 
-  ---
-  3. Test the Safety Chain
+- explicit manifest `policy.sandbox` / `policy.credentials` semantics
+- typed SCF / NSCF / relax / MD task boundaries
+- relax restart compatibility through typed `restart_file_path`
+- deterministic `INPUT` rendering for params and relax controls
+- required runtime asset grouping for pseudo, orbital, restart, charge-density, and `pot_file` inputs
+- family-aware executor artifact discovery under `OUT.<suffix>/`
+- evidence-first validator behavior, including strict NSCF `running_nscf.log` evidence and MD characteristic artifacts
+- protected validator governance outputs: `issues`, `blocks_promotion`, `governance_state`, `ScoredEvidence`, and canonical `evidence_refs`
 
-  The four-tier pipeline: SandboxValidator → ABShadowTester → PolicyVeto →
-  AutoRollback
+## DeepMD / DP-GEN test tiers
 
-  Test protected component enforcement by attempting to override a protected slot:
-  - Edit a graph XML to bind policy.primary or observability.primary incorrectly
-  - Run validation — it should reject with protected_slot_override issue
+### Tier 1: Pure unit and mocked execution tests
 
-  Test hot-reload rollback by:
-  - Starting a demo
-  - Modifying the graph while running (if supported)
-  - Observing that HotSwapOrchestrator checkpoints state before swapping
+These tests do not require installed `dp` or `dpgen` binaries. They patch subprocess execution or binary lookup and are the default regression layer for the DeepMD extension.
 
-  ---
-  4. Test the Optimizer (Self-Growth)
+Recommended files:
 
-  Run benchmarks to exercise the optimizer:
-  PYTHONPATH=MHE/src python -c "from metaharness.benchmarks import
-  run_all_benchmarks; print(run_all_benchmarks())"
+```bash
+PYTHONPATH=MHE/src pytest \
+  MHE/tests/test_metaharness_deepmd_environment.py \
+  MHE/tests/test_metaharness_deepmd_executor.py \
+  MHE/tests/test_metaharness_dpgen_compiler.py \
+  MHE/tests/test_metaharness_dpgen_collector.py \
+  MHE/tests/test_metaharness_deepmd_validator.py \
+  MHE/tests/test_metaharness_deepmd_evidence.py \
+  MHE/tests/test_metaharness_deepmd_policy.py \
+  MHE/tests/test_metaharness_deepmd_governance.py \
+  MHE/tests/test_metaharness_deepmd_study.py \
+  MHE/tests/test_metaharness_deepmd_minimal_demo.py
+```
 
-  Test optimizer triggers by:
-  - Registering a metric trigger (e.g., task.latency.p95 > 250ms)
-  - Observing whether OptimizerComponent.tick() emits events
+Coverage focus:
 
-  Test fitness evaluation by:
-  - Submitting a proposal
-  - Checking that FitnessEvaluator computes scores
-  - Verifying convergence detection stops when TripleConvergence criteria are met
+- family-aware environment checks for `deepmd_train`, `dpgen_run`, `dpgen_simplify`, and `dpgen_autotest`
+- controlled compilation into `input.json`, `param.json`, and `machine.json`
+- executor artifact collection and fallback failure shapes
+- validator outputs including mode-aware statuses, `evidence_refs`, and `scored_evidence`
+- evidence/policy review behavior for `allow`, `defer`, and `reject`
+- governance adapter output, candidate promotion blocking, and runtime handoff
+- study sweeps over supported typed mutation axes
 
-  ---
-  5. Test Observability
+### Tier 2: Runtime handoff regression tests
 
-  Generate traces and metrics:
-  PYTHONPATH=MHE/src python -m metaharness.cli demo --topology expanded --trace-id
-  my-test-run
+These tests still use patched command execution, but they validate that DeepMD extension outputs can be handed into the runtime promotion/session machinery.
 
-  Check audit log:
-  - Look for Merkle-anchored entries in the audit log
-  - Verify entries include merkle_index and root hash
+Representative coverage lives in:
 
-  Test counter-factual diagnosis by:
-  - Running a failed candidate graph
-  - Inspecting ObservabilityComponent for trajectory data
+- `MHE/tests/test_metaharness_deepmd_minimal_demo.py`
+- `MHE/tests/test_metaharness_deepmd_governance.py`
 
-  ---
-  6. Create and Load Custom Components
+What they assert:
 
-  Add a custom component (from EXTENSION_GUIDE.md):
-  1. Subclass HarnessComponent
-  2. Publish a manifest JSON with inputs, outputs, slots
-  3. Wire it into a graph XML
-  4. Validate and run
+- `DeepMDGatewayComponent.run_baseline(...)` produces `core_validation_report` and `candidate_record`
+- runtime handoff records candidate/session events through `HarnessRuntime.ingest_candidate_record(...)`
+- current `CandidateRecord` payloads preserve runtime review state through `external_review`
+- DeepMD validator output carries `scored_evidence` and stable `deepmd://...` evidence references
 
-  Test template system:
-  from metaharness.optimizer.templates.registry import TemplateRegistry
-  from metaharness.optimizer.templates.slots import SlotFillingEngine
+### Tier 3: Optional installed-binary smoke tests
 
-  registry = TemplateRegistry()
-  # Register and instantiate templates
-  engine = SlotFillingEngine()
-  manifest, bindings = engine.instantiate(template, {"pool_size": 16})
+The DeepMD test suite currently favors deterministic patched subprocess tests over mandatory local-binary execution. If you have local `dp` and `dpgen` installs and want an extra confidence pass, run the existing DeepMD demo-style regression modules and let the patched tests validate file/plan shapes.
 
-  ---
-  7. Test Version Compatibility
+Suggested smoke-oriented commands:
 
-  Check API stability:
-  PYTHONPATH=MHE/src python -m metaharness.cli version
+```bash
+PYTHONPATH=MHE/src pytest MHE/tests/test_metaharness_deepmd_minimal_demo.py
+PYTHONPATH=MHE/src pytest MHE/tests/test_metaharness_deepmd_study.py
+```
 
-  Test wire format compatibility:
-  - Load older graph XML files (check schemaVersion attribute handling)
-  - Verify manifests with different harness_version are rejected appropriately
+If you add explicit installed-binary smoke tests later, keep them optional and skip them automatically when `dp` or `dpgen` is unavailable, following the same pattern the repo already uses for Nektar++ binary-gated coverage in `MHE/tests/conftest.py`.
 
-  ---
-  8. End-to-End Integration Scenarios
-  Scenario: Happy path
-  What to Test: Run minimal demo
-  Expected Result: All lifecycle phases reach committed
-  ────────────────────────────────────────
-  Scenario: Cycle graph
-  What to Test: Validate minimal-cycle.xml
-  Expected Result: Exit code 3, cycle_detected issue
-  ────────────────────────────────────────
-  Scenario: Protected override
-  What to Test: Validate minimal-protected-slot-override.xml
-  Expected Result: Exit code 3, protected_slot_override
-  ────────────────────────────────────────
-  Scenario: Async routing
-  What to Test: Run --async-mode
-  Expected Result: Async event dispatch in trace
-  ────────────────────────────────────────
-  Scenario: Hot reload
-  What to Test: Modify graph mid-flight
-  Expected Result: Checkpoint saved, saga rollback available
-  ────────────────────────────────────────
-  Scenario: Optimizer convergence
-  What to Test: Run benchmarks
-  Expected Result: Fitness converges, budget limit respected
-  ────────────────────────────────────────
-  Scenario: Manifest version mismatch
-  What to Test: Load manifest requiring newer harness
-  Expected Result: Static validation rejects
-  ---
-  Summary Checklist
+## DeepMD surface summary
 
-  - Minimal demo runs successfully
-  - Expanded demo runs with async mode
-  - Valid graphs pass structural validation
-  - Valid graphs pass semantic validation
-  - Cycle graph is rejected
-  - Protected slot override is rejected
-  - Invalid contracts detected
-  - CLI exit codes are correct (0/2/3)
-  - Observability traces generated
-  - Audit log entries are Merkle-anchored
-  - Benchmarks execute
-  - Custom component can be loaded (if extending)
+Current DeepMD public/testing surface:
+
+- `DeepMDGatewayComponent.issue_task(...)` for the train baseline
+- `DeepMDGatewayComponent.issue_dpgen_run_task(...)`
+- `DeepMDGatewayComponent.issue_dpgen_simplify_task(...)`
+- `DeepMDGatewayComponent.issue_dpgen_autotest_task(...)`
+- `DeepMDGatewayComponent.run_baseline(...)` for baseline execution plus governance/runtime handoff
+- `DeepMDStudyComponent.run_study(...)` for typed sweep studies
+
+Current validated application families:
+
+- `deepmd_train`
+- `dpgen_run`
+- `dpgen_simplify`
+- `dpgen_autotest`
+
+Current study mutation coverage:
+
+- DeePMD: `numb_steps`, `rcut`, `rcut_smth`, `sel`
+- DP-GEN run: `model_devi_f_trust_lo`, `model_devi_f_trust_hi`
+- DP-GEN simplify: `relabeling.pick_number`
+
+## Focused commands by area
+
+### Validator / evidence / governance
+
+```bash
+PYTHONPATH=MHE/src pytest \
+  MHE/tests/test_metaharness_deepmd_validator.py \
+  MHE/tests/test_metaharness_deepmd_evidence.py \
+  MHE/tests/test_metaharness_deepmd_policy.py \
+  MHE/tests/test_metaharness_deepmd_governance.py
+```
+
+### DP-GEN compilers and execution
+
+```bash
+PYTHONPATH=MHE/src pytest \
+  MHE/tests/test_metaharness_dpgen_compiler.py \
+  MHE/tests/test_metaharness_dpgen_collector.py \
+  MHE/tests/test_metaharness_dpgen_executor.py \
+  MHE/tests/test_metaharness_deepmd_autotest.py
+```
+
+### Study and end-to-end demo wiring
+
+```bash
+PYTHONPATH=MHE/src pytest \
+  MHE/tests/test_metaharness_deepmd_study.py \
+  MHE/tests/test_metaharness_deepmd_minimal_demo.py
+```
+
+## What to look for
+
+When reviewing DeepMD / DP-GEN test results, confirm:
+
+- failures distinguish environment, workspace, runtime, and validation causes
+- DP-GEN paths require iteration evidence before policy allows downstream review
+- autotest paths require structured property evidence before policy allows downstream review
+- validation reports expose stable `summary_metrics`, `evidence_refs`, and `scored_evidence`
+- runtime handoff preserves candidate records and review state cleanly
+- docs and tests only claim support for mutation axes that `study.py` actually mutates today

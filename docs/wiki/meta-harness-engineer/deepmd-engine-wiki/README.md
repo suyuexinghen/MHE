@@ -39,6 +39,7 @@
 - **family** 表示扩展层支持的工作流族边界；**baseline** 表示某个 family 下被选中的具体运行样例
 - **run artifact** 指一次运行产出的结构化结果；`evidence_files` 指对外暴露的关键证据文件
 - **policy seam** 指 `build_evidence_bundle(...)` 与 `DeepMDEvidencePolicy.evaluate(...)` 这一层，把 extension-local 结果整理成下游可消费的治理输入
+- **runtime handoff** 指 `candidate_record` 进入 `HarnessRuntime.ingest_candidate_record(...)` 的过程；当前 review state 通过 `external_review` 附着在 `CandidateRecord` 上
 
 ---
 

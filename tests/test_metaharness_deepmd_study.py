@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from metaharness.core.graph_versions import CandidateRecord
-from metaharness.core.models import ValidationReport
-
+from metaharness.core.boot import HarnessRuntime
+from metaharness.core.graph_versions import CandidateRecord, ExternalCandidateReviewState
+from metaharness.core.models import GraphSnapshot, ValidationReport
 from metaharness.sdk.runtime import ComponentRuntime
 from metaharness_ext.deepmd.contracts import (
     DeepMDDatasetSpec,
@@ -19,6 +19,7 @@ from metaharness_ext.deepmd.contracts import (
     DeepMDStudySpec,
     DeepMDTrainSpec,
     DeepMDValidationReport,
+    DPGenAutotestSpec,
     DPGenMachineSpec,
     DPGenRunSpec,
     DPGenSimplifySpec,
@@ -28,10 +29,10 @@ from metaharness_ext.deepmd.train_config_compiler import DeepMDTrainConfigCompil
 
 
 class _FakeExecutor:
-    def __init__(self, metric_key: str, values: dict[int | float, float]) -> None:
+    def __init__(self, metric_key: str, values: dict[int | float | str, float]) -> None:
         self.metric_key = metric_key
         self.values = values
-        self.calls: list[int | float] = []
+        self.calls: list[int | float | str] = []
 
     def execute_plan(self, plan):
         axis_value = plan.input_json.get("model", {}).get("descriptor", {}).get("rcut_smth")
@@ -43,6 +44,8 @@ class _FakeExecutor:
             axis_value = plan.param_json.get("model_devi_f_trust_hi")
         if axis_value not in self.values:
             axis_value = plan.param_json.get("simplify", {}).get("pick_number")
+        if axis_value not in self.values:
+            axis_value = plan.param_json.get("type")
         self.calls.append(axis_value)
         metric = self.values[axis_value]
         return DeepMDRunArtifact(
@@ -61,7 +64,7 @@ class _FakeExecutor:
 
 
 class _FakeValidator:
-    def __init__(self, metric_key: str, values: dict[int | float, float]) -> None:
+    def __init__(self, metric_key: str, values: dict[int | float | str, float]) -> None:
         self.metric_key = metric_key
         self.values = values
 
@@ -130,6 +133,32 @@ def _build_simplify_spec() -> DPGenSimplifySpec:
     )
 
 
+def _build_autotest_spec() -> DPGenAutotestSpec:
+    return DPGenAutotestSpec(
+        task_id="dpgen-autotest-study-task",
+        executable=DeepMDExecutableSpec(binary_name="dpgen", execution_mode="dpgen_autotest"),
+        param={"type": "eos", "structures": ["POSCAR"]},
+        machine=DPGenMachineSpec(),
+        properties=["eos"],
+    )
+
+
+class _RecordingRuntime(HarnessRuntime):
+    def __init__(self) -> None:
+        self.reviewed: list[CandidateRecord] = []
+        self.ingested: list[CandidateRecord] = []
+
+    def review_external_candidate(self, candidate: CandidateRecord) -> CandidateRecord:
+        self.reviewed.append(candidate)
+        reviewed = super().review_external_candidate(candidate)
+        return reviewed.model_copy(update={"snapshot": GraphSnapshot(graph_version=42)})
+
+    def ingest_candidate_record(self, candidate: CandidateRecord) -> CandidateRecord:
+        self.ingested.append(candidate)
+        reviewed = self.review_external_candidate(candidate)
+        return reviewed.model_copy(update={"candidate_id": f"ingested::{reviewed.candidate_id}"})
+
+
 @pytest.mark.asyncio
 async def test_study_minimizes_train_metric(tmp_path: Path) -> None:
     component = DeepMDStudyComponent()
@@ -155,6 +184,140 @@ async def test_study_minimizes_train_metric(tmp_path: Path) -> None:
     assert report.summary_metrics["best_rmse_e_trn"] == pytest.approx(0.2)
     assert all(trial.core_validation_report is not None for trial in report.trials)
     assert all(trial.candidate_record is not None for trial in report.trials)
+
+
+@pytest.mark.asyncio
+async def test_study_handoff_policy_recommended_ingests_only_recommended_trial(
+    tmp_path: Path,
+) -> None:
+    component = DeepMDStudyComponent()
+    await component.activate(ComponentRuntime(storage_path=tmp_path))
+    compiler = DeepMDTrainConfigCompilerComponent()
+    executor = _FakeExecutor("rmse_e_trn", {500: 0.8, 1000: 0.4, 1500: 0.2})
+    validator = _FakeValidator("rmse_e_trn", {500: 0.8, 1000: 0.4, 1500: 0.2})
+    runtime = _RecordingRuntime()
+
+    spec = DeepMDStudySpec(
+        study_id="study-handoff-recommended",
+        task_id="deepmd-study-task",
+        base_task=_build_train_spec(),
+        axis=DeepMDMutationAxis(kind="numb_steps", values=[500, 1000, 1500]),
+        metric_key="rmse_e_trn",
+        goal="minimize",
+        handoff_policy="recommended",
+    )
+
+    report = component.run_study(
+        spec,
+        compiler=compiler,
+        executor=executor,
+        validator=validator,
+        runtime=runtime,
+    )
+
+    assert [candidate.candidate_id for candidate in runtime.ingested] == [
+        report.recommended_trial_id
+    ]
+    assert [candidate.candidate_id for candidate in runtime.reviewed] == [
+        report.recommended_trial_id
+    ]
+    assert [
+        trial.candidate_record.candidate_id
+        for trial in report.trials
+        if trial.trial_id == report.recommended_trial_id
+    ] == [f"ingested::{report.recommended_trial_id}"]
+    assert [
+        trial.candidate_record.external_review.state
+        for trial in report.trials
+        if trial.trial_id == report.recommended_trial_id and trial.candidate_record is not None
+    ] == [ExternalCandidateReviewState.REJECTED]
+    assert all(
+        trial.candidate_record.candidate_id == trial.trial_id
+        for trial in report.trials
+        if trial.trial_id != report.recommended_trial_id and trial.candidate_record is not None
+    )
+
+
+@pytest.mark.asyncio
+async def test_study_handoff_policy_all_ingests_all_trials(tmp_path: Path) -> None:
+    component = DeepMDStudyComponent()
+    await component.activate(ComponentRuntime(storage_path=tmp_path))
+    compiler = DeepMDTrainConfigCompilerComponent()
+    executor = _FakeExecutor("rmse_e_trn", {500: 0.8, 1000: 0.4, 1500: 0.2})
+    validator = _FakeValidator("rmse_e_trn", {500: 0.8, 1000: 0.4, 1500: 0.2})
+    runtime = _RecordingRuntime()
+
+    spec = DeepMDStudySpec(
+        study_id="study-handoff-all",
+        task_id="deepmd-study-task",
+        base_task=_build_train_spec(),
+        axis=DeepMDMutationAxis(kind="numb_steps", values=[500, 1000, 1500]),
+        metric_key="rmse_e_trn",
+        goal="minimize",
+        handoff_policy="all",
+    )
+
+    report = component.run_study(
+        spec,
+        compiler=compiler,
+        executor=executor,
+        validator=validator,
+        runtime=runtime,
+    )
+
+    assert [candidate.candidate_id for candidate in runtime.ingested] == [
+        trial.trial_id for trial in report.trials
+    ]
+    assert [candidate.candidate_id for candidate in runtime.reviewed] == [
+        trial.trial_id for trial in report.trials
+    ]
+    assert all(
+        trial.candidate_record.candidate_id == f"ingested::{trial.trial_id}"
+        for trial in report.trials
+        if trial.candidate_record is not None
+    )
+    assert all(
+        trial.candidate_record.external_review is not None
+        and trial.candidate_record.external_review.state == ExternalCandidateReviewState.REJECTED
+        for trial in report.trials
+        if trial.candidate_record is not None
+    )
+
+
+@pytest.mark.asyncio
+async def test_study_handoff_policy_none_skips_runtime_ingest(tmp_path: Path) -> None:
+    component = DeepMDStudyComponent()
+    await component.activate(ComponentRuntime(storage_path=tmp_path))
+    compiler = DeepMDTrainConfigCompilerComponent()
+    executor = _FakeExecutor("rmse_e_trn", {500: 0.8, 1000: 0.4, 1500: 0.2})
+    validator = _FakeValidator("rmse_e_trn", {500: 0.8, 1000: 0.4, 1500: 0.2})
+    runtime = _RecordingRuntime()
+
+    spec = DeepMDStudySpec(
+        study_id="study-handoff-none",
+        task_id="deepmd-study-task",
+        base_task=_build_train_spec(),
+        axis=DeepMDMutationAxis(kind="numb_steps", values=[500, 1000, 1500]),
+        metric_key="rmse_e_trn",
+        goal="minimize",
+        handoff_policy="none",
+    )
+
+    report = component.run_study(
+        spec,
+        compiler=compiler,
+        executor=executor,
+        validator=validator,
+        runtime=runtime,
+    )
+
+    assert runtime.ingested == []
+    assert runtime.reviewed == []
+    assert all(
+        trial.candidate_record.candidate_id == trial.trial_id
+        for trial in report.trials
+        if trial.candidate_record is not None
+    )
 
 
 @pytest.mark.asyncio
@@ -202,6 +365,37 @@ async def test_study_maximizes_simplify_pick_number_metric(tmp_path: Path) -> No
     assert executor.calls == [4, 8, 12]
     assert report.recommended_value == 8
     assert report.summary_metrics["best_candidate_count"] == pytest.approx(5.0)
+    assert all(trial.evidence_bundle is not None for trial in report.trials)
+    assert all(
+        trial.evidence_bundle.scored_evidence is trial.validation.scored_evidence
+        for trial in report.trials
+    )
+    assert all(trial.evidence_bundle.provenance_refs for trial in report.trials)
+    assert all(trial.policy_report is not None for trial in report.trials)
+
+
+@pytest.mark.asyncio
+async def test_study_maximizes_autotest_metric(tmp_path: Path) -> None:
+    component = DeepMDStudyComponent()
+    await component.activate(ComponentRuntime(storage_path=tmp_path))
+    compiler = DeepMDTrainConfigCompilerComponent()
+    executor = _FakeExecutor("eos_a", {"eos": 3.1, "elastic": 6.2})
+    validator = _FakeValidator("eos_a", {"eos": 3.1, "elastic": 6.2})
+
+    spec = DeepMDStudySpec(
+        study_id="study-autotest-type",
+        task_id="dpgen-autotest-study-task",
+        base_task=_build_autotest_spec(),
+        axis=DeepMDMutationAxis(kind="autotest.type", values=["eos", "elastic"]),
+        metric_key="eos_a",
+        goal="maximize",
+    )
+
+    report = component.run_study(spec, compiler=compiler, executor=executor, validator=validator)
+
+    assert executor.calls == ["eos", "elastic"]
+    assert report.recommended_value == "elastic"
+    assert report.summary_metrics["best_eos_a"] == pytest.approx(6.2)
     assert all(trial.evidence_bundle is not None for trial in report.trials)
     assert all(trial.policy_report is not None for trial in report.trials)
 
@@ -300,6 +494,28 @@ async def test_study_rejects_unsupported_simplify_axis(tmp_path: Path) -> None:
             compiler=DeepMDTrainConfigCompilerComponent(),
             executor=_FakeExecutor("candidate_count", {1000: 1.0}),
             validator=_FakeValidator("candidate_count", {1000: 1.0}),
+        )
+
+
+@pytest.mark.asyncio
+async def test_study_rejects_unsupported_autotest_axis(tmp_path: Path) -> None:
+    component = DeepMDStudyComponent()
+    await component.activate(ComponentRuntime(storage_path=tmp_path))
+
+    spec = DeepMDStudySpec(
+        study_id="study-bad-autotest",
+        task_id="dpgen-autotest-study-task",
+        base_task=_build_autotest_spec(),
+        axis=DeepMDMutationAxis(kind="model_devi_f_trust_lo", values=[0.1]),
+        metric_key="eos_a",
+    )
+
+    with pytest.raises(NotImplementedError, match="not supported"):
+        component.run_study(
+            spec,
+            compiler=DeepMDTrainConfigCompilerComponent(),
+            executor=_FakeExecutor("eos_a", {0.1: 1.0}),
+            validator=_FakeValidator("eos_a", {0.1: 1.0}),
         )
 
 
@@ -453,14 +669,33 @@ async def test_study_rcut_smth_runs_real_train_chain(
     assert all(trial.validation.status == "trained" for trial in report.trials)
     assert all(trial.validation.governance_state == "ready" for trial in report.trials)
     assert all(trial.evidence_bundle is not None for trial in report.trials)
+    assert all(
+        trial.evidence_bundle.scored_evidence is trial.validation.scored_evidence
+        for trial in report.trials
+    )
+    assert all(trial.evidence_bundle.provenance_refs for trial in report.trials)
     assert all(trial.policy_report is not None for trial in report.trials)
     assert all(trial.core_validation_report is not None for trial in report.trials)
     assert all(trial.candidate_record is not None for trial in report.trials)
-    assert all(isinstance(trial.core_validation_report, ValidationReport) for trial in report.trials)
+    assert all(
+        isinstance(trial.core_validation_report, ValidationReport) for trial in report.trials
+    )
     assert all(isinstance(trial.candidate_record, CandidateRecord) for trial in report.trials)
-    assert all(trial.core_validation_report.valid for trial in report.trials if trial.core_validation_report is not None)
-    assert all(trial.candidate_record.promoted for trial in report.trials if trial.candidate_record is not None)
-    assert all(trial.candidate_record.report.valid for trial in report.trials if trial.candidate_record is not None)
+    assert all(
+        trial.core_validation_report.valid
+        for trial in report.trials
+        if trial.core_validation_report is not None
+    )
+    assert all(
+        trial.candidate_record.promoted
+        for trial in report.trials
+        if trial.candidate_record is not None
+    )
+    assert all(
+        trial.candidate_record.report.valid
+        for trial in report.trials
+        if trial.candidate_record is not None
+    )
     assert all(
         trial.candidate_record.candidate_id == trial.run.run_id
         for trial in report.trials
@@ -632,9 +867,7 @@ async def test_study_simplify_pick_number_runs_real_chain(
         if pick_number == 8:
             record += "converged\n"
         (cwd / "record.dpgen").write_text(record)
-        (iter_dir / "02.fp" / "relabel.out").write_text(
-            f"relabel pick_number = {pick_number}\n"
-        )
+        (iter_dir / "02.fp" / "relabel.out").write_text(f"relabel pick_number = {pick_number}\n")
         return _FakeCompletedProcess(returncode=0, stdout="simplify ok", stderr="")
 
     monkeypatch.setattr("metaharness_ext.deepmd.executor.subprocess.run", fake_run)
@@ -658,16 +891,26 @@ async def test_study_simplify_pick_number_runs_real_chain(
     assert [trial.axis_value for trial in report.trials] == [4, 8]
     assert report.recommended_value == 8
     assert report.summary_metrics["best_candidate_count"] == pytest.approx(5.0)
-    assert all(trial.validation.status == "converged" for trial in report.trials if trial.axis_value == 8)
+    assert all(
+        trial.validation.status == "converged" for trial in report.trials if trial.axis_value == 8
+    )
     assert all(trial.validation.governance_state == "ready" for trial in report.trials)
     assert all(trial.evidence_bundle is not None for trial in report.trials)
     assert all(trial.policy_report is not None for trial in report.trials)
     assert all(trial.core_validation_report is not None for trial in report.trials)
     assert all(trial.candidate_record is not None for trial in report.trials)
     assert all(
-        trial.policy_report.decision == "allow" for trial in report.trials if trial.policy_report is not None
+        trial.policy_report.decision == "allow"
+        for trial in report.trials
+        if trial.policy_report is not None
     )
     assert all(
-        trial.core_validation_report.valid for trial in report.trials if trial.core_validation_report is not None
+        trial.core_validation_report.valid
+        for trial in report.trials
+        if trial.core_validation_report is not None
     )
-    assert all(trial.candidate_record.promoted for trial in report.trials if trial.candidate_record is not None)
+    assert all(
+        trial.candidate_record.promoted
+        for trial in report.trials
+        if trial.candidate_record is not None
+    )

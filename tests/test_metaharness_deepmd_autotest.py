@@ -138,6 +138,9 @@ def test_validator_passes_with_autotest_properties() -> None:
     assert report.status == "autotest_validated"
     assert report.summary_metrics["eos_a"] == pytest.approx(3.5)
     assert "Autotest produced structured property results" in report.messages[0]
+    assert report.scored_evidence is not None
+    assert report.scored_evidence.metrics["eos_a"] == pytest.approx(3.5)
+    assert any(ref.startswith("deepmd://run/") for ref in report.evidence_refs)
 
 
 def test_validator_fails_without_autotest_properties() -> None:

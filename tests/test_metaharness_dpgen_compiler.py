@@ -2,6 +2,7 @@ from pathlib import Path
 
 from metaharness_ext.deepmd.contracts import (
     DeepMDExecutableSpec,
+    DPGenAutotestSpec,
     DPGenMachineSpec,
     DPGenRunSpec,
     DPGenSimplifySpec,
@@ -51,3 +52,30 @@ def test_dpgen_simplify_compiler_builds_param_and_machine_json(tmp_path: Path) -
     assert plan.param_json["simplify"]["freeze_level"] == 2
     assert plan.machine_json["local_root"] == str(tmp_path)
     assert plan.machine_json["python_path"] == "python3"
+
+
+def test_dpgen_autotest_compiler_builds_machine_json(tmp_path: Path) -> None:
+    spec = DPGenAutotestSpec(
+        task_id="dpgen-autotest-task",
+        executable=DeepMDExecutableSpec(binary_name="dpgen", execution_mode="dpgen_autotest"),
+        param={"type": "eos"},
+        machine=DPGenMachineSpec(
+            batch_type="slurm",
+            context_type="ssh",
+            local_root=str(tmp_path),
+            remote_root="/remote/deepmd",
+            python_path="python3",
+            command="sbatch",
+            extra={"queue": "debug"},
+        ),
+        properties=["eos"],
+    )
+
+    plan = DeepMDTrainConfigCompilerComponent().build_plan(spec)
+
+    assert plan.execution_mode == "dpgen_autotest"
+    assert plan.machine_json["batch_type"] == "slurm"
+    assert plan.machine_json["context_type"] == "ssh"
+    assert plan.machine_json["remote_root"] == "/remote/deepmd"
+    assert plan.machine_json["command"] == "sbatch"
+    assert plan.machine_json["queue"] == "debug"

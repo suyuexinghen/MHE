@@ -61,7 +61,7 @@ class DeepMDTrainConfigCompilerComponent(HarnessComponent):
 
     def declare_interface(self, api: HarnessAPI) -> None:
         api.bind_slot(DEEPMD_CONFIG_COMPILER_SLOT)
-        api.declare_input("task", "DeepMDTrainSpec")
+        api.declare_input("task", "DeepMDExperimentSpec")
         api.declare_output("plan", "DeepMDRunPlan", mode="sync")
         api.provide_capability(CAP_DEEPMD_CASE_COMPILE)
 

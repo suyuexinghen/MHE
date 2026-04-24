@@ -1,22 +1,25 @@
 from __future__ import annotations
 
+from metaharness.core.boot import HarnessRuntime
 from metaharness.sdk.api import HarnessAPI
 from metaharness.sdk.base import HarnessComponent
 from metaharness.sdk.runtime import ComponentRuntime
 from metaharness_ext.deepmd.capabilities import CAP_DEEPMD_STUDY
 from metaharness_ext.deepmd.contracts import (
+    DeepMDStudyBaseTask,
     DeepMDStudyReport,
     DeepMDStudySpec,
     DeepMDStudyTrial,
     DeepMDTrainSpec,
     DeepMDValidationReport,
-    DPGenRunSpec,
+    DPGenAutotestSpec,
     DPGenSimplifySpec,
 )
 from metaharness_ext.deepmd.evidence import build_evidence_bundle
 from metaharness_ext.deepmd.executor import DeepMDExecutorComponent
 from metaharness_ext.deepmd.governance import DeepMDGovernanceAdapter
 from metaharness_ext.deepmd.policy import DeepMDEvidencePolicy
+from metaharness_ext.deepmd.runtime_handoff import handoff_candidate_record
 from metaharness_ext.deepmd.slots import DEEPMD_STUDY_SLOT
 from metaharness_ext.deepmd.train_config_compiler import DeepMDTrainConfigCompilerComponent
 from metaharness_ext.deepmd.validator import DeepMDValidatorComponent
@@ -42,6 +45,7 @@ class DeepMDStudyComponent(HarnessComponent):
         compiler: DeepMDTrainConfigCompilerComponent,
         executor: DeepMDExecutorComponent,
         validator: DeepMDValidatorComponent,
+        runtime: HarnessRuntime | None = None,
     ) -> DeepMDStudyReport:
         trials: list[DeepMDStudyTrial] = []
         policy = DeepMDEvidencePolicy()
@@ -53,7 +57,9 @@ class DeepMDStudyComponent(HarnessComponent):
             validation = validator.validate_run(run)
             evidence_bundle = build_evidence_bundle(run, validation)
             policy_report = policy.evaluate(evidence_bundle)
-            core_validation_report = governance.build_core_validation_report(validation, policy_report)
+            core_validation_report = governance.build_core_validation_report(
+                validation, policy_report
+            )
             candidate_record = governance.build_candidate_record(evidence_bundle, policy_report)
             metric_value = self._extract_metric(validation, spec.metric_key)
             trials.append(
@@ -76,6 +82,9 @@ class DeepMDStudyComponent(HarnessComponent):
             )
 
         recommended = self._recommend_trial(trials, goal=spec.goal)
+        trials = self._handoff_trials(
+            runtime, trials, handoff_policy=spec.handoff_policy, recommended=recommended
+        )
         summary_metrics: dict[str, float | str] = {"trial_count": float(len(trials))}
         if recommended is not None and recommended.metric_value is not None:
             summary_metrics[f"best_{spec.metric_key}"] = recommended.metric_value
@@ -99,9 +108,7 @@ class DeepMDStudyComponent(HarnessComponent):
             else ["No passing trial produced the requested metric."],
         )
 
-    def _mutate_task(
-        self, spec: DeepMDStudySpec, value: int | float
-    ) -> DeepMDTrainSpec | DPGenRunSpec | DPGenSimplifySpec:
+    def _mutate_task(self, spec: DeepMDStudySpec, value: int | float | str) -> DeepMDStudyBaseTask:
         task = spec.base_task.model_copy(deep=True)
         task.task_id = f"{spec.task_id}__study__{spec.axis.kind}__{value}"
 
@@ -129,6 +136,17 @@ class DeepMDStudyComponent(HarnessComponent):
                 )
             return task
 
+        if isinstance(task, DPGenAutotestSpec):
+            if spec.axis.kind == "autotest.type":
+                task.param["type"] = str(value)
+                if not task.properties:
+                    task.properties = [str(value)]
+            else:
+                raise NotImplementedError(
+                    f"Axis {spec.axis.kind} is not supported for DPGenAutotestSpec"
+                )
+            return task
+
         if spec.axis.kind == "model_devi_f_trust_lo":
             task.param["model_devi_f_trust_lo"] = float(value)
         elif spec.axis.kind == "model_devi_f_trust_hi":
@@ -151,3 +169,34 @@ class DeepMDStudyComponent(HarnessComponent):
             return None
         reverse = goal == "maximize"
         return sorted(candidates, key=lambda trial: trial.metric_value, reverse=reverse)[0]
+
+    def _handoff_trials(
+        self,
+        runtime: HarnessRuntime | None,
+        trials: list[DeepMDStudyTrial],
+        *,
+        handoff_policy: str,
+        recommended: DeepMDStudyTrial | None,
+    ) -> list[DeepMDStudyTrial]:
+        if runtime is None or handoff_policy == "none":
+            return trials
+        recommended_trial_id = recommended.trial_id if recommended is not None else None
+        handoff_all = handoff_policy == "all"
+        updated_trials: list[DeepMDStudyTrial] = []
+        for trial in trials:
+            if trial.candidate_record is None:
+                updated_trials.append(trial)
+                continue
+            if not handoff_all and trial.trial_id != recommended_trial_id:
+                updated_trials.append(trial)
+                continue
+            updated_trials.append(
+                trial.model_copy(
+                    update={
+                        "candidate_record": handoff_candidate_record(
+                            runtime, trial.candidate_record
+                        )
+                    }
+                )
+            )
+        return updated_trials

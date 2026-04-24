@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from metaharness.core.graph_versions import CandidateRecord
 from metaharness.core.models import ScoredEvidence, ValidationIssue, ValidationReport
 from metaharness.safety.gates import GateResult
 
 DeepMDApplicationFamily = Literal["deepmd_train", "dpgen_run", "dpgen_simplify", "dpgen_autotest"]
+DeepMDStudyHandoffPolicy = Literal["none", "all", "recommended"]
 DeepMDExecutionMode = Literal[
     "train",
     "freeze",
@@ -22,6 +23,8 @@ DeepMDExecutionMode = Literal[
 ]
 DeepMDRunStatus = Literal["planned", "completed", "failed", "unavailable"]
 DPGenStageName = Literal["00.train", "01.model_devi", "02.fp"]
+DPGenBatchType = Literal["shell", "slurm", "pbs", "lsf"]
+DPGenContextType = Literal["local", "ssh"]
 
 
 class DeepMDExecutableSpec(BaseModel):
@@ -140,18 +143,47 @@ class DeepMDTrainSpec(BaseModel):
 
 
 class DPGenMachineSpec(BaseModel):
-    batch_type: str = "shell"
-    context_type: str = "local"
+    batch_type: DPGenBatchType = "shell"
+    context_type: DPGenContextType = "local"
     local_root: str = "."
     remote_root: str | None = None
     python_path: str | None = None
     command: str | None = None
     extra: dict[str, Any] = Field(default_factory=dict)
 
+    @field_validator("local_root", mode="before")
+    @classmethod
+    def validate_required_strings(cls, value: Any) -> str:
+        if not isinstance(value, str):
+            raise ValueError("machine fields must be strings")
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("machine fields must not be empty")
+        return stripped
+
+    @field_validator("remote_root", "python_path", "command", mode="before")
+    @classmethod
+    def normalize_optional_strings(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise ValueError("optional machine fields must be strings")
+        stripped = value.strip()
+        return stripped or None
+
+    @field_validator("extra")
+    @classmethod
+    def validate_extra(cls, value: Any) -> dict[str, Any]:
+        if not isinstance(value, dict):
+            raise ValueError("machine.extra must be a dictionary")
+        return value
+
     @model_validator(mode="after")
     def validate_roots(self) -> "DPGenMachineSpec":
-        if not self.local_root:
-            raise ValueError("local_root must not be empty")
+        if self.context_type == "local" and self.remote_root is not None:
+            raise ValueError("remote_root is only allowed when context_type is not 'local'")
+        if self.batch_type == "shell" and self.command is not None:
+            raise ValueError("command is only allowed when batch_type is not 'shell'")
         return self
 
 
@@ -239,16 +271,26 @@ class DeepMDEnvironmentReport(BaseModel):
     application_family: DeepMDApplicationFamily
     execution_mode: DeepMDExecutionMode
     dp_available: bool
+    dpgen_available: bool = False
     python_available: bool
     required_paths_present: bool
     workspace_ready: bool = True
     machine_root_ready: bool = True
     remote_root_configured: bool = True
     scheduler_command_configured: bool = True
+    machine_spec_valid: bool = True
+    dp_probe_supported: bool = False
+    dp_probe_succeeded: bool = False
+    dp_probe_output: str | None = None
+    dpgen_probe_supported: bool = False
+    dpgen_probe_succeeded: bool = False
+    dpgen_probe_output: str | None = None
     missing_required_paths: list[str] = Field(default_factory=list)
     environment_prerequisites: list[str] = Field(default_factory=list)
     missing_prerequisites: list[str] = Field(default_factory=list)
     messages: list[str] = Field(default_factory=list)
+    evidence_refs: list[str] = Field(default_factory=list)
+    fallback_reason: str | None = None
 
 
 class DPGenCompiledDocument(BaseModel):
@@ -345,6 +387,9 @@ class DeepMDValidationReport(BaseModel):
     status: Literal[
         "environment_invalid",
         "workspace_failed",
+        "scheduler_invalid",
+        "remote_invalid",
+        "machine_invalid",
         "trained",
         "frozen",
         "tested",
@@ -386,6 +431,9 @@ class DeepMDEvidenceBundle(BaseModel):
     summary: DeepMDDiagnosticSummary
     evidence_files: list[str] = Field(default_factory=list)
     warnings: list[DeepMDEvidenceWarning] = Field(default_factory=list)
+    provenance_refs: list[str] = Field(default_factory=list)
+    scored_evidence: ScoredEvidence | None = None
+    provenance: dict[str, Any] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -398,6 +446,18 @@ class DeepMDPolicyReport(BaseModel):
     evidence: dict[str, Any] = Field(default_factory=dict)
 
 
+class DeepMDBaselineReport(BaseModel):
+    task: DeepMDExperimentSpec
+    environment: DeepMDEnvironmentReport
+    plan: DeepMDRunPlan
+    run: DeepMDRunArtifact
+    validation: DeepMDValidationReport
+    evidence_bundle: DeepMDEvidenceBundle
+    policy_report: DeepMDPolicyReport
+    core_validation_report: ValidationReport
+    candidate_record: CandidateRecord
+
+
 class DeepMDMutationAxis(BaseModel):
     kind: Literal[
         "numb_steps",
@@ -407,8 +467,9 @@ class DeepMDMutationAxis(BaseModel):
         "model_devi_f_trust_lo",
         "model_devi_f_trust_hi",
         "relabeling.pick_number",
+        "autotest.type",
     ]
-    values: list[int | float] = Field(default_factory=list)
+    values: list[int | float | str] = Field(default_factory=list)
     label: str | None = None
 
     @model_validator(mode="after")
@@ -418,20 +479,24 @@ class DeepMDMutationAxis(BaseModel):
         return self
 
 
+DeepMDStudyBaseTask = DeepMDTrainSpec | DPGenRunSpec | DPGenSimplifySpec | DPGenAutotestSpec
+
+
 class DeepMDStudySpec(BaseModel):
     study_id: str
     task_id: str
-    base_task: DeepMDTrainSpec | DPGenRunSpec | DPGenSimplifySpec
+    base_task: DeepMDStudyBaseTask
     axis: DeepMDMutationAxis
     metric_key: str
     goal: Literal["minimize", "maximize"] = "minimize"
+    handoff_policy: DeepMDStudyHandoffPolicy = "none"
 
 
 class DeepMDStudyTrial(BaseModel):
     trial_id: str
     task_id: str
     axis_kind: str
-    axis_value: int | float
+    axis_value: int | float | str
     mutated_parameters: dict[str, int | float | str] = Field(default_factory=dict)
     run: DeepMDRunArtifact
     validation: DeepMDValidationReport
@@ -450,7 +515,7 @@ class DeepMDStudyReport(BaseModel):
     axis_kind: str
     metric_key: str
     trials: list[DeepMDStudyTrial] = Field(default_factory=list)
-    recommended_value: int | float | None = None
+    recommended_value: int | float | str | None = None
     recommended_trial_id: str | None = None
     recommended_reason: str | None = None
     summary_metrics: dict[str, float | str] = Field(default_factory=dict)

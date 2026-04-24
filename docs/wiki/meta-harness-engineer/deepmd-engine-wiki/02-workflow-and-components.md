@@ -50,13 +50,15 @@ DeepMDStudyComponent
 
 ### `gateway.py`
 
-`DeepMDGatewayComponent` 当前负责 DeePMD train 侧的入口语义：
+`DeepMDGatewayComponent` 当前负责 DeepMD extension 的 baseline task 入口语义：
 
-- 输出 `DeepMDTrainSpec`
-- 为最小 train baseline 提供受控 task 入口
-- 避免把训练入口退化成松散 shell 参数
+- `issue_task(...)` 输出 `DeepMDTrainSpec`
+- `issue_dpgen_run_task(...)` 输出 `DPGenRunSpec`
+- `issue_dpgen_simplify_task(...)` 输出 `DPGenSimplifySpec`
+- `issue_dpgen_autotest_task(...)` 输出 `DPGenAutotestSpec`
+- `run_baseline(...)` 串联 environment / compiler / executor / validator / evidence / policy，并可把 `candidate_record` handoff 给 runtime
 
-从包级设计看，DeepMD extension 已经支持四个 family；但当前注册的 gateway surface 仍是 train-only，而不是统一 family-aware public entry。
+注册到 slot 的 public output 仍以 train baseline 为主，但代码层的 helper surface 已覆盖四个 family 的 baseline task 构造。
 
 它不是编译器，也不是 validator。
 

@@ -31,8 +31,29 @@ class DeepMDEvidencePolicy:
                 evidence={"run_id": bundle.run_id},
             )
 
+        environment = bundle.metadata.get("environment") or {}
+        missing_prerequisites = list(environment.get("missing_prerequisites") or [])
+        missing_required_paths = list(environment.get("missing_required_paths") or [])
+        if missing_prerequisites or missing_required_paths:
+            gates.append(
+                GateResult(
+                    gate="environment_prerequisites",
+                    decision=GateDecision.DEFER,
+                    reason="Environment findings report missing prerequisites or required paths.",
+                    evidence={
+                        "run_id": bundle.run_id,
+                        "missing_prerequisites": missing_prerequisites,
+                        "missing_required_paths": missing_required_paths,
+                        "fallback_reason": environment.get("fallback_reason"),
+                    },
+                )
+            )
+
         if validation.status in {
             "environment_invalid",
+            "remote_invalid",
+            "scheduler_invalid",
+            "machine_invalid",
             "workspace_failed",
             "run_failed",
             "runtime_failed",
@@ -46,18 +67,8 @@ class DeepMDEvidencePolicy:
                     evidence={"status": validation.status, "run_id": bundle.run_id},
                 )
             )
-            return DeepMDPolicyReport(
-                passed=False,
-                decision="reject",
-                reason=f"Validation status is {validation.status}.",
-                warnings=warnings,
-                gates=gates,
-                evidence={"status": validation.status, "run_id": bundle.run_id},
-            )
 
-        incomplete = False
         if not bundle.run.stdout_path or not bundle.run.stderr_path:
-            incomplete = True
             gates.append(
                 GateResult(
                     gate="log_completeness",
@@ -69,7 +80,6 @@ class DeepMDEvidencePolicy:
         if bundle.execution_mode in {"dpgen_run", "dpgen_simplify"}:
             collection = bundle.summary.dpgen_collection
             if collection is None or not collection.iterations:
-                incomplete = True
                 gates.append(
                     GateResult(
                         gate="dpgen_iteration_evidence",
@@ -79,7 +89,6 @@ class DeepMDEvidencePolicy:
                     )
                 )
         if bundle.execution_mode == "dpgen_autotest" and not bundle.summary.autotest_properties:
-            incomplete = True
             gates.append(
                 GateResult(
                     gate="autotest_property_evidence",
@@ -108,14 +117,25 @@ class DeepMDEvidencePolicy:
                 )
             )
 
-        if incomplete:
+        if any(gate.decision is GateDecision.REJECT for gate in gates):
+            run_status_gate = next(gate for gate in gates if gate.decision is GateDecision.REJECT)
+            return DeepMDPolicyReport(
+                passed=False,
+                decision="reject",
+                reason=run_status_gate.reason,
+                warnings=warnings,
+                gates=gates,
+                evidence={"status": validation.status, "run_id": bundle.run_id},
+            )
+
+        if gates:
             return DeepMDPolicyReport(
                 passed=False,
                 decision="defer",
-                reason="Evidence bundle is incomplete for downstream review.",
+                reason="Evidence bundle requires follow-up before downstream consumption.",
                 warnings=warnings,
                 gates=gates,
-                evidence={"run_id": bundle.run_id},
+                evidence={"run_id": bundle.run_id, "status": validation.status},
             )
 
         gates.append(

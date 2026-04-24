@@ -1,4 +1,12 @@
-from metaharness.core.models import GraphSnapshot, ValidationIssue, ValidationIssueCategory
+from metaharness.core.graph_versions import ExternalCandidateReview, ExternalCandidateReviewState
+from metaharness.core.models import (
+    GraphSnapshot,
+    SessionEventType,
+    ValidationIssue,
+    ValidationIssueCategory,
+)
+from metaharness.observability.events import InMemorySessionStore
+from metaharness.provenance import AuditLog, ProvGraph, RelationKind
 from metaharness.safety.gates import GateDecision, GateResult
 from metaharness_ext.deepmd.contracts import (
     DeepMDDiagnosticSummary,
@@ -125,3 +133,70 @@ def test_deepmd_governance_adapter_uses_supplied_snapshot() -> None:
 
     assert record.snapshot.graph_version == 11
     assert record.candidate_id == "candidate-1"
+
+
+def test_deepmd_governance_adapter_leaves_external_review_unset() -> None:
+    bundle, policy = _bundle()
+
+    record = DeepMDGovernanceAdapter().build_candidate_record(bundle, policy)
+
+    assert record.external_review is None
+
+
+def test_deepmd_governance_adapter_preserves_external_review_on_runtime_handoff() -> None:
+    bundle, policy = _bundle()
+    record = DeepMDGovernanceAdapter().build_candidate_record(bundle, policy)
+    record.external_review = ExternalCandidateReview(
+        state=ExternalCandidateReviewState.ADOPTED,
+        reviewer="runtime-review",
+        source="deepmd-baseline",
+        reason="accepted for downstream promotion tracking",
+    )
+
+    assert record.external_review is not None
+    assert record.external_review.state is ExternalCandidateReviewState.ADOPTED
+    assert record.external_review.reviewer == "runtime-review"
+    assert record.external_review.source == "deepmd-baseline"
+
+
+def test_deepmd_governance_adapter_emits_session_audit_and_provenance_evidence() -> None:
+    bundle, policy = _bundle()
+    session_store = InMemorySessionStore()
+    audit_log = AuditLog()
+    provenance_graph = ProvGraph()
+
+    refs = DeepMDGovernanceAdapter(session_id="deepmd-session").emit_runtime_evidence(
+        bundle,
+        policy,
+        session_store=session_store,
+        audit_log=audit_log,
+        provenance_graph=provenance_graph,
+    )
+
+    events = session_store.get_events("deepmd-session")
+    assert [event.event_type for event in events] == [
+        SessionEventType.CANDIDATE_VALIDATED,
+        SessionEventType.SAFETY_GATE_EVALUATED,
+    ]
+    assert events[1].payload == {
+        "decision": "allow",
+        "reason": "ready",
+        "gate_count": 1,
+        "execution_mode": "train",
+        "application_family": "deepmd_train",
+    }
+    assert len(audit_log.by_kind("session.candidate_validated")) == 1
+    assert len(audit_log.by_kind("session.safety_gate_evaluated")) == 1
+    assert len(audit_log.by_kind("deepmd.governance_handoff")) == 1
+    assert all(ref.startswith("audit-record:") for ref in refs["audit_refs"])
+    assert "provenance://deepmd/validation/task-1" in refs["provenance_refs"]
+
+    provenance = provenance_graph.to_dict()
+    assert "graph-candidate:candidate-1" in provenance["entities"]
+    assert "graph-version:3" in provenance["entities"]
+    assert any(
+        relation["subject"].startswith("session-event:")
+        and relation["kind"] == RelationKind.WAS_DERIVED_FROM.value
+        and relation["object"] == "graph-candidate:candidate-1"
+        for relation in provenance["relations"]
+    )

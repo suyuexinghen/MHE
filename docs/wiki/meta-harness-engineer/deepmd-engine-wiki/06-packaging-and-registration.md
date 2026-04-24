@@ -50,11 +50,13 @@ MHE/src/metaharness_ext/deepmd/
 - 导出 public contracts / types
 - 导出 canonical component classes
 - 导出 capability constants、slot constants 与 helper seam
+- 导出 governance / workspace 相关的正式公共接缝
 
 例如它当前导出了：
 
-- contracts：`DeepMDTrainSpec`、`DPGenRunSpec`、`DeepMDEvidenceBundle`、`DeepMDPolicyReport`、`DeepMDStudySpec` 等
+- contracts：`DeepMDTrainSpec`、`DPGenRunSpec`、`DeepMDBaselineReport`、`DeepMDEvidenceBundle`、`DeepMDPolicyReport`、`DeepMDStudySpec` 等
 - components：`DeepMDGatewayComponent`、`DeepMDEnvironmentProbeComponent`、`DeepMDExecutorComponent`、`DeepMDValidatorComponent`、`DeepMDStudyComponent`
+- governance / workspace：`DeepMDGovernanceAdapter`、`DeepMDWorkspacePreparer`、`WorkspacePreparationError`
 - helpers：`build_train_input_json`、`build_dpgen_param_json`、`build_dpgen_machine_json`、`build_evidence_bundle`、`DeepMDEvidencePolicy`
 
 因此 `__init__.py` 是 public surface，而不是隐式环境探测入口。

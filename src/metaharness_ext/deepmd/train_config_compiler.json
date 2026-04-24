@@ -8,7 +8,7 @@
     "inputs": [
       {
         "name": "task",
-        "type": "DeepMDTrainSpec",
+        "type": "DeepMDExperimentSpec",
         "required": true,
         "description": ""
       }
@@ -42,6 +42,16 @@
     "mutability": "mutable",
     "sandbox_profile": null,
     "hot_swap": true
+  },
+  "policy": {
+    "sandbox": {
+      "tier": "workspace-write"
+    },
+    "credentials": {
+      "requires_subject": false,
+      "allow_inline_credentials": true,
+      "required_claims": []
+    }
   },
   "state_schema_version": 1,
   "provides": [

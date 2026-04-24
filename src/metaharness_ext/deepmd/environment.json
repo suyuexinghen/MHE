@@ -8,7 +8,7 @@
     "inputs": [
       {
         "name": "task",
-        "type": "DeepMDTrainSpec",
+        "type": "DeepMDExperimentSpec",
         "required": true,
         "description": ""
       }
@@ -40,8 +40,18 @@
   "safety": {
     "protected": false,
     "mutability": "mutable",
-    "sandbox_profile": null,
+    "sandbox_profile": "read-only",
     "hot_swap": true
+  },
+  "policy": {
+    "sandbox": {
+      "tier": "read-only"
+    },
+    "credentials": {
+      "requires_subject": false,
+      "allow_inline_credentials": true,
+      "required_claims": []
+    }
   },
   "state_schema_version": 1,
   "provides": [

@@ -58,7 +58,7 @@ It is not yet a production control plane.
 
 ## Extension Packages
 
-MHE ships with two domain-specific extension packages under `src/metaharness_ext/`:
+MHE ships with domain-specific extension packages under `src/metaharness_ext/`:
 
 ### `metaharness_ext.nektar` — Nektar++ Solver Extension
 
@@ -86,6 +86,33 @@ For details, see:
 - `MHE/docs/AI4PDE_NEKTAR_COMPARISON_MANUAL.md` for the current same-problem AI4PDE vs Nektar comparison workflow and interpretation limits
 - `MHE/docs/wiki/meta-harness-engineer/nektar-engine-wiki/`
 - `MHE/src/metaharness_ext/nektar/`
+
+### `metaharness_ext.deepmd` — DeepMD / DP-GEN Extension
+
+A workflow-oriented extension that wraps DeePMD-kit and DP-GEN control surfaces into typed specs, controlled JSON compilers, mode-aware execution, evidence packaging, and runtime handoff.
+
+Current execution chain:
+
+```text
+DeepMDGateway -> EnvironmentProbe -> Compiler -> Executor -> Validator -> Evidence -> Policy
+```
+
+Key components:
+- `DeepMDGatewayComponent` — emits `DeepMDTrainSpec` plus helper constructors for `DPGenRunSpec`, `DPGenSimplifySpec`, and `DPGenAutotestSpec`
+- `DeepMDEnvironmentProbeComponent` — checks family-aware prerequisites before execution
+- `DeepMDTrainConfigCompilerComponent` — builds `input.json`, `param.json`, and `machine.json` plans
+- `DeepMDExecutorComponent` — runs DeePMD / DP-GEN commands and collects artifacts
+- `DeepMDValidatorComponent` — emits mode-aware `DeepMDValidationReport` with `scored_evidence`
+- `DeepMDStudyComponent` — runs typed parameter sweeps and records trial-level governance artifacts
+
+Key contracts: `DeepMDTrainSpec`, `DPGenRunSpec`, `DPGenSimplifySpec`, `DPGenAutotestSpec`, `DeepMDRunArtifact`, `DeepMDValidationReport`, `DeepMDEvidenceBundle`, `DeepMDStudyReport`
+
+Supported application families: `deepmd_train`, `dpgen_run`, `dpgen_simplify`, `dpgen_autotest`
+
+For details, see:
+- `MHE/docs/TEST_GUIDE.md` for test tiers and optional installed-binary smoke checks
+- `MHE/docs/wiki/meta-harness-engineer/deepmd-engine-wiki/`
+- `MHE/src/metaharness_ext/deepmd/`
 
 ### `metaharness_ext.ai4pde` — AI4PDE Agent Extension
 

@@ -200,9 +200,9 @@ Phase 0: Environment Probe + DeePMD Minimal Train/Test Foundation
 
 ### 仍待补齐
 
-- `ScoredEvidence` 统一输出
 - 与 `BrainProvider` / 更上层 evaluator seam 对齐
 - 更明确的 promotion-aware study evidence 语义
+- 如需继续扩展 runtime review facade，保持 `external_review` 与 extension-produced `candidate_record` 的职责边界清晰
 
 ### 验收标准
 
@@ -215,28 +215,37 @@ Phase 0: Environment Probe + DeePMD Minimal Train/Test Foundation
 
 ## 4.9 Phase 6：HPC / Governance Hardening
 
-> 状态：待对齐 strengthened MHE 的重点剩余项
+> 状态：已完成首批治理硬化；剩余工作集中在更细粒度 HPC/resource taxonomy 与上层 authority seam
 
 ### 目标
 
 补强真实外部环境与高成本 relabeling 场景下的稳定性和治理边界。
 
-### 重点任务
+### 已落地结果
 
-1. 继续扩展 `machine.json` 验证与 scheduler probe
-2. 增加远程 SSH / queue / resource failure 的稳定错误语义
-3. 引入高成本 `fp` 与长时训练审批 gate
-4. 引入 reproducibility / budget / relabeling 风险检查
-5. 明确 observation window 与 candidate promotion 语义（当前仍属上层 runtime 对齐项，不应表述为 DeepMD contracts 已内建）
-6. 把 manifest `policy.credentials` / `policy.sandbox`、HPC / credential boundary 与当前 manifest 兼容策略写清楚
-7. 把 validation / evidence 与 session event、audit、provenance refs 的预期形状进一步对齐
-8. 视需要把 extension evidence 与 `ScoredEvidence`、`BrainProvider` seam 对齐，而不是继续停留在 extension-local report
-9. 把 DeepMD validation failure 系统映射为 runtime-level `ValidationIssue.blocks_promotion` 候选
+- `DPGenMachineSpec` 保持 typed contract 边界：非法组合仍在 schema 层拒绝，但缺失 `remote_root` / scheduler `command` 保留为 environment / governance-time finding
+- environment probe 已能表达 machine root、remote root、scheduler command、Python runtime 与 workspace path 缺口
+- validator 已能把 unavailable artifact 中的 `missing_remote_root`、`missing_scheduler_command`、`missing_machine_root` / `missing_python_runtime` 映射为 promotion-blocking failure status
+- policy 已显式 reject `remote_invalid`、`scheduler_invalid`、`machine_invalid`
+- `environment_report` 已通过 evidence bundle 进入 metadata / warnings / provenance refs
+- policy 已能基于 evidence bundle 中的 environment findings 追加 `environment_prerequisites` gate
+- governance 已能把该 policy gate 转成 promotion-blocking `ValidationIssue`，同时 gateway baseline 仍保持 environment -> compiler -> executor -> validator -> policy/governance 的非 short-circuit 执行顺序
+- manifest policy surface 已显式声明 `policy.credentials` / `policy.sandbox`，并与当前 sandbox profile 兼容策略对齐
+
+### 仍待补齐
+
+1. 继续扩展真实 scheduler / remote / queue / resource failure 的稳定错误语义
+2. 引入高成本 `fp` 与长时训练审批 gate
+3. 引入 reproducibility / budget / relabeling 风险检查
+4. 明确 observation window 与 candidate promotion 语义（当前仍属上层 runtime 对齐项，不应表述为 DeepMD contracts 已内建）
+5. 把 validation / evidence 与 session event、audit、provenance refs 的预期形状进一步对齐
+6. 视需要把 extension evidence 与 `ScoredEvidence`、`BrainProvider` seam 对齐，而不是继续停留在 extension-local report
 
 ### 验收标准
 
 - 环境缺失时失败语义清晰
 - scheduler / remote root / source_list 错误不再混成训练失败
+- environment findings 能进入 evidence bundle、policy gate 与 governance issue，而不 short-circuit executor
 - 高成本步骤可进入 policy gate
 - 外部环境差异不会被误判成“模型逻辑错误”
 - extension-local validation / evidence 能自然进入 runtime promotion authority
@@ -262,7 +271,8 @@ Phase 0: Environment Probe + DeePMD Minimal Train/Test Foundation
 - protected validator boundary 是否不会被普通组件语义绕开
 - DP-GEN iteration evidence、autotest property evidence 不完整时是否进入 `defer`
 - environment prerequisite / workspace prerequisite 是否能与 runtime governance 证据对齐
-- scored-evidence / provenance 引用是否保持稳定形状
+- `scored_evidence`、`evidence_refs` 与 runtime handoff payload 是否保持稳定形状
+- `external_review` 等 runtime review 字段是否在 handoff 过程中被正确保留
 
 ### e2e 测试优先级
 

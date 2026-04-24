@@ -17,6 +17,7 @@ from metaharness_ext.deepmd.capabilities import (
 from metaharness_ext.deepmd.collector import DPGenIterationCollector
 from metaharness_ext.deepmd.contracts import (
     DeepMDApplicationFamily,
+    DeepMDBaselineReport,
     DeepMDDatasetSpec,
     DeepMDDescriptorSpec,
     DeepMDDiagnosticSummary,
@@ -93,6 +94,7 @@ __all__ = [
     "DPGenRunSpec",
     "DPGenSimplifySpec",
     "DeepMDApplicationFamily",
+    "DeepMDBaselineReport",
     "DeepMDDescriptorSpec",
     "DeepMDEnvironmentProbeComponent",
     "DeepMDEnvironmentReport",

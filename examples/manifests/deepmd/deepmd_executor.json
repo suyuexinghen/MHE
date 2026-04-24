@@ -54,6 +54,10 @@
       {
         "name": "deepmd.dpgen.simplify",
         "description": ""
+      },
+      {
+        "name": "deepmd.dpgen.autotest",
+        "description": ""
       }
     ],
     "requires": [],
@@ -68,8 +72,18 @@
   "safety": {
     "protected": false,
     "mutability": "mutable",
-    "sandbox_profile": null,
+    "sandbox_profile": "workspace-write",
     "hot_swap": true
+  },
+  "policy": {
+    "sandbox": {
+      "tier": "workspace-write"
+    },
+    "credentials": {
+      "requires_subject": false,
+      "allow_inline_credentials": true,
+      "required_claims": []
+    }
   },
   "state_schema_version": 1,
   "provides": [
@@ -80,6 +94,7 @@
     "deepmd.model.devi",
     "deepmd.dataset.neighbor_stat",
     "deepmd.dpgen.run",
-    "deepmd.dpgen.simplify"
+    "deepmd.dpgen.simplify",
+    "deepmd.dpgen.autotest"
   ]
 }

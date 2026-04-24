@@ -35,19 +35,23 @@ EXPECTED_MANIFESTS = {
         "entry": "metaharness_ext.deepmd.gateway:DeepMDGatewayComponent",
         "slot": DEEPMD_GATEWAY_SLOT,
         "output": "task",
+        "output_type": "DeepMDExperimentSpec",
         "capabilities": [CAP_DEEPMD_CASE_COMPILE],
     },
     "environment.json": {
         "name": "deepmd_environment",
         "entry": "metaharness_ext.deepmd.environment:DeepMDEnvironmentProbeComponent",
         "slot": DEEPMD_ENVIRONMENT_SLOT,
+        "input_type": "DeepMDExperimentSpec",
         "output": "environment",
+        "output_type": "DeepMDEnvironmentReport",
         "capabilities": [CAP_DEEPMD_ENV_PROBE],
     },
     "train_config_compiler.json": {
         "name": "deepmd_train_config_compiler",
         "entry": "metaharness_ext.deepmd.train_config_compiler:DeepMDTrainConfigCompilerComponent",
         "slot": DEEPMD_CONFIG_COMPILER_SLOT,
+        "input_type": "DeepMDExperimentSpec",
         "output": "plan",
         "capabilities": [CAP_DEEPMD_CASE_COMPILE],
     },
@@ -55,7 +59,9 @@ EXPECTED_MANIFESTS = {
         "name": "deepmd_executor",
         "entry": "metaharness_ext.deepmd.executor:DeepMDExecutorComponent",
         "slot": DEEPMD_EXECUTOR_SLOT,
+        "input_type": "DeepMDRunPlan",
         "output": "run",
+        "output_type": "DeepMDRunArtifact",
         "capabilities": [
             CAP_DEEPMD_MODEL_COMPRESS,
             CAP_DEEPMD_MODEL_DEVI,
@@ -72,7 +78,9 @@ EXPECTED_MANIFESTS = {
         "name": "deepmd_validator",
         "entry": "metaharness_ext.deepmd.validator:DeepMDValidatorComponent",
         "slot": DEEPMD_VALIDATOR_SLOT,
+        "input_type": "DeepMDRunArtifact",
         "output": "validation",
+        "output_type": "DeepMDValidationReport",
         "capabilities": [CAP_DEEPMD_VALIDATE],
     },
     "study.json": {
@@ -99,8 +107,16 @@ def test_metaharness_deepmd_manifests_are_valid() -> None:
         assert manifest.name == expected["name"]
         assert manifest.entry == expected["entry"]
         assert manifest.contracts.slots[0].slot == expected["slot"]
+        if "input_type" in expected:
+            assert manifest.contracts.inputs[0].type == expected["input_type"]
         assert manifest.contracts.outputs[0].name == expected["output"]
+        if "output_type" in expected:
+            assert manifest.contracts.outputs[0].type == expected["output_type"]
         assert sorted(manifest.all_provided_capabilities()) == sorted(expected["capabilities"])
+        if manifest.name != "deepmd_train_config_compiler":
+            assert manifest.policy is not None
+            assert manifest.policy.sandbox is not None
+            assert manifest.policy.credentials is not None
 
 
 def test_metaharness_deepmd_manifest_entries_are_importable() -> None:
@@ -117,6 +133,15 @@ def test_metaharness_deepmd_manifest_entries_are_importable() -> None:
         assert getattr(module, class_name) is not None
 
 
+def test_metaharness_deepmd_package_exports_backlog_public_surfaces() -> None:
+    module = import_module("metaharness_ext.deepmd")
+
+    assert module.DeepMDBaselineReport is not None
+    assert module.DeepMDGovernanceAdapter is not None
+    assert module.DeepMDWorkspacePreparer is not None
+    assert module.WorkspacePreparationError is not None
+
+
 def test_metaharness_deepmd_component_declarations_match_manifests() -> None:
     for filename, expected in EXPECTED_MANIFESTS.items():
         manifest = ComponentManifest.model_validate(
@@ -126,7 +151,11 @@ def test_metaharness_deepmd_component_declarations_match_manifests() -> None:
         snapshot = api.snapshot()
 
         assert snapshot.slots[0].slot == expected["slot"]
+        if "input_type" in expected:
+            assert snapshot.inputs[0].type == expected["input_type"]
         assert snapshot.outputs[0].name == expected["output"]
+        if "output_type" in expected:
+            assert snapshot.outputs[0].type == expected["output_type"]
         assert sorted(cap.name for cap in snapshot.provides) == sorted(expected["capabilities"])
 
 

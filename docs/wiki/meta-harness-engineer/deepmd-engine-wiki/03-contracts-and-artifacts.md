@@ -251,6 +251,13 @@ Literal[
 - `return_code`
 - `validation_status`
 
+当前 `DeepMDValidationReport` 还稳定携带：
+
+- `evidence_refs`
+- `blocks_promotion`
+- `governance_state`
+- `scored_evidence`
+
 ### `DeepMDPolicyReport`
 
 当前 policy report 的字段为：
@@ -304,6 +311,14 @@ Literal[
 - `DeepMDTrainSpec`
 - `DPGenRunSpec`
 - `DPGenSimplifySpec`
+
+`DeepMDStudySpec` 当前还显式携带 `handoff_policy`：
+
+- `none`
+- `recommended`
+- `all`
+
+它决定 study 产生的 `candidate_record` 是否进入 runtime handoff，以及是只交接推荐 trial，还是交接全部 trial。
 
 ### `DeepMDStudyTrial` / `DeepMDStudyReport`
 

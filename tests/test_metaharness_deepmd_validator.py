@@ -56,7 +56,7 @@ def test_deepmd_validator_marks_dpgen_simplify_converged() -> None:
     assert report.passed is True
     assert report.status == "converged"
     assert report.blocks_promotion is False
-    assert report.governance_state == "defer"
+    assert report.governance_state == "ready"
     assert report.summary_metrics["candidate_count"] == pytest.approx(0.0)
     assert report.summary_metrics["relabeling_detected"] == "true"
     assert report.scored_evidence is not None
@@ -94,3 +94,66 @@ def test_deepmd_validator_marks_runtime_failure_as_blocking() -> None:
     assert report.scored_evidence.score == pytest.approx(0.0)
     assert report.scored_evidence.convergence is not None
     assert report.scored_evidence.convergence.converged is False
+
+
+def test_deepmd_validator_maps_missing_remote_root_to_remote_invalid() -> None:
+    artifact = DeepMDRunArtifact(
+        task_id="dpgen-run-task",
+        run_id="run-remote-invalid",
+        application_family="dpgen_run",
+        execution_mode="dpgen_run",
+        command=["dpgen", "run", "param.json", "machine.json"],
+        stdout_path="/tmp/stdout.log",
+        stderr_path="/tmp/stderr.log",
+        working_directory="/tmp/run",
+        status="unavailable",
+        result_summary={"fallback_reason": "missing_remote_root", "exit_code": None},
+    )
+
+    report = DeepMDValidatorComponent().validate_run(artifact)
+
+    assert report.passed is False
+    assert report.status == "remote_invalid"
+    assert report.blocks_promotion is True
+
+
+def test_deepmd_validator_maps_missing_scheduler_command_to_scheduler_invalid() -> None:
+    artifact = DeepMDRunArtifact(
+        task_id="dpgen-run-task",
+        run_id="run-scheduler-invalid",
+        application_family="dpgen_run",
+        execution_mode="dpgen_run",
+        command=["dpgen", "run", "param.json", "machine.json"],
+        stdout_path="/tmp/stdout.log",
+        stderr_path="/tmp/stderr.log",
+        working_directory="/tmp/run",
+        status="unavailable",
+        result_summary={"fallback_reason": "missing_scheduler_command", "exit_code": None},
+    )
+
+    report = DeepMDValidatorComponent().validate_run(artifact)
+
+    assert report.passed is False
+    assert report.status == "scheduler_invalid"
+    assert report.blocks_promotion is True
+
+
+def test_deepmd_validator_maps_missing_machine_root_to_machine_invalid() -> None:
+    artifact = DeepMDRunArtifact(
+        task_id="dpgen-run-task",
+        run_id="run-machine-invalid",
+        application_family="dpgen_run",
+        execution_mode="dpgen_run",
+        command=["dpgen", "run", "param.json", "machine.json"],
+        stdout_path="/tmp/stdout.log",
+        stderr_path="/tmp/stderr.log",
+        working_directory="/tmp/run",
+        status="unavailable",
+        result_summary={"fallback_reason": "missing_machine_root", "exit_code": None},
+    )
+
+    report = DeepMDValidatorComponent().validate_run(artifact)
+
+    assert report.passed is False
+    assert report.status == "machine_invalid"
+    assert report.blocks_promotion is True

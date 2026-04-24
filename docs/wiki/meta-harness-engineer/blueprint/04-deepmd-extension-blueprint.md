@@ -155,6 +155,8 @@ MHE/src/metaharness_ext/deepmd/
 - `DeepMDValidatorComponent.validate_run(...)` 决定 extension-local 的 mode-aware 判据与失败形态
 - `build_evidence_bundle(...)` 决定哪些 artifacts / warnings / completeness clues 被交给下游
 - `DeepMDEvidencePolicy.evaluate(...)` 基于 validation + evidence 给出 `allow` / `defer` / `reject`
+- `DeepMDValidationReport` 当前已携带 `evidence_refs` 与 `scored_evidence`
+- `CandidateRecord` 当前可附带 `external_review`，并在 runtime handoff 时沿用已有 review state
 - runtime 再基于 `PromotionContext`、candidate state 与 session / provenance authority 决定是否允许 graph promotion
 
 ---

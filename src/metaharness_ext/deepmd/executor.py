@@ -69,18 +69,7 @@ class DeepMDExecutorComponent(HarnessComponent):
                 result_summary={"fallback_reason": "workspace_prepare_failed", "exit_code": None},
             )
 
-        if plan.input_json_path is not None:
-            (run_dir / "input.json").write_text(
-                json.dumps(plan.input_json, indent=2, sort_keys=True) + "\n"
-            )
-        if plan.param_json_path is not None:
-            (run_dir / "param.json").write_text(
-                json.dumps(plan.param_json, indent=2, sort_keys=True) + "\n"
-            )
-        if plan.machine_json_path is not None:
-            (run_dir / "machine.json").write_text(
-                json.dumps(plan.machine_json, indent=2, sort_keys=True) + "\n"
-            )
+        self._materialize_plan_files(plan, run_dir)
 
         resolved_binary = self._resolve_binary(plan)
         if resolved_binary is None:
@@ -160,6 +149,21 @@ class DeepMDExecutorComponent(HarnessComponent):
     def _validate_task_id(self, task_id: str) -> None:
         if not task_id or ".." in task_id or "/" in task_id or "\\" in task_id:
             raise ValueError(f"Invalid task_id: {task_id!r}")
+
+    def _materialize_plan_files(self, plan: DeepMDRunPlan, run_dir: Path) -> list[str]:
+        if plan.input_json_path is not None:
+            (run_dir / "input.json").write_text(
+                json.dumps(plan.input_json, indent=2, sort_keys=True) + "\n"
+            )
+        if plan.param_json_path is not None:
+            (run_dir / "param.json").write_text(
+                json.dumps(plan.param_json, indent=2, sort_keys=True) + "\n"
+            )
+        if plan.machine_json_path is not None:
+            (run_dir / "machine.json").write_text(
+                json.dumps(plan.machine_json, indent=2, sort_keys=True) + "\n"
+            )
+        return self._discover_files(run_dir, ["input.json", "param.json", "machine.json"])
 
     def _resolve_binary(self, plan: DeepMDRunPlan) -> str | None:
         candidate = Path(plan.executable.binary_name)
@@ -272,6 +276,7 @@ class DeepMDExecutorComponent(HarnessComponent):
                 "lcurve.out",
                 "train.log",
                 "test.*",
+                "result.*",
                 "results.*",
                 "*.out",
                 "model_devi*",

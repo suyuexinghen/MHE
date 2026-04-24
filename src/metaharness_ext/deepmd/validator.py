@@ -72,10 +72,17 @@ class DeepMDValidatorComponent(HarnessComponent):
                     blocks_promotion=True,
                 )
             )
+            status = "environment_invalid"
+            if fallback_reason == "missing_remote_root":
+                status = "remote_invalid"
+            elif fallback_reason == "missing_scheduler_command":
+                status = "scheduler_invalid"
+            elif fallback_reason in {"missing_machine_root", "missing_python_runtime"}:
+                status = "machine_invalid"
             return self._build_report(
                 artifact,
                 passed=False,
-                status="environment_invalid",
+                status=status,
                 messages=messages,
                 summary_metrics=metrics,
                 evidence_files=evidence_files,

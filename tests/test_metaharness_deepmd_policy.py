@@ -1,3 +1,5 @@
+import pytest
+
 from metaharness_ext.deepmd.contracts import (
     DeepMDDiagnosticSummary,
     DeepMDRunArtifact,
@@ -37,6 +39,39 @@ def test_deepmd_policy_rejects_failed_validation() -> None:
     assert report.decision == "reject"
     assert report.passed is False
     assert report.gates[0].reason == "Validation status is runtime_failed."
+
+
+@pytest.mark.parametrize("status", ["remote_invalid", "scheduler_invalid", "machine_invalid"])
+def test_deepmd_policy_rejects_unavailable_artifact_validation_statuses(status: str) -> None:
+    run = DeepMDRunArtifact(
+        task_id="task-unavailable",
+        run_id="run-unavailable",
+        application_family="deepmd_train",
+        execution_mode="train",
+        command=["dp", "train"],
+        return_code=0,
+        stdout_path="/tmp/stdout.log",
+        stderr_path="/tmp/stderr.log",
+        working_directory="/tmp/run",
+        summary=DeepMDDiagnosticSummary(),
+        status="completed",
+        result_summary={"exit_code": 0},
+    )
+    validation = DeepMDValidationReport(
+        task_id="task-unavailable",
+        run_id="run-unavailable",
+        passed=False,
+        status=status,
+        evidence_files=[],
+    )
+
+    report = DeepMDEvidencePolicy().evaluate(build_evidence_bundle(run, validation))
+
+    assert report.decision == "reject"
+    assert report.passed is False
+    assert report.gates[0].gate == "run_status"
+    assert report.gates[0].reason == f"Validation status is {status}."
+    assert report.evidence["status"] == status
 
 
 def test_deepmd_policy_defers_incomplete_dpgen_evidence() -> None:
@@ -114,3 +149,85 @@ def test_deepmd_policy_allows_complete_converged_simplify() -> None:
     warning_codes = {warning.code for warning in report.warnings}
     assert "relabeling_detected" in warning_codes
     assert report.gates[-1].gate == "evidence_ready"
+
+
+def test_deepmd_policy_defers_for_environment_findings() -> None:
+    run = DeepMDRunArtifact(
+        task_id="task-env",
+        run_id="run-env",
+        application_family="deepmd_train",
+        execution_mode="train",
+        command=["dp", "train"],
+        return_code=0,
+        stdout_path="/tmp/stdout.log",
+        stderr_path="/tmp/stderr.log",
+        working_directory="/tmp/run",
+        summary=DeepMDDiagnosticSummary(),
+        status="completed",
+        result_summary={"exit_code": 0},
+    )
+    validation = DeepMDValidationReport(
+        task_id="task-env",
+        run_id="run-env",
+        passed=True,
+        status="trained",
+        evidence_files=[],
+    )
+    bundle = build_evidence_bundle(run, validation)
+    bundle.metadata["environment"] = {
+        "fallback_reason": None,
+        "missing_prerequisites": ["python"],
+        "missing_required_paths": ["/tmp/missing-dataset"],
+        "machine_spec_valid": True,
+        "remote_root_configured": True,
+        "scheduler_command_configured": True,
+        "messages": ["environment findings present"],
+    }
+
+    report = DeepMDEvidencePolicy().evaluate(bundle)
+
+    assert report.decision == "defer"
+    assert report.passed is False
+    assert report.gates[0].gate == "environment_prerequisites"
+    assert report.gates[0].reason == "Environment findings report missing prerequisites or required paths."
+
+
+def test_deepmd_policy_keeps_run_status_rejection_when_environment_findings_exist() -> None:
+    run = DeepMDRunArtifact(
+        task_id="task-env-reject",
+        run_id="run-env-reject",
+        application_family="deepmd_train",
+        execution_mode="train",
+        command=["dp", "train"],
+        return_code=1,
+        stdout_path="/tmp/stdout.log",
+        stderr_path="/tmp/stderr.log",
+        working_directory="/tmp/run",
+        summary=DeepMDDiagnosticSummary(),
+        status="failed",
+        result_summary={"exit_code": 1},
+    )
+    validation = DeepMDValidationReport(
+        task_id="task-env-reject",
+        run_id="run-env-reject",
+        passed=False,
+        status="environment_invalid",
+        evidence_files=[],
+    )
+    bundle = build_evidence_bundle(run, validation)
+    bundle.metadata["environment"] = {
+        "fallback_reason": "binary_not_found",
+        "missing_prerequisites": ["dp"],
+        "missing_required_paths": ["/tmp/missing-dataset"],
+        "machine_spec_valid": False,
+        "remote_root_configured": True,
+        "scheduler_command_configured": True,
+        "messages": ["binary missing"],
+    }
+
+    report = DeepMDEvidencePolicy().evaluate(bundle)
+
+    assert report.decision == "reject"
+    assert report.passed is False
+    assert [gate.gate for gate in report.gates] == ["environment_prerequisites", "run_status"]
+    assert report.gates[1].reason == "Validation status is environment_invalid."
