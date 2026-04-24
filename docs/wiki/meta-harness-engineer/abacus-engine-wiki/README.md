@@ -1,123 +1,112 @@
-# ABACUS Engine 技术手册 / 软件 Wiki
+# ABACUS Extension for MHE Wiki
 
-> 版本：v0.1 | 最后更新：2026-04-22
+> 版本：v0.2 | 最后更新：2026-04-24
 
-本目录面向 `MHE/src/metaharness_ext/abacus` 的规划与后续实现，适合以下读者：
+本目录只讨论 **如何在 `MHE` 中设计 `metaharness_ext.abacus`**。
 
-- 需要在 `Meta-Harness` 中接入 `ABACUS` 工作流的研发人员
-- 需要理解 `INPUT / STRU / KPT + launcher + executable` 如何落到 MHE 组件链中的架构师
-- 需要维护 `environment probe / input compiler / executor / validator` 的工程师
-- 需要把 `SCF / NSCF / relax / MD / ABACUS+DeePMD` 纳入受控运行时的平台人员
+它关注的是扩展层的长期设计边界：application family、typed contracts、environment / validation / evidence surface、packaging / registration，以及 ABACUS 与 strengthened MHE 治理路径的接缝。
+
+需要特别说明的是：**ABACUS extension 仍在开发阶段，尚未完全开发完成。** 因此本目录描述的是当前设计主张、已成形边界与开发中应保持的约束，而不是“全部能力已经落地”的实现宣告。
+
+本目录**不再承载**以下内容作为主线：
+
+- 分阶段实施路线
+- rollout / milestone 叙述
+- implementation hardening checklist
+- 当前实现状态盘点
+- 混合在设计文档中的 blueprint / roadmap / checklist 文本
+
+这些内容统一下沉到 `blueprint/` 目录中的正式文档；历史版本保留在 `.trash/` 路径中。
 
 ---
 
-## 文档目录
+## 目录导航
 
 | 文档 | 主题 | 读者 |
 |---|---|---|
-| [01-概述与定位](01-overview.md) | ABACUS 工作流背景、与 MHE 的对接价值、首版接口层级选择 | 所有人 |
-| [02-工作流与组件链](02-workflow-and-components.md) | ABACUS 的 file-driven workflow、组件职责、执行链与输出目录语义 | 架构师 / 运行时工程师 |
-| [03-Contracts 与产物](03-contracts-and-artifacts.md) | typed specs、run plan、run artifact、validation report 与证据边界 | 核心开发 / 配置工程师 |
-| [04-扩展蓝图](04-extension-blueprint.md) | `metaharness_ext.abacus` 的正式实现蓝图与首版范围边界 | 架构师 / 扩展开发 |
-| [05-路线图](05-roadmap.md) | 按 phase 拆解的正式执行路线与验收标准 | 项目负责人 / 实施工程师 |
-| [06-实现前补严清单](06-implementation-hardening-checklist.md) | 把设计陈述压缩成实现前必须机械化的 rules checklist | 架构师 / 扩展开发 / 测试工程师 |
+| [01-概述与定位](01-overview.md) | ABACUS 的接口层选择、支持边界与设计定位 | 所有人 |
+| [02-工作流与组件链](02-workflow-and-components.md) | gateway / environment / compiler / executor / validator 的组件链 | 架构师 / 运行时工程师 |
+| [03-Contracts 与产物](03-contracts-and-artifacts.md) | family-aware contracts、run plan、run artifact、validation / evidence surface | 核心开发 |
+| [04-环境、验证与证据](04-environment-validation-and-evidence.md) | environment probe、failure taxonomy、evidence / governance seam | 运行时 / reviewer |
+| [05-family 设计](05-family-design.md) | `scf` / `nscf` / `relax` / `md` 与 `md+dp` 的 family 边界 | 架构师 / compiler 维护者 |
+| [06-封装与注册](06-packaging-and-registration.md) | 包结构、exports、capabilities、slots、manifest 与 protected boundary | 核心开发 / reviewer |
+| [07-范围与分工](07-scope-and-boundaries.md) | design wiki、blueprint、roadmap、`.trash` 与代码真相的职责分工 | 文档维护者 / reviewer |
 
 ---
 
-## 定位
+## 术语约定
 
-`metaharness_ext.abacus` 的目标，不是把 `ABACUS` 退化成任意 shell wrapper，也不是把它包装成“任意 INPUT 文本透传器”，而是把 ABACUS 已经稳定存在的控制平面纳入 MHE：
-
-- **配置面**：`INPUT`、`STRU`、`KPT` 以及相关伪势/轨道/模型路径
-- **执行面**：`abacus` binary + `mpirun/mpiexec/srun` 等 launcher
-- **产物面**：`OUT.<suffix>/`、有效 `INPUT`、SCF 日志、结构输出、MD dump / restart 证据
-- **治理面**：typed contracts、environment probe、validator、artifact-aware 审计与后续研究入口
-
-这意味着首版会优先采取 **"typed spec -> workspace files -> launcher/executable -> structured artifacts"** 路线，而不是把 ABACUS 视为一个大而全的自由文本运行器。
-
-在当前 strengthened MHE 语义下，ABACUS 扩展也不再只是 file-driven workflow 的受控封装。它的输出还需要进入统一的 promotion-reviewed candidate path，并对齐 manifest policy declaration、protected governance boundary，以及 session / audit / provenance evidence flow。换言之，ABACUS local validator 可以给出工程与证据判断，但 active graph promotion authority 仍属于 runtime-level governance path。
+- prose 中使用 **application family**；代码字段写作 `application_family`
+- prose 中使用 **launcher**；代码字面量写作 `direct`、`mpirun`、`mpiexec`、`srun`
+- **family** 表示扩展层支持的应用族边界；**baseline** 表示某个 family 下被选中的具体运行样例
+- **run artifact** 指一次运行产出的结构化结果；`evidence_files` / `evidence_refs` 指 validator 与后续治理路径可消费的关键证据
+- **protected boundary** 当前主要指 validator 所在治理边界，而不是整个扩展包中的所有 helper
 
 ---
 
-## 首版环境假设
+## 设计原则
 
-首版文档与实现都应显式说明 ABACUS 的外部依赖闭包，而不是只写成“需要安装 ABACUS”：
+`metaharness_ext.abacus` 的当前设计应被理解为：
 
-- 至少需要 `abacus` binary
-- 并行场景通常还需要 `mpirun`、`mpiexec` 或 `srun`
-- 真实运行依赖工作目录中的 `INPUT`、`STRU`，以及按模式可选的 `KPT`
-- `basis_type=lcao` 时通常需要伪势和轨道文件；`basis_type=pw` 依赖关系不同
-- `calculation=md` 且 `esolver_type=dp` 的路径还需要 `pot_file`，并要求 ABACUS 构建时具备 DeePMD 支持
-- build-time feature（如 DeePMD、GPU）应视为 environment probe 的结果，而不是默认前提
+- **family-aware** 的 typed extension
+- 以 **INPUT / STRU / KPT** 为稳定控制面
+- 以 **workspace + launcher + executable** 为执行面
+- 以 **environment probe + validation report** 为失败边界
+- 以 **artifact / evidence / governance-ready validation** 为证据面
 
-因此，`metaharness_ext.abacus` 的首版不应假设完整 HPC 与所有可选 feature 总是可用，而应先围绕本地可验证的 minimal path 建立稳定闭环。
-
----
-
-## 当前依据
-
-本目录的设计依据来自三类材料：
-
-1. 本地 ABACUS 文档
-   - `/home/linden/code/work/Solvers/abacus/docs/abacus-deepmodeling-com-en-latest.md`
-   - `/home/linden/code/work/Solvers/abacus/docs/abacus-user-guide/`
-2. 本仓库已有 Meta-Harness 扩展设计
-   - `meta-harness-wiki/README.md`
-   - `deepmd-engine-wiki/README.md`
-   - `jedi-engine-wiki/README.md`
-   - `nektar-engine-wiki/README.md`
-3. 当前 MHE 的通用设计边界
-   - `HarnessComponent` / manifest / runtime / validator / evidence-first delivery 语义
+因此本目录的重点是 **设计边界**，而不是交付顺序。
 
 ---
 
-## 当前状态
+## 与 `blueprint/` 和 `.trash/` 的分工
 
-当前实现已完成：
+ABACUS 扩展的正式实施材料位于 `MHE/docs/wiki/meta-harness-engineer/blueprint/`：
 
-- Phase 0：SCF baseline
-- Phase 1：NSCF / relax baseline
-- Phase 2：MD baseline
-- Phase 3：`md + dp` typed baseline
+- `05-abacus-extension-blueprint.md`：正式设计蓝图
+- `05-abacus-roadmap.md`：当前路线与待补齐项
 
-当前主线进入：
+历史上放在 engine wiki 中的旧页面已移动到：
 
-- Phase 4：examples / graph / regression hardening
+- `MHE/docs/wiki/meta-harness-engineer/.trash/abacus-engine-wiki/04-extension-blueprint.md`
+- `MHE/docs/wiki/meta-harness-engineer/.trash/abacus-engine-wiki/05-roadmap.md`
+- `MHE/docs/wiki/meta-harness-engineer/.trash/abacus-engine-wiki/06-implementation-hardening-checklist.md`
 
-同时，本目录需要与 strengthened MHE 的 governance / evidence 基线继续对齐，尤其是 promotion authority、protected validator / policy boundary、manifest credential / sandbox policy，以及 session / audit / provenance evidence integration 的叙述。
+分工原则如下：
 
-## 阅读前提与当前文档缺口
-
-阅读本目录时，建议同时带着 strengthened MHE 的统一治理语义来理解。尤其是 `03` / `04` / `05` / `06` 中涉及 validator、policy、evidence、roadmap 的段落，需要按 promotion / protected boundary / runtime evidence integration 的视角吸收，而不能只按 extension-local pipeline 理解。
-
-## 阅读建议
-
-### 如果你想先理解 ABACUS 为什么适合接入 MHE
-
-先看：[01-概述与定位](01-overview.md)
-
-### 如果你想直接开始设计组件链
-
-先看：[02-工作流与组件链](02-workflow-and-components.md) → [04-扩展蓝图](04-extension-blueprint.md)
-
-### 如果你想先定义 typed contracts
-
-先看：[03-Contracts 与产物](03-contracts-and-artifacts.md)
-
-### 如果你想做正式实施拆解
-
-先看：[05-路线图](05-roadmap.md)
-
-### 如果你想在写代码前先把规则补严
-
-先看：[06-实现前补严清单](06-implementation-hardening-checklist.md)
+- **本 wiki**：回答“这个扩展应如何被设计”
+- **blueprint**：回答“正式设计主张是什么”
+- **roadmap**：回答“按什么顺序推进、当前还缺什么”
+- **.trash**：保留退出主阅读路径的历史页面，供追溯而非主导航阅读
 
 ---
 
-## 与其他 wiki 的关系
+## 推荐阅读顺序
 
-- 与 [meta-harness-wiki](../meta-harness-wiki/README.md) 的关系：后者描述通用 `Meta-Harness SDK / Runtime / ConnectionEngine`；本目录描述其上的 `ABACUS` 域扩展方案。当前关系还应补充一点：ABACUS 的 promotion-ready outcome、evidence refs 与 policy review 应依赖 runtime-level promotion / evidence authority，而不是只停留在 extension-local validator 决策。
-- 与 [deepmd-engine-wiki](../deepmd-engine-wiki/README.md) 的关系：两者都采用 `gateway -> environment -> compiler -> executor -> validator` 的受控扩展模式，但 DeepMD 偏向 `JSON + workspace`，ABACUS 偏向 `INPUT/STRU/KPT + workspace + launcher`。
-- 与 [jedi-engine-wiki](../jedi-engine-wiki/README.md) 的关系：两者都更适合包装“声明式配置 + 外部 executable”的稳定控制面；JEDI 偏向 `YAML + MPI executable`，ABACUS 偏向固定文件名工作目录 + launcher 驱动。
-- 与 [nektar-engine-wiki](../nektar-engine-wiki/README.md) 的关系：两者都是真实数值执行后端，但 Nektar 的控制面是 session plan / XML，ABACUS 的控制面是工作目录输入文件集。
-- 与 [ai4pde-agent-wiki](../ai4pde-agent-wiki/README.md) 的关系：后者是上层科学智能体 / runtime，本目录是其中一个可接入的第一性原理/原子模拟后端扩展方案。
+### 想先理解 ABACUS 扩展的设计定位
+
+先看：[01-概述与定位](01-overview.md) → [02-工作流与组件链](02-workflow-and-components.md) → [03-Contracts 与产物](03-contracts-and-artifacts.md)
+
+### 想理解失败语义与治理接缝
+
+先看：[04-环境、验证与证据](04-environment-validation-and-evidence.md)
+
+### 想理解 family 与注册面
+
+先看：[05-family 设计](05-family-design.md) → [06-封装与注册](06-packaging-and-registration.md)
+
+### 想看正式实施材料
+
+转到：`blueprint/05-abacus-extension-blueprint.md`、`blueprint/05-abacus-roadmap.md`
+
+---
+
+## 不在本目录展开的内容
+
+以下内容不再作为本目录主线：
+
+- ABACUS 软件本体的完整用户手册
+- 全量 HPC / scheduler 编排细节
+- 实施 checklist 与逐阶段交付顺序
+- 当前哪些能力已实现到什么粒度的日常盘点
+
+本目录只保留 **设计 `metaharness_ext.abacus` 所必需** 的内容。

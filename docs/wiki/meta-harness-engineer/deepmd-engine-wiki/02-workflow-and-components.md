@@ -1,395 +1,210 @@
 # 02. 工作流与组件链
 
-## 2.1 首版组件链
+## 2.1 canonical 组件链
 
-首版 `metaharness_ext.deepmd` 建议拆成两条可复用但共享 contracts 的组件链。
+`metaharness_ext.deepmd` 的当前设计，不是把 DeePMD 与 DP-GEN 做成两套互不相干的子系统，而是让它们共享一套 family-aware contracts、environment / validation surface 与 evidence / policy seam。
 
-### 2.1.1 DeePMD-kit 基础训练链
-
-```text
-DeepMDGateway
-  -> DeepMDEnvironmentProbe
-    -> DeepMDDataCompiler
-      -> DeepMDTrainConfigCompiler
-        -> DeepMDExecutor
-          -> DeepMDDiagnosticsCollector
-            -> DeepMDValidator
-              -> DeepMDEvidenceManager
-```
-
-### 2.1.2 DP-GEN 并发学习链
+### 2.1.1 DeepMD train family
 
 ```text
-DPGenGateway
-  -> DeepMDEnvironmentProbe
-    -> DPGenParamCompiler
-      -> DPGenMachineCompiler
-        -> DPGenWorkspacePreprocessor
-          -> DPGenExecutor
-            -> DPGenIterationCollector
-              -> DPGenValidator
-                -> DeepMDEvidenceManager
+DeepMDGatewayComponent
+  -> DeepMDEnvironmentProbeComponent
+    -> DeepMDTrainConfigCompilerComponent
+      -> DeepMDExecutorComponent
+        -> DeepMDValidatorComponent
+          -> build_evidence_bundle(...)
+            -> DeepMDEvidencePolicy.evaluate(...)
 ```
 
-两条链共享：
+### 2.1.2 DP-GEN families
 
-- environment probe
-- evidence manager
-- 部分 diagnostics / validator contracts
+```text
+DeepMDEnvironmentProbeComponent
+  -> build_dpgen_param_json(...) / build_dpgen_machine_json(...)
+    -> DeepMDWorkspacePreparer
+      -> DeepMDExecutorComponent
+        -> DPGenIterationCollector
+          -> DeepMDValidatorComponent
+            -> build_evidence_bundle(...)
+              -> DeepMDEvidencePolicy.evaluate(...)
+```
+
+### 2.1.3 Study family
+
+```text
+DeepMDStudyComponent
+  -> mutate typed spec
+    -> compiler
+      -> executor
+        -> validator
+          -> evidence bundle
+            -> policy report
+              -> study report
+```
+
+关键原则是：**study 只改 typed spec，不直接 patch 已生成的 JSON。**
 
 ---
 
-## 2.2 DeePMD-kit 基础训练链职责
+## 2.2 组件职责
 
-### `DeepMDGateway`
+### `gateway.py`
 
-职责：
+`DeepMDGatewayComponent` 当前负责 DeePMD train 侧的入口语义：
 
-- 接收高层 issue request
-- 规范化 `DeepMDTrainSpec`
-- 决定运行模式：`prepare_data` / `train` / `freeze` / `compress` / `test` / `model_devi` / `neighbor_stat` / `convert_from`
-- 选择最小 happy-path 还是完整 train-test path
-- 显式区分训练、测试、模型冻结/压缩、统计与部署前准备路径
+- 输出 `DeepMDTrainSpec`
+- 为最小 train baseline 提供受控 task 入口
+- 避免把训练入口退化成松散 shell 参数
 
-### `DeepMDEnvironmentProbe`
+从包级设计看，DeepMD extension 已经支持四个 family；但当前注册的 gateway surface 仍是 train-only，而不是统一 family-aware public entry。
 
-职责：
+它不是编译器，也不是 validator。
 
-- 检查 `dp` / `dpdata` / `lmp` / `python` 是否存在
-- 检查 DeePMD 环境变量与依赖是否满足
-- 检查训练数据路径、输出目录、模型文件是否存在
-- 需要时检查 `mpirun` 可用性
-- 返回结构化 `DeepMDEnvironmentReport`
+### `environment.py`
 
-### `DeepMDDataCompiler`
+`DeepMDEnvironmentProbeComponent` 负责 environment probe：
 
-职责：
+- 检查 binary 是否可用
+- 检查 Python runtime 是否可用
+- 检查 dataset path 或 workspace files 是否存在
+- 对 DP-GEN family 额外检查 `machine.local_root`、`machine.remote_root`、`machine.command`、`machine.python_path`
+- 返回 `DeepMDEnvironmentReport`
 
-- 将上游数据说明编译为可执行的数据准备计划
-- 支持：
-  - 已有 `deepmd/npy` 数据目录
-  - 从 raw/system 目录整理为 `set.*` 结构
-  - 借助 `dpdata` 从外部标注数据转换到 `deepmd/npy`
-  - HDF5 风格系统路径，如 `file.hdf5#/system`
-  - train/validation split 描述
-- 只生成受控 data plan，不直接透传任意脚本
-- 显式记录 `type.raw`、`type_map.raw`、`coord.npy`、`box.npy`、`energy.npy`、`force.npy`、`virial.npy` 等标签与布局要求
+它的职责是**前置暴露环境前提**，避免把前置条件缺失误判成运行失败。
 
-### `DeepMDTrainConfigCompiler`
+### `train_config_compiler.py`
 
-职责：
+`DeepMDTrainConfigCompilerComponent` 负责 DeePMD train family：
 
-- 将 typed `DeepMDTrainSpec` 编译为 `input.json`
-- 只允许白名单字段进入 descriptor / fitting / lr / loss / training 块
-- 支持模板 + overlay，而不是任意 JSON 注入
-- 在需要时显式纳入 `neighbor-stat` 前置统计结果，或记录 `--skip-neighbor-stat` 的风险
-- 产出 `DeepMDRunPlan`
+- 从 `DeepMDTrainSpec` 生成稳定 `input.json`
+- 构造 `DeepMDRunPlan`
+- 固化 command、working directory、expected outputs、dataset paths
+- 保持 compiler 是白名单驱动，而不是任意 JSON 透传器
 
-### `DeepMDExecutor`
+### `dpgen_param_compiler.py` / `dpgen_machine_compiler.py`
 
-职责：
+这两个模块负责 DP-GEN families：
 
-- 按 mode 调用 `dp` 子命令：
-  - `dp train`
-  - `dp freeze`
-  - `dp compress`
-  - `dp test`
-  - `dp model-devi`
-  - `dp neighbor-stat`
-  - `dp convert-from`
-- 固化工作目录
+- 生成受控 `param.json`
+- 生成受控 `machine.json`
+- 保持 machine / resource 描述与 workflow param 描述分离
+
+### `workspace.py`
+
+`DeepMDWorkspacePreparer` 负责 workspace 准备：
+
+- materialize workspace 输入
+- 准备 DP-GEN 所需文件布局
+- 在运行前暴露 workspace 级失败
+
+它是目录与输入边界，不承担 validator 职责。
+
+### `executor.py`
+
+`DeepMDExecutorComponent` 负责 mode-aware 执行：
+
+- 运行 DeePMD CLI：`train`、`freeze`、`test`、`compress`、`model_devi`、`neighbor_stat`
+- 运行 DP-GEN CLI：`dpgen_run`、`dpgen_simplify`、`dpgen_autotest`
 - 收集 stdout / stderr / return code / 产物路径
-- 维护 checkpoint / frozen / compressed model 产物关系
-- 对分布式训练显式记录 Horovod / MPI launcher、worker 数与日志策略
-
-### `DeepMDDiagnosticsCollector`
-
-职责：
-
-- 提取 `lcurve.out` 中的 loss / RMSE / lr 轨迹
-- 识别 checkpoint、frozen、compressed model 是否生成
-- 提取 `dp test` 的 energy / force / virial RMSE
-- 汇总 train.log 中的环境、时间、版本线索
+- 组装 `DeepMDRunArtifact`
 - 生成 `DeepMDDiagnosticSummary`
 
-### `DeepMDValidator`
+executor 的职责是产生 run artifact，不负责给出最终治理判据。
 
-职责：
+### `collector.py`
 
-- 区分环境失败、配置失败、训练失败、测试失败与已验证成功
-- 生成 `DeepMDValidationReport`
-- 不直接承担 config compiler 与 process execution 逻辑
-- 作为 `kind = governance` 且 `protected = true` 的 validator boundary，负责把 extension-local 运行结果提升为 promotion-aware validation signal
-- 将 `environment_invalid`、`workspace_failed`、`run_failed`、`runtime_failed`、`validation_failed` 等失败态显式暴露给后续 policy / promotion path；这些结果在 strengthened MHE 中应被视为潜在 promotion blockers，而不是普通提示
-- 对成功态继续保留 mode-aware 语义：`trained`、`frozen`、`tested`、`compressed`、`model_devi_computed`、`neighbor_stat_computed`、`baseline_success`、`simplify_success`、`converged`、`autotest_validated`
+`DPGenIterationCollector` 负责 DP-GEN iteration evidence：
 
-### `DeepMDEvidenceManager`
+- 识别 `record.dpgen`
+- 收集 `iter.*` 结构
+- 汇总 candidate / accurate / failed 计数
+- 输出 `DPGenIterationCollection`
 
-职责：
+它让 DP-GEN 路径不退化成“只看 return code”。
 
-- 打包：
-  - config
-  - logs
-  - checkpoints
-  - model artifacts
-  - diagnostics
-  - validation summary
-  - graph version / provenance refs
-- 形成稳定 `DeepMDEvidenceBundle`
-- 不把 evidence 退化成“文件归档列表”；当前 evidence bundle 还承担 governance-bearing 输入责任，用于后续 policy `allow` / `defer` / `reject` 决策
-- 对 DP-GEN `run` / `simplify` 缺失 iteration collection、对 `autotest` 缺失 property results 等情况发出 evidence-completeness warning，为 runtime-level review、session event 与 provenance linkage 提供上游信号
+### `validator.py`
 
----
+`DeepMDValidatorComponent` 是当前 extension-local 的 protected governance boundary：
 
-## 2.3 DP-GEN 并发学习链职责
+- 基于 run artifact 给出 `DeepMDValidationReport`
+- 区分 environment / workspace / runtime / validation 失败态
+- 区分 DeePMD 与 DP-GEN 的 mode-aware 成功态
+- 为下游 policy / promotion path 提供稳定的 validation signal
 
-### `DPGenGateway`
+当前真正受保护的是 validator，而不是所有 helper。
 
-职责：
+### `evidence.py` / `policy.py`
 
-- 接收 `DPGenRunSpec` / `DPGenSimplifySpec` / `DPGenAutotestSpec`
-- 决定运行模式：`init` / `run` / `simplify` / `autotest`
-- 指定是否是 dry-run、resume、real-run
+这一层构成当前的 evidence / policy seam：
 
-### `DPGenParamCompiler`
+- `build_evidence_bundle(...)` 汇总 evidence files、warnings、metadata
+- `DeepMDEvidencePolicy.evaluate(...)` 把 validation + evidence completeness 解释为 `allow` / `defer` / `reject`
 
-职责：
+它们当前是 helper seam，不是单独注册的 protected component。
 
-- 将 typed spec 编译为受控 `param.json`
-- 支持系统与数据、training、exploration、labeling 四大块
-- 只允许受控 trust level、jobs、batch、labeling 参数进入
+### `study.py`
 
-### `DPGenMachineCompiler`
+`DeepMDStudyComponent` 负责最小研究入口：
 
-职责：
+- 在 typed whitelist 轴上做 mutation
+- 串联 compiler -> executor -> validator -> evidence -> policy
+- 生成 trial-level 结果与推荐值
 
-- 将机器与调度资源描述编译为受控 `machine.json`
-- 支持：
-  - local shell
-  - local slurm
-  - remote pbs / ssh
-- 明确 command / machine / resources 的边界
-
-### `DPGenWorkspacePreprocessor`
-
-职责：
-
-- 准备 run workspace
-- 检查 `init_data_sys`、`sys_configs`、POTCAR / INCAR / 模型文件等输入
-- 固化 local/remote root、任务目录、必要软链接
-- 明确 resume 所需的 `record.dpgen` 与现有 iter 目录状态
-
-### `DPGenExecutor`
-
-职责：
-
-- 调用：
-  - `dpgen init_*`
-  - `dpgen run`
-  - `dpgen simplify`
-  - `dpgen autotest make|run|post`
-- 收集 stdout / stderr / return code / 关键目录
-- 支持 resume / dry-run / limited-iteration execution
-
-### `DPGenIterationCollector`
-
-职责：
-
-- 识别 `iter.000000/00.train/01.model_devi/02.fp` 结构
-- 解析：
-  - `record.dpgen`
-  - `dpgen.log`
-  - `model_devi.out`
-  - `candidate.shuffled.*.out`
-  - `rest_accurate.*.out`
-  - `rest_failed.*.out`
-  - `data.000` 等新增数据目录
-- 生成 `DPGenIterationReport` / `DPGenRunReport`
-
-### `DPGenValidator`
-
-职责：
-
-- 生成 typed `DPGenValidationReport`
-- 区分：
-  - environment invalid
-  - workspace invalid
-  - training incomplete
-  - model_deviation incomplete
-  - fp incomplete
-  - converged
-  - scientific check failed
-- 对 `simplify` / `autotest` 也返回统一状态模型
-- 对当前实现而言，DP-GEN 路径已经统一收敛到 `DeepMDValidationReport` 的 mode-aware status surface：`baseline_success`、`simplify_success`、`converged`、`autotest_validated` 与各类失败态共同组成 allow / defer / reject 前的治理输入
-- 与 `DeepMDValidator` 一样，这里应被理解为 protected governance boundary 的一部分：它负责陈述 iteration evidence 是否足够、收敛是否成立、autotest 性质证据是否存在，而不是自己决定 graph promotion
+它的价值不是自动调参魔法，而是把最小研究面纳入 typed、可验证、可审计的扩展边界。
 
 ---
 
-## 2.4 首版运行语义
+## 2.3 关键执行语义
 
-### 2.4.1 DeePMD-kit 模式必须显式分层
+### 2.3.1 environment probe 必须前置
 
-不应把 DeePMD 视为单一 `run` 动作，而应显式区分：
+DeepMD / DP-GEN 的早期失败经常来自：
 
-1. `prepare_data`
-2. `neighbor_stat`
-3. `train`
-4. `freeze`
-5. `compress`
-6. `test`
-7. `model_devi`
-8. `convert_from`
+- binary 缺失
+- Python runtime 缺失
+- dataset / workspace path 缺失
+- machine root / remote root / scheduler command 不完整
 
-这些动作的成本、输入边界和 validator 语义都不同。
+因此环境检查必须在 compiler / executor 前暴露出来。
 
-这里尤其不应把 `apply` 写成一个笼统黑盒，因为上游实际落地路径通常应进一步拆分为：
+### 2.3.2 JSON 是控制面，不是任意透传面
 
-- Python inference
-- C/C++ inference
-- LAMMPS integration
-- DP-GEN / autotest consumption
+当前设计必须坚持：
 
-首版扩展可以先不把这些部署路径全部做成独立 mode，但文档与 validator 至少应承认它们是不同的下游集成语义。
-
-### 2.4.2 DP-GEN 模式必须保留阶段语义
-
-DP-GEN 的 `run` 不是黑盒。至少应显式表达：
-
-```text
-00.train -> 01.model_devi -> 02.fp
-```
-
-以及每个 iteration 的阶段推进与恢复点。这样才能：
-
-- 把 early failure 定位在正确阶段
-- 让 MHE 正确理解“停在何处、下一步是什么”
-- 为审计与 resume 提供稳定证据
-
-### 2.4.3 JSON 是稳定控制面，但不是任意透传面
-
-扩展必须坚持：
-
-- agent 不直接自由拼接任意 shell/JSON 片段
 - compiler 只从 typed spec 生成受控 JSON
-- study / mutation 只能作用于 typed spec
-- 不直接在已生成 `input.json` / `param.json` 上做无约束 patch
+- 不直接接受任意 JSON patch
+- study 不直接改 compiler 产物文本
+- family boundary 不因“方便”而退化成一个大字典
 
-### 2.4.4 与 MHE graph promotion 的关系
+### 2.3.3 validator、evidence、policy 各自承担不同职责
 
-DeepMD / DP-GEN 组件链的本地输出，最终都不应直接等价于“可提升到 active graph”。更准确的关系是：
+- **validator**：解释运行结果是否达到当前最小判据
+- **evidence**：聚合 artifacts、diagnostics、warnings 与 metadata
+- **policy**：基于 validation + completeness 给出 review-ready 决策
 
-- executor 负责产生 mode-aware run artifact
-- validator 负责把运行结果整理成 promotion-aware validation status
-- evidence bundle 负责把 artifacts、diagnostics、iteration state、autotest results 与 warning 收敛成可审查输入
-- policy 负责基于 evidence completeness 和 validation status 给出 `allow` / `defer` / `reject`
-- 真正的 graph candidate promotion authority 仍属于 strengthened MHE runtime 的统一 path，例如 `PromotionContext`、policy-gated `commit_graph()` 与后续 audit / provenance 流
-
-因此 extension-local 的 “通过” 只表示 DeepMD 侧已提供了足够好的候选证据；它仍需要进入 runtime-level authority path 才能成为正式 graph 变更。
+三者不应被压扁成一个布尔值。
 
 ---
 
-## 2.5 首版目录与产物布局建议
+## 2.4 与 runtime authority 的关系
 
-### DeePMD-kit
+DeepMD 扩展当前不负责实现完整 runtime promotion engine，但必须保证自己的输出可以自然接入上层 authority path：
 
-```text
-runtime.storage_path / "deepmd_runs" / <task_id> / <run_id>/
-  |- input.json
-  |- stdout.log
-  |- stderr.log
-  |- train.log
-  |- lcurve.out
-  |- checkpoints/
-  |- models/
-  |   |- graph.pb
-  |   |- graph-compress.pb
-  |- test/
-  |   |- results.e.out
-  |   |- results.f.out
-  |- validation.json
-```
+- `DeepMDValidationReport` 提供 mode-aware status
+- `DeepMDEvidenceBundle` 提供 artifacts、warnings、metadata
+- `DeepMDPolicyReport` 提供 `allow` / `defer` / `reject`
+- runtime 再基于 `PromotionContext`、session / provenance / policy authority 决定是否允许 graph promotion
 
-### DP-GEN
-
-```text
-runtime.storage_path / "dpgen_runs" / <task_id> / <run_id>/
-  |- param.json
-  |- machine.json
-  |- stdout.log
-  |- stderr.log
-  |- dpgen.log
-  |- record.dpgen
-  |- iter.000000/
-  |- iter.000001/
-  |- reports/
-  |   |- iteration-summary.json
-  |   |- validation.json
-```
+因此 extension-local 的成功态，只表示当前候选具备进入下游治理路径的资格，不表示 graph 已自动晋升。
 
 ---
 
-## 2.6 首版最小 happy path
+## 2.5 结论
 
-### DeePMD-kit
+DeepMD 扩展的组件链重点不在“再造训练框架”，而在：
 
-```text
-DeepMDTrainSpec
-  -> environment probe
-    -> compile input.json
-      -> dp train
-        -> dp freeze
-          -> dp compress
-            -> dp test
-              -> diagnostics
-                -> validation
-                  -> evidence bundle
-```
-
-对应的最小命令路径应尽量保持贴近上游 CLI：
-
-```bash
-dp train input.json
-dp freeze -o graph.pb
-dp compress -i graph.pb -o graph-compress.pb
-dp test -m graph.pb -s /path/to/system -n 30
-```
-
-如果 `sel`、`rcut` 或体系规模仍不稳定，建议在 `dp train` 前先显式执行 `dp neighbor-stat` 以获取邻居统计，而不是直接把相关风险隐藏进训练失败里。
-
-### DP-GEN
-
-```text
-DPGenRunSpec
-  -> environment probe
-    -> compile param/machine
-      -> workspace preprocess
-        -> dpgen run
-          -> iteration collector
-            -> validation
-              -> evidence bundle
-```
-
-首版文档还应把数据与初始化来源说清楚：
-
-- `init_data_sys` 与 `sys_configs` 指向的系统集合
-- `training_init_model`、`--restart`、`--init-frz-model`、finetune 等初始化路径
-- `record.dpgen` 与 `iter.*` 目录共同定义 resume/recover 语义
-- 高成本 `fp`、remote root、scheduler 仅应在环境与 policy 层被显式放行后进入执行链
-
-从这个最小 happy path 到真正的 promotion-ready outcome 之间，还隔着统一治理门：validation status、evidence completeness、policy decision、candidate/session/provenance linkage 都需要满足 runtime authority path 的要求，不能把 workspace 成功直接写成 graph promotion 成功。
-
----
-
-## 2.7 结论
-
-DeepMD 的关键不是“再造一个训练框架”，而是把已有稳定工作流包装成：
-
-- 可声明
-- 可验证
-- 可审计
-- 可恢复
-- 可进入后续研究 / mutation / governance 体系
-
-的 MHE 域扩展。
-
-因此首版组件链应优先解决：**config 边界、workspace 边界、artifact 边界、validation 边界**，而不是一开始追求复杂自动优化器。
+- 固化 family boundary
+- 固化 compiler / workspace / executor 语义
+- 固化 validator boundary
+- 固化 evidence / policy seam
+- 为 study 与后续 runtime governance 对齐提供稳定接口

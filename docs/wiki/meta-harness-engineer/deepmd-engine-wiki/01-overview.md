@@ -4,33 +4,33 @@
 
 DeepModeling 生态的核心目标，是在量子力学精度与经典分子动力学效率之间建立可工程化的折中：
 
-1. **DeePMD-kit**：从 DFT / AIMD 数据训练 Deep Potential 模型
-2. **DP-GEN**：通过 concurrent learning 自动扩充数据集并提升模型质量
-3. **DP Library / transfer learning / simplify**：复用已有数据、模型和 relabeling 流程，降低新项目成本
+1. **DeePMD-kit**：从第一性原理或高保真标注数据训练 Deep Potential 模型
+2. **DP-GEN**：通过 concurrent learning 扩充数据集并提高模型质量
+3. **simplify / transfer learning / autotest**：复用已有模型、控制 relabeling 成本，并对性质结果做结构化验证
 
-从工程角度看，DeepMD 并不是一个“单步训练器”，而是一个跨越数据准备、训练、冻结、压缩、测试、部署、自动迭代和性质验证的长链工作流。
+从工程视角看，DeepMD 不是一个单步训练器，而是一个跨越数据准备、训练、模型导出、偏差分析、迭代收集与性质验证的工作流族。
 
 ---
 
-## 1.2 首版接口选择：接哪一层
+## 1.2 MHE 接哪一层
 
 DeepModeling 生态可粗分为四层：
 
 - **Level 1：物理与数据源层**
-  - AIMD / DFT / VASP / QE / ABACUS / Gaussian 等
+  - VASP / QE / ABACUS / Gaussian / AIMD / DFT 数据来源
 - **Level 2：模型训练层**
-  - DeePMD-kit 的 descriptor、fitting net、loss、optimizer、checkpoint
+  - descriptor、fitting net、loss、checkpoint、model export
 - **Level 3：并发学习与自动化层**
-  - DP-GEN 的 `init` / `run` / `simplify` / `autotest`
+  - `dpgen run` / `simplify` / `autotest`
 - **Level 4：外部封装与工作流层**
-  - `input.json` / `param.json` / `machine.json`、目录工作区、命令行执行、结果分析
+  - `input.json` / `param.json` / `machine.json`、workspace、命令调用、结果收集
 
-对 MHE 来说，**首版明确选择 Level 4 为主、Level 3 为辅、Level 2 只做受控参数化，不直接进入训练框架内部 API**：
+对 `metaharness_ext.deepmd` 来说，正确落点是：
 
-- **Level 4**：MHE 负责 gateway、compiler、executor、collector、validator、evidence
-- **Level 3**：MHE 负责编译受控的 DP-GEN specs 与迭代语义
-- **Level 2**：MHE 仅通过 typed training spec 生成 DeePMD 输入，不直接接管模型内部训练图
-- **不进入 Level 1**：首版不接管新的 first-principles 代码开发，也不实现数据转换器全家桶
+- **以 Level 4 为主**：gateway、compiler、workspace、executor、validator、evidence、policy
+- **以 Level 3 为辅**：包装 `dpgen_run`、`dpgen_simplify`、`dpgen_autotest` 的稳定控制面
+- **对 Level 2 只做受控参数化**：通过 typed spec 改 descriptor / fitting / training，不直接接管训练内核
+- **不进入 Level 1**：不把扩展做成任意 first-principles backend 适配平台
 
 ---
 
@@ -38,49 +38,46 @@ DeepModeling 生态可粗分为四层：
 
 ### 1.3.1 控制面天然是声明式的
 
-DeePMD-kit 与 DP-GEN 的关键控制面是 JSON：
+DeepMD 的稳定入口主要是 JSON：
 
 - DeePMD-kit：`input.json`
 - DP-GEN：`param.json`、`machine.json`
 
-这意味着系统入口不是交互式 API，而是**稳定配置 + 稳定目录结构 + 稳定命令语义**。
+这意味着扩展层最适合走 **typed spec -> controlled JSON -> workspace -> executable** 的路线。
 
 ### 1.3.2 执行过程天然是 staged lifecycle
 
-DeePMD-kit 教程给出的最小链路是：
+典型路径并不是单命令黑盒，而是：
 
 ```text
-data prep -> train -> freeze -> compress -> test -> apply
+deepmd_train:
+  train -> freeze -> compress -> test / model_devi / neighbor_stat
+
+dpgen_run:
+  00.train -> 01.model_devi -> 02.fp
+
+dpgen_simplify:
+  relabeling / transfer-learning oriented iteration
+
+dpgen_autotest:
+  make / run / post oriented property validation
 ```
 
-DP-GEN 的主链路则是：
+这与 MHE 的 contract-first、evidence-first 扩展模式天然同构。
 
-```text
-init -> run(00.train -> 01.model_devi -> 02.fp) -> autotest
-```
+### 1.3.3 证据面足够丰富
 
-这与 MHE 的 staged runtime 高度同构：
+当前扩展可围绕以下证据建立稳定 typed surface：
 
-- `declare_interface()`：声明 typed spec 与产物边界
-- `VALIDATED_STATIC`：校验 JSON 字段与路径依赖
-- `ASSEMBLED`：编译出运行目录和命令计划
-- `VALIDATED_DYNAMIC`：校验环境、命令、依赖和输入数据
-- `ACTIVATED`：执行训练 / model deviation / fp / autotest
-- `COMMITTED`：产物、诊断、验证报告与证据落盘
+- `lcurve.out`
+- checkpoint / frozen / compressed model
+- `model_devi.out`
+- `neighbor_stat.out`
+- `record.dpgen` 与 `iter.*`
+- autotest property summary
+- stdout / stderr / working directory / command provenance
 
-### 1.3.3 证据面天然丰富
-
-DeepMD 不是只给一个 return code。首版就能稳定提取：
-
-- `lcurve.out` 中的训练/验证误差轨迹
-- `model.ckpt*`、`checkpoint`、`graph.pb`、`graph-compress.pb`
-- `dp test` 的 energy / force / virial RMSE
-- `model_devi.out` 的 `max_devi_f / avg_devi_f`
-- `candidate.shuffled.*.out`、`rest_accurate.*.out`、`rest_failed.*.out`
-- `record.dpgen` 的阶段推进与恢复点
-- autotest 的 `result.out` / `result.json`
-
-这非常适合 MHE 的 evidence-first 设计。
+因此 DeepMD 很适合作为 evidence-bearing scientific extension 接入，而不是只做命令包装层。
 
 ---
 
@@ -88,111 +85,81 @@ DeepMD 不是只给一个 return code。首版就能稳定提取：
 
 ### 1.4.1 DeepMD 是多工具链组合，不是单一 binary
 
-首版至少要面对：
+最常见失败往往不是模型本身，而是：
 
-- `dp`
-- `dpgen`
-- `dpdata`
-- `lmp` / `mpirun`
-- 外部 first-principles 程序（如 `vasp_std`）
+- `dp` / `dpgen` 不可用
+- `python` 或指定 `machine.python_path` 不可用
+- dataset / workspace 输入缺失
+- `machine.local_root`、`machine.remote_root`、scheduler command 配置不完整
+- autotest 或 FP 所需外部环境不齐
 
-因此 `environment probe` 不能只检查一个 binary 是否存在，而要检查**整条工作流的外部依赖闭包**。
+因此 environment probe 必须是正式组件，而不是 executor 内部的附带检查。
 
-### 1.4.2 首版不应假定所有训练、标签和 HPC 环境都已齐备
+### 1.4.2 workspace-driven workflow 是正式边界
 
-实际场景里最容易失败的不是 JSON 语法，而是：
+DeepMD / DP-GEN 的真实语义依赖目录布局和中间产物，而不只是返回码：
 
-- 数据路径缺失
-- `type_map` / `POTCAR` / `POSCAR` 不一致
-- `machine.json` 所描述环境不可用
-- 远程 scheduler / SSH / queue 配置失效
-- `dpgen` 可运行但 `fp` 所需代码或环境缺失
+- 哪些配置文件被 materialize
+- 哪些输入被复制或引用到 workspace
+- `record.dpgen` 与 `iter.*` 是否存在
+- 模型、checkpoint、diagnostics 是否被稳定识别
 
-因此 `metaharness_ext.deepmd` 首版必须把这些失败显式建模为 environment/input failure，而不是混成“训练失败”。
+因此工作目录、产物布局和 evidence bundle 都属于正式 contract 边界。
 
-### 1.4.3 科学目标边界不能缺席
+### 1.4.3 科学通过与治理可晋升不是一回事
 
-DeepMD 教程和实践指南都强调：
+一次运行成功，只能说明 extension-local 路径跑通；它不自动等价于 promotion-ready。
 
-- 本质目标是覆盖**问题相关的局部构型空间**
-- 不应默认追求“通用鲁棒大一统模型”
-- trust level / sampling 温压 / 边界定义是首要设计变量
+DeepMD 扩展当前需要显式区分：
 
-因此首版 validator 不能只检查“训练跑完了”，还要能表达：
-
-- 当前 coverage 是否足以支持目标问题
-- model deviation 选点策略是否在合理区间
-- 是否已经收敛到“该阶段足够好”的里程碑
+- 工程上是否运行完成
+- 是否有最小科学证据
+- evidence 是否完整到足以进入下游 review
+- policy 是否给出 `allow` / `defer` / `reject`
 
 ---
 
-## 1.5 首版支持边界
+## 1.5 正式支持边界
 
-### 首版正式支持
+当前在包与 contracts 层正式支持的 application family 为：
 
-1. **DeePMD-kit 基础训练链**
-   - data preparation manifest
-   - train / freeze / compress / test
-2. **DP-GEN run 主链**
-   - `00.train`
-   - `01.model_devi`
-   - `02.fp`
-3. **DP-GEN simplify 基础链**
-   - transfer-learning / relabeling 风格迭代
-4. **DP-GEN autotest 基础链**
-   - `make` / `run` / `post`
-   - 典型性质报告归档
+- `deepmd_train`
+- `dpgen_run`
+- `dpgen_simplify`
+- `dpgen_autotest`
 
-### 首版明确不支持
+当前正式支持的 execution mode 为：
 
-- 训练框架底层图结构级别的任意修改
-- 任意外部 first-principles 程序的自动适配
+- `train`
+- `freeze`
+- `test`
+- `compress`
+- `model_devi`
+- `neighbor_stat`
+- `dpgen_run`
+- `dpgen_simplify`
+- `dpgen_autotest`
+
+当前明确不支持的方向：
+
+- 任意 first-principles backend 自动适配平台
 - 无约束 JSON 透传与自由 patch
-- 生产级大规模 scheduler 编排与集群自治
-- 直接把 DP-GEN 当成“随便跑 shell 脚本”的通用 orchestrator
-- DP Library 在线同步与外部服务写入
+- 把 DP-GEN 当成通用 shell workflow 平台
+- extension 内自带完整 session / audit / provenance 子系统
+- 直接把 runtime-level promotion authority 下沉到 DeepMD 扩展内
 
 ---
 
-## 1.6 统一术语基线
+## 1.6 结论
 
-| 术语 | 含义 |
-|---|---|
-| **DeepMD training** | 由 `dp train input.json` 启动的 DeePMD 模型训练 |
-| **Freeze** | 将 checkpoint 导出为 frozen graph（如 `graph.pb`） |
-| **Compress** | 将 frozen model 压缩为更快、更省内存的模型 |
-| **Model deviation** | 多模型对同一配置预测偏差，用于 candidate 选择 |
-| **FP** | first-principles labeling 步骤，如 VASP 重新标注 |
-| **Init data** | 初始训练集 |
-| **Candidate** | deviation 位于 trust 区间、值得重新标注的配置 |
-| **Accurate** | 当前模型已足够准确、无需重标的配置 |
-| **Failed** | deviation 过高、可能非物理或严重超界的配置 |
-| **Simplify** | 基于已有大数据集与预训练模型做 transfer-learning / relabeling 的迭代流程 |
-| **Autotest** | 针对 EOS、elastic、vacancy、surface 等性质的自动性质验证流程 |
-
----
-
-## 1.7 结论
-
-`metaharness_ext.deepmd` 的最合理落地方式，不是把 DeepModeling 视为 Python API SDK，而是把它视作一个：
+`metaharness_ext.deepmd` 最合理的定位，不是把 DeepModeling 视为 Python SDK，而是把它视为一个：
 
 - **JSON-configured**
 - **workspace-driven**
 - **artifact-rich**
 - **environment-sensitive**
-- **evidence-producing**
+- **policy-bearing**
 
-的训练 / 并发学习 / 评测应用族。
+的训练与并发学习应用族。
 
-因此首版的正式扩展路线应是：
-
-- typed contracts
-- environment probe
-- controlled JSON compiler
-- explicit workspace preprocessor
-- mode-aware executor
-- diagnostics collector
-- science-aware validator
-- evidence manager
-
-这条路线既符合本地教程材料的工程事实，也符合 MHE 一贯的 contract-first、evidence-first 扩展模式。
+因此扩展层的长期主轴应是：family-aware contracts、environment probe、controlled compiler、mode-aware executor、validator boundary、evidence / policy seam 与 typed study entry。

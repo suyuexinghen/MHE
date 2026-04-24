@@ -14,7 +14,7 @@
 - roadmap / milestone 推进说明
 - 混合在设计文档中的 implementation plan 叙述
 
-这些内容统一下沉到 `blueprint/` 目录中的正式文档。
+这些内容统一下沉到 `blueprint/` 目录中的正式文档；本 wiki 不保留它们的主阅读路径版本。
 
 ---
 
@@ -27,7 +27,7 @@
 | [03-contracts 设计](03-contracts.md) | family-aware typed contracts、运行/验证报告、typed boundary | 核心开发 |
 | [04-执行链设计](04-execution-pipeline.md) | schema / validate-only / real-run 的分层执行语义 | 运行时工程师 |
 | [05-环境与验证](05-environment-and-validation.md) | environment probe、failure taxonomy、evidence/report semantics | 运行时 / 平台工程师 |
-| [06-设计文档分工](06-implementation-phases.md) | wiki 与 blueprint / roadmap / implementation plan 的职责分工 | 文档维护者 / reviewer |
+| [06-设计文档分工](06-implementation-phases.md) | wiki 与 blueprint / roadmap / implementation plan 的职责分工与边界 | 文档维护者 / reviewer |
 | [07-family 设计](07-family-design.md) | variational / local_ensemble_da / hofx / forecast 的 family 边界 | 架构师 / compiler 维护者 |
 | [08-封装与注册](08-packaging-and-registration.md) | 包结构、exports、capabilities、slots、manifest 设计 | 核心开发 / reviewer |
 | [09-测试与评审](09-testing-and-review.md) | 测试边界、review checklist、设计不变量 | reviewer / 测试维护者 |

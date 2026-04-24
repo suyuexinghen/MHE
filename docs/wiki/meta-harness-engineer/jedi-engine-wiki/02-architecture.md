@@ -15,19 +15,7 @@ JediGateway
           -> JediValidator
 ```
 
-Phase 1 再在此基础上扩展为：
-
-```text
-JediGateway
-  -> JediEnvironmentProbe
-    -> JediConfigCompiler
-      -> JediInputPreprocessor
-        -> JediExecutor
-          -> JediDiagnosticsCollector
-            -> JediValidator
-```
-
-当前实现故意先把 **可验证、可报告、可复用** 的基础主链打稳，再把 smoke policy 与 richer diagnostics interpretation 作为下一层能力叠加上去。
+在这个基础主链之外，diagnostics collector、evidence / policy seam 与更丰富的解释层可以继续叠加；它们已经是当前设计与代码讨论的一部分，但不改变本页描述的最小 canonical 组件链。
 
 ---
 
@@ -122,15 +110,15 @@ JediGateway
 
 ---
 
-## 2.3 为什么当前 Phase 0 保留窄 preprocessor，并把 diagnostics interpretation 放到后续阶段
+## 2.3 为什么 preprocessor 保持窄边界
 
-这是分阶段控制复杂度，而不是把 runtime 基础面拆散：
+这里的目标是控制组件职责，而不是把 runtime 基础面拆散：
 
-- preprocessor 已作为正式组件进入当前主链，但职责刻意收敛在 materialization 与 required-path verification
-- executor / validator 已承接 `real_run` 与 runtime evidence 归档
-- 更重的 diagnostics collector 与 IODA/HDF5/ODB 组级 interpretation 仍放在后续阶段
+- preprocessor 作为正式组件进入主链，但职责收敛在 materialization 与 required-path verification
+- executor / validator 承接 `real_run` 与 runtime evidence 归档
+- 更重的 diagnostics collector 与 IODA/HDF5/ODB 组级 interpretation 属于可叠加能力，而不是 preprocessor 的职责
 
-因此当前 Phase 0 的目标，是先建立 `spec -> env -> YAML -> preprocess -> mode-aware execution -> evidence-first validation` 的稳定基础闭环；后续再在这个骨架上叠加 smoke policy 与 richer interpretation。
+因此本页强调的是稳定骨架：`spec -> env -> YAML -> preprocess -> mode-aware execution -> evidence-first validation`。
 
 ---
 

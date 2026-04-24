@@ -4,17 +4,13 @@
 
 `metaharness_ext.jedi` 的目标不是重写 JEDI，而是把 JEDI 这类 **YAML-configured、launcher-driven、artifact-producing** 的数据同化应用族，以受控、可验证、可审计的方式接入 `Meta-Harness Engineer`。
 
-当前 Phase 0 的最小闭环是：
+当前最小 canonical 闭环是：
 
 ```text
 spec -> environment probe -> controlled YAML -> explicit preprocessing -> mode-aware execution -> validation report
 ```
 
-在此基础上，Phase 1 再扩展为：
-
-```text
-spec -> environment probe -> preprocess -> real run -> evidence interpretation -> validation report -> study
-```
+在这个基础上，还可以继续向 richer evidence interpretation 与 study seam 扩展，但这些属于后续能力叠加，而不是本页主线。
 
 关于 execution mode、failure taxonomy 与 report 语义，分别以 [04-执行链设计](04-execution-pipeline.md)、[05-环境与验证](05-environment-and-validation.md) 为准。
 
