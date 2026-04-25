@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from metaharness.core.models import GraphSnapshot, PendingConnectionSet
+from metaharness.core.models import GraphSnapshot, PendingConnectionSet, PromotionContext
 from metaharness.core.validators import validate_graph
 from metaharness.safety.gates import GateDecision, GateResult
 
@@ -39,6 +39,14 @@ class SandboxValidator:
         pending = proposal.pending
         assert isinstance(pending, PendingConnectionSet)
         snapshot = GraphSnapshot(graph_version=0, nodes=pending.nodes, edges=pending.edges)
+        return self._evaluate_snapshot(snapshot)
+
+    def evaluate_promotion(
+        self, promotion: PromotionContext, context: dict[str, Any] | None = None
+    ) -> GateResult:
+        return self._evaluate_snapshot(promotion.candidate_snapshot)
+
+    def _evaluate_snapshot(self, snapshot: GraphSnapshot) -> GateResult:
         report = validate_graph(snapshot, self._registry)
         if report.valid:
             return GateResult(

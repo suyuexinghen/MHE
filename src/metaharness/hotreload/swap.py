@@ -100,6 +100,18 @@ class HotSwapOrchestrator:
         )
         if report.affected_protected_components and not allow_protected:
             report.error = "protected component requires explicit hot-swap approval"
+            self._append_event(
+                SessionEventType.HOT_SWAP_ROLLED_BACK,
+                report,
+                graph_version=graph_version,
+                candidate_id=candidate_id,
+                payload={
+                    "rollback_target": rollback_target,
+                    "checkpoint_id": None,
+                    "error": report.error,
+                    "observation": None,
+                },
+            )
             return report
 
         self._append_event(

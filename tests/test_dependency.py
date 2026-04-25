@@ -83,3 +83,27 @@ def test_cycle_detection() -> None:
                 _manifest("b", deps=["a"]),
             ]
         )
+
+
+def test_dependency_spec_supports_optional_fields_without_affecting_resolution() -> None:
+    manifest = ComponentManifest(
+        name="consumer",
+        version="0.1.0",
+        kind=ComponentType.CORE,
+        entry="metaharness.components.runtime:RuntimeComponent",
+        contracts=ContractSpec(),
+        deps=DependencySpec(
+            components=["producer"],
+            optional_components=["debugger"],
+            optional_capabilities=["metrics.emit"],
+        ),
+    )
+
+    ordered = resolve_boot_order([
+        manifest,
+        _manifest("producer"),
+    ])
+
+    assert [m.name for m in ordered] == ["producer", "consumer"]
+    assert manifest.deps.optional_components == ["debugger"]
+    assert manifest.deps.optional_capabilities == ["metrics.emit"]

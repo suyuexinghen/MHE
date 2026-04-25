@@ -335,6 +335,36 @@ def test_hot_swap_requires_explicit_approval_for_protected_component() -> None:
     assert outgoing.suspended == 0
 
 
+def test_hot_swap_rejected_protected_swap_records_governance_evidence() -> None:
+    outgoing = _ProtectedStatefulComponent(initial={"counter": 7})
+    incoming = _ProtectedStatefulComponent()
+    session_store = InMemorySessionStore()
+    audit_log = AuditLog()
+    provenance = ProvGraph()
+
+    report = HotSwapOrchestrator(
+        session_id="hotreload-session",
+        session_store=session_store,
+        audit_log=audit_log,
+        provenance_graph=provenance,
+    ).swap_sync(
+        component_id="policy.primary",
+        outgoing=outgoing,
+        incoming=incoming,
+        candidate_id="swap-protected-reject",
+        graph_version=12,
+        rollback_target=11,
+    )
+
+    assert report.success is False
+    events = session_store.get_events("hotreload-session")
+    assert [event.event_type for event in events] == [SessionEventType.HOT_SWAP_ROLLED_BACK]
+    assert events[-1].payload["rollback_target"] == 11
+    assert events[-1].payload["error"] == "protected component requires explicit hot-swap approval"
+    assert len(audit_log.by_kind("session.hot_swap_rolled_back")) == 1
+    assert any(ref.startswith("session-event:") for ref in report.evidence_refs)
+
+
 def test_hot_swap_records_governed_completion_evidence() -> None:
     outgoing = _ProtectedStatefulComponent(initial={"counter": 7})
     incoming = _ProtectedStatefulComponent()

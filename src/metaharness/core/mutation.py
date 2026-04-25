@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
@@ -20,6 +20,7 @@ class MutationProposal(BaseModel):
     description: str
     pending: PendingConnectionSet
     proposer_id: str = "optimizer"
+    domain_payload: dict[str, Any] | None = None
 
 
 class MutationDecision(BaseModel):

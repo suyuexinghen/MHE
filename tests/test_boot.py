@@ -11,7 +11,12 @@ import pytest
 from metaharness.config.xml_parser import parse_graph_xml
 from metaharness.core.boot import HarnessRuntime
 from metaharness.core.brain import BrainProvider
-from metaharness.core.event_bus import AFTER_COMMIT_GRAPH, BEFORE_COMMIT_GRAPH, CANDIDATE_REJECTED
+from metaharness.core.event_bus import (
+    AFTER_COMMIT_GRAPH,
+    BEFORE_COMMIT_GRAPH,
+    CANDIDATE_DEFERRED,
+    CANDIDATE_REJECTED,
+)
 from metaharness.core.graph_versions import CandidateRecord, ExternalCandidateReviewState
 from metaharness.core.models import GraphSnapshot, PendingConnectionSet, SessionEventType, ValidationIssue, ValidationReport
 from metaharness.hotreload import HotSwapOrchestrator
@@ -99,8 +104,11 @@ def test_commit_graph_rejects_on_blocks_promotion_and_records_failure(
     runtime.boot()
     snapshot = parse_graph_xml(graphs_dir / "default-topology.xml")
     rejected: list[object] = []
+    events: list[str] = []
 
-    runtime.event_bus.subscribe(CANDIDATE_REJECTED, lambda event: rejected.append(event.payload))
+    runtime.event_bus.subscribe(BEFORE_COMMIT_GRAPH, lambda event: events.append(event.name))
+    runtime.event_bus.subscribe(AFTER_COMMIT_GRAPH, lambda event: events.append(event.name))
+    runtime.event_bus.subscribe(CANDIDATE_REJECTED, lambda event: (events.append(event.name), rejected.append(event.payload)))
 
     original_stage = runtime.engine.stage
 
@@ -133,6 +141,7 @@ def test_commit_graph_rejects_on_blocks_promotion_and_records_failure(
             candidate_id="blocked",
         )
 
+    assert events == [CANDIDATE_REJECTED]
     assert len(rejected) == 1
     ctx = rejected[0]
     assert ctx.candidate_id == "blocked"
@@ -187,6 +196,15 @@ def test_commit_graph_allows_invalid_report_without_blocking_issues(
     candidate_record = runtime.version_manager.candidates[-1]
     assert candidate_record.candidate_id == "advisory"
     assert candidate_record.promoted is True
+
+
+def test_session_event_type_includes_execution_lifecycle_values() -> None:
+    assert SessionEventType.CANDIDATE_DEFERRED.value == "candidate_deferred"
+    assert SessionEventType.ENVIRONMENT_PROBED.value == "environment_probed"
+    assert SessionEventType.TASK_SUBMITTED.value == "task_submitted"
+    assert SessionEventType.TASK_COMPLETED.value == "task_completed"
+    assert SessionEventType.TASK_FAILED.value == "task_failed"
+    assert SessionEventType.TASK_RETRIED.value == "task_retried"
 
 
 def test_commit_graph_records_session_events_and_graph_links(
@@ -309,6 +327,40 @@ def test_commit_graph_rejects_when_policy_vetoes(manifest_dir: Path, graphs_dir:
     assert runtime.version_manager.active_version is None
     candidate_record = runtime.version_manager.candidates[-1]
     assert candidate_record.candidate_id == "policy-reject"
+    assert candidate_record.promoted is False
+
+
+def test_commit_graph_defers_when_policy_requests_manual_review(
+    manifest_dir: Path, graphs_dir: Path
+) -> None:
+    session_store = InMemorySessionStore()
+    runtime = HarnessRuntime(ComponentDiscovery(bundled=manifest_dir), session_store=session_store)
+    runtime.boot()
+    snapshot = parse_graph_xml(graphs_dir / "default-topology.xml")
+    policy = runtime.components["policy.primary"]
+    original_review = policy.review_graph_promotion
+    bus_events: list[str] = []
+    runtime.event_bus.subscribe(CANDIDATE_DEFERRED, lambda event: bus_events.append(event.name))
+    runtime.event_bus.subscribe(CANDIDATE_REJECTED, lambda event: bus_events.append(event.name))
+
+    def defer_review(promotion):
+        decision = original_review(promotion)
+        return decision.model_copy(update={"decision": "defer", "reason": "manual_review"})
+
+    policy.review_graph_promotion = defer_review
+
+    with pytest.raises(ValueError, match="manual_review"):
+        runtime.commit_graph(
+            PendingConnectionSet(nodes=snapshot.nodes, edges=snapshot.edges),
+            candidate_id="policy-defer",
+        )
+
+    assert bus_events == [CANDIDATE_DEFERRED]
+    events = session_store.get_events(runtime.session_id)
+    assert events[-1].event_type == SessionEventType.CANDIDATE_DEFERRED
+    assert events[-1].payload["reason"] == "manual_review"
+    candidate_record = runtime.version_manager.candidates[-1]
+    assert candidate_record.candidate_id == "policy-defer"
     assert candidate_record.promoted is False
 
 

@@ -16,6 +16,7 @@ from metaharness.core.connection_engine import ConnectionEngine
 from metaharness.core.event_bus import (
     AFTER_COMMIT_GRAPH,
     BEFORE_COMMIT_GRAPH,
+    CANDIDATE_DEFERRED,
     CANDIDATE_REJECTED,
     EventBus,
 )
@@ -426,8 +427,6 @@ class HarnessRuntime:
             payload=self._serialize_validation_report(promotion),
         )
 
-        self.event_bus.publish(BEFORE_COMMIT_GRAPH, promotion)
-
         blocking_issues = [issue for issue in report.issues if issue.blocks_promotion]
         policy_component = self.components.get("policy.primary")
         reviewer = None
@@ -445,18 +444,28 @@ class HarnessRuntime:
         )
         if blocking_issues or not safety_result.allowed:
             self.engine.discard_candidate(candidate_id, candidate, report)
+            deferred = (
+                not blocking_issues
+                and any(result.decision.value == "defer" for result in safety_result.results)
+            )
+            event_type = (
+                SessionEventType.CANDIDATE_DEFERRED
+                if deferred
+                else SessionEventType.CANDIDATE_REJECTED
+            )
             for node in candidate.nodes:
                 phase = self.lifecycle.phase(node.component_id)
                 if phase != ComponentPhase.COMMITTED:
                     self.lifecycle.record(node.component_id, ComponentPhase.VALIDATED_DYNAMIC)
-                self.lifecycle.record(node.component_id, ComponentPhase.FAILED)
+                if not deferred:
+                    self.lifecycle.record(node.component_id, ComponentPhase.FAILED)
             rejection_reason = (
                 "; ".join(f"{issue.code}:{issue.subject}" for issue in blocking_issues)
                 if blocking_issues
-                else (safety_result.rejected_reason or "safety_rejected")
+                else (safety_result.rejected_reason or ("safety_deferred" if deferred else "safety_rejected"))
             )
             self._append_runtime_evidence(
-                SessionEventType.CANDIDATE_REJECTED,
+                event_type,
                 promotion,
                 graph_version=proposed_version,
                 payload={
@@ -465,12 +474,18 @@ class HarnessRuntime:
                     "safety": self._serialize_safety_result(safety_result),
                 },
             )
-            self.event_bus.publish(CANDIDATE_REJECTED, promotion)
+            self.event_bus.publish(
+                CANDIDATE_DEFERRED if deferred else CANDIDATE_REJECTED,
+                promotion,
+            )
             if blocking_issues:
                 reason = "; ".join(f"{issue.code}:{issue.subject}" for issue in blocking_issues)
             else:
-                reason = safety_result.rejected_reason or "safety_rejected"
-            raise ValueError(f"Candidate graph '{candidate_id}' failed promotion gate: {reason}")
+                reason = safety_result.rejected_reason or ("safety_deferred" if deferred else "safety_rejected")
+            outcome = "deferred" if deferred else "failed"
+            raise ValueError(f"Candidate graph '{candidate_id}' {outcome} promotion gate: {reason}")
+
+        self.event_bus.publish(BEFORE_COMMIT_GRAPH, promotion)
 
         commit_report = report if report.valid else report.model_copy(update={"valid": True})
         version = self.engine.commit(candidate_id, candidate, commit_report)

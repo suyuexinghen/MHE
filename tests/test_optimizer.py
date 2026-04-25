@@ -23,6 +23,7 @@ def test_optimizer_emits_proposal_only() -> None:
     assert proposal.proposal_id.startswith("p-")
     assert proposal.description == "try a safer runtime"
     assert proposal.proposer_id == "optimizer"
+    assert proposal.domain_payload is None
     assert isinstance(proposal.pending, PendingConnectionSet)
 
     # Hard invariant: the optimizer must not hold a direct write path into the
@@ -31,6 +32,21 @@ def test_optimizer_emits_proposal_only() -> None:
     assert not hasattr(optimizer, "engine")
     assert not hasattr(optimizer, "registry")
     assert not hasattr(optimizer, "version_store")
+
+
+def test_mutation_proposal_accepts_optional_domain_payload() -> None:
+    proposal = MutationProposal(
+        proposal_id="p-0001",
+        description="domain-aware candidate",
+        pending=PendingConnectionSet(),
+        domain_payload={"study_id": "study-1", "shots": 1024},
+    )
+
+    dumped = proposal.model_dump()
+
+    assert dumped["domain_payload"] == {"study_id": "study-1", "shots": 1024}
+    restored = MutationProposal.model_validate(dumped)
+    assert restored.domain_payload == {"study_id": "study-1", "shots": 1024}
 
 
 def test_optimizer_commit_requires_submitter() -> None:

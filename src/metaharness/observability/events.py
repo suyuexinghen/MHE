@@ -7,9 +7,11 @@ source of truth for session replay and crash recovery.
 
 from __future__ import annotations
 
+import json
 import uuid
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
+from pathlib import Path
 
 from metaharness.core.models import SessionEvent, SessionEventType
 
@@ -65,6 +67,54 @@ class InMemorySessionStore(SessionStore):
             if events[i].event_type == SessionEventType.CHECKPOINT_SAVED:
                 return i
         return None
+
+
+class FileSessionStore(SessionStore):
+    """Append-only JSONL-backed session event store."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+
+    def append(self, event: SessionEvent) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with self.path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(event.model_dump(mode="json")) + "\n")
+
+    def get_events(
+        self,
+        session_id: str,
+        *,
+        after_index: int | None = None,
+        event_type: SessionEventType | None = None,
+    ) -> list[SessionEvent]:
+        events = [
+            event
+            for event in self._read_all()
+            if event.session_id == session_id
+            and (event_type is None or event.event_type == event_type)
+        ]
+        if after_index is not None:
+            events = events[after_index + 1 :]
+        return events
+
+    def latest_checkpoint_index(self, session_id: str) -> int | None:
+        events = self.get_events(session_id)
+        for i in range(len(events) - 1, -1, -1):
+            if events[i].event_type == SessionEventType.CHECKPOINT_SAVED:
+                return i
+        return None
+
+    def _read_all(self) -> list[SessionEvent]:
+        if not self.path.exists():
+            return []
+        events: list[SessionEvent] = []
+        with self.path.open(encoding="utf-8") as fh:
+            for line in fh:
+                payload = line.strip()
+                if not payload:
+                    continue
+                events.append(SessionEvent.model_validate_json(payload))
+        return events
 
 
 def make_session_event(

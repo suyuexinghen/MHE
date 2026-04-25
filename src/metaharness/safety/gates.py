@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Protocol
 
+from metaharness.core.models import PromotionContext
 from metaharness.core.mutation import MutationProposal
 
 
@@ -48,4 +49,8 @@ class SafetyGate(Protocol):
 
     def evaluate(
         self, proposal: MutationProposal, context: dict[str, Any] | None = None
+    ) -> GateResult: ...
+
+    def evaluate_promotion(
+        self, promotion: PromotionContext, context: dict[str, Any] | None = None
     ) -> GateResult: ...

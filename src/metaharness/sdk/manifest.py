@@ -84,6 +84,8 @@ class DependencySpec(BaseModel):
 
     components: list[str] = Field(default_factory=list)
     capabilities: list[str] = Field(default_factory=list)
+    optional_components: list[str] = Field(default_factory=list)
+    optional_capabilities: list[str] = Field(default_factory=list)
 
 
 class ComponentManifest(BaseModel):

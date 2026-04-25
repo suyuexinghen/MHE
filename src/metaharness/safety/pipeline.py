@@ -98,33 +98,52 @@ class SafetyPipeline:
         promotion: PromotionContext,
         *,
         reviewer: Any | None = None,
+        context: dict[str, Any] | None = None,
     ) -> SafetyPipelineResult:
         """Evaluate a candidate graph promotion through the safety authority."""
 
         result = SafetyPipelineResult(promotion=promotion, allowed=True)
-        if reviewer is None:
-            return result
+        gate_context = context or {}
 
-        decision = reviewer(promotion)
-        if decision.decision != "allow":
-            result.allowed = False
-            result.rejected_by = "policy_review"
-            result.rejected_reason = decision.reason or "policy_veto"
-            result.results.append(
-                GateResult(
-                    gate="policy_review",
-                    decision=GateDecision.REJECT,
-                    reason=result.rejected_reason,
-                    evidence={"decision_id": decision.proposal_id},
-                )
-            )
-            return result
-
-        result.results.append(
-            GateResult(
+        if reviewer is not None:
+            decision = reviewer(promotion)
+            gate_decision = GateDecision.ALLOW
+            if decision.decision == "defer":
+                gate_decision = GateDecision.DEFER
+            elif decision.decision != "allow":
+                gate_decision = GateDecision.REJECT
+            policy_result = GateResult(
                 gate="policy_review",
-                decision=GateDecision.ALLOW,
+                decision=gate_decision,
+                reason="" if gate_decision == GateDecision.ALLOW else (decision.reason or "policy_veto"),
                 evidence={"decision_id": decision.proposal_id},
             )
-        )
+            result.results.append(policy_result)
+            if gate_decision == GateDecision.REJECT:
+                result.allowed = False
+                result.rejected_by = "policy_review"
+                result.rejected_reason = policy_result.reason
+                return result
+            if gate_decision == GateDecision.DEFER:
+                result.allowed = False
+                result.rejected_by = "policy_review"
+                result.rejected_reason = policy_result.reason or "policy_deferred"
+                return result
+
+        for gate in self.gates:
+            evaluate_promotion = getattr(gate, "evaluate_promotion", None)
+            if evaluate_promotion is None:
+                continue
+            gate_result = evaluate_promotion(promotion, gate_context)
+            result.results.append(gate_result)
+            if gate_result.decision == GateDecision.REJECT:
+                result.allowed = False
+                result.rejected_by = gate.name
+                result.rejected_reason = gate_result.reason
+                return result
+            if gate_result.decision == GateDecision.DEFER:
+                result.allowed = False
+                result.rejected_by = gate.name
+                result.rejected_reason = gate_result.reason or "deferred"
+                return result
         return result

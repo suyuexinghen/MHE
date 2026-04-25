@@ -15,6 +15,7 @@ EventHandler = Callable[["Event"], Any] | Callable[["Event"], Awaitable[Any]]
 BEFORE_COMMIT_GRAPH = "before_commit_graph"
 AFTER_COMMIT_GRAPH = "after_commit_graph"
 CANDIDATE_REJECTED = "candidate_rejected"
+CANDIDATE_DEFERRED = "candidate_deferred"
 
 
 @dataclass(slots=True)

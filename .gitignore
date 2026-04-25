@@ -12,3 +12,6 @@ sessions_export
 abacus_runs
 __pycache__
 iter.000000
+checkpoint
+lcurve.out
+result.json

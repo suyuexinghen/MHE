@@ -15,6 +15,7 @@ from metaharness.safety import (
     ABShadowTester,
     AutoRollback,
     GateDecision,
+    GateResult,
     HookRegistry,
     PolicyVetoGate,
     SafetyPipeline,
@@ -266,6 +267,41 @@ def test_pipeline_rejects_promotion_when_protected_components_are_flagged(
     assert "protected_component_change:policy.primary" == result.rejected_reason
     assert result.promotion is promotion
     assert result.results[-1].evidence["decision_id"] == "candidate-protected"
+
+
+class _PromotionDeferGate:
+    name = "promotion_defer_gate"
+
+    def evaluate(self, proposal, context=None):
+        return GateResult(gate=self.name, decision=GateDecision.ALLOW)
+
+    def evaluate_promotion(self, promotion, context=None):
+        return GateResult(
+            gate=self.name,
+            decision=GateDecision.DEFER,
+            reason="awaiting_manual_review",
+        )
+
+
+def test_pipeline_evaluate_graph_promotion_runs_gate_chain_and_supports_defer(
+    manifest_dir: Path, graphs_dir: Path
+) -> None:
+    _, registry = _proposal(manifest_dir, graphs_dir)
+    snapshot = parse_graph_xml(graphs_dir / "minimal-happy-path.xml")
+    promotion = PromotionContext(
+        candidate_id="candidate-defer",
+        candidate_snapshot=snapshot,
+        validation_report=validate_graph(snapshot, registry),
+        proposed_graph_version=1,
+    )
+    pipeline = SafetyPipeline([_PromotionDeferGate()])
+
+    result = pipeline.evaluate_graph_promotion(promotion)
+
+    assert result.allowed is False
+    assert result.rejected_by == "promotion_defer_gate"
+    assert result.rejected_reason == "awaiting_manual_review"
+    assert result.results[-1].decision == GateDecision.DEFER
 
 
 def test_connection_engine_invalid_commit_preserves_active_graph(
