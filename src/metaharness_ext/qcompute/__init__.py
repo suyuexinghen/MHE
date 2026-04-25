@@ -41,6 +41,7 @@ from metaharness_ext.qcompute.evidence import build_evidence_bundle
 from metaharness_ext.qcompute.executor import QComputeExecutorComponent
 from metaharness_ext.qcompute.gateway import QComputeGatewayComponent
 from metaharness_ext.qcompute.governance import QComputeGovernanceAdapter
+from metaharness_ext.qcompute.mitigation import mitigate_result
 from metaharness_ext.qcompute.policy import QComputeEvidencePolicy
 from metaharness_ext.qcompute.slots import (
     PROTECTED_SLOTS,
@@ -106,4 +107,5 @@ __all__ = [
     "QComputeValidationStatus",
     "QComputeValidatorComponent",
     "build_evidence_bundle",
+    "mitigate_result",
 ]

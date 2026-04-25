@@ -124,3 +124,53 @@ def test_qcompute_validator_defers_high_noise_impact() -> None:
     assert report.issues[0].blocks_promotion is False
     assert report.metrics.noise_impact_score is not None
     assert abs(report.metrics.noise_impact_score - 0.8) < 1e-12
+
+
+def test_qcompute_validator_reduces_noise_with_zne_mitigation() -> None:
+    artifact = _build_artifact(
+        execution_policy={"details": {"error_mitigation": {"zne": {"applied": True}}}},
+    )
+    report = QComputeValidatorComponent().validate_run(
+        artifact,
+        _build_plan(
+            noise=QComputeNoiseSpec(
+                model="depolarizing",
+                depolarizing_prob=0.1,
+                readout_error=0.1,
+                gate_error_map={"h": 0.6},
+            ),
+        ),
+        _build_environment(),
+    )
+    raw_score = 0.8
+    assert report.metrics.noise_impact_score is not None
+    assert abs(report.metrics.noise_impact_score - raw_score * 0.7) < 1e-12
+
+
+def test_qcompute_validator_reduces_noise_with_combined_mitigation() -> None:
+    artifact = _build_artifact(
+        execution_policy={
+            "details": {
+                "error_mitigation": {
+                    "zne": {"applied": True},
+                    "rem": {"applied": True},
+                }
+            }
+        },
+    )
+    report = QComputeValidatorComponent().validate_run(
+        artifact,
+        _build_plan(
+            noise=QComputeNoiseSpec(
+                model="depolarizing",
+                depolarizing_prob=0.1,
+                readout_error=0.1,
+                gate_error_map={"h": 0.6},
+            ),
+        ),
+        _build_environment(),
+    )
+    raw_score = 0.8
+    expected = raw_score * 0.7 * 0.8
+    assert report.metrics.noise_impact_score is not None
+    assert abs(report.metrics.noise_impact_score - expected) < 1e-12

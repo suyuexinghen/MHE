@@ -1,6 +1,6 @@
 # 06. QCompute Roadmap
 
-> 状态：pre-implementation | 以 `qcompute-engine-wiki` (01–08) 和 `06-qcompute-extension-blueprint.md` 为准的执行路线图
+> 状态：Phase 0–3 implemented | Phase 4–5 pending | 以 `qcompute-engine-wiki` (01–08) 和 `06-qcompute-extension-blueprint.md` 为准的执行路线图
 
 ## 6.1 推荐执行顺序
 

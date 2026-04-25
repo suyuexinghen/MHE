@@ -104,3 +104,105 @@ async def test_qcompute_executor_uses_gate_error_map_noise(tmp_path: Path) -> No
     payload = json.loads(Path(artifact.raw_output_path).read_text())
     assert payload["shots_completed"] == 256
     assert payload["counts"]
+
+
+@pytest.mark.asyncio
+async def test_qcompute_executor_records_applied_zne(tmp_path: Path) -> None:
+    compiler = QComputeConfigCompilerComponent()
+    plan = compiler.build_plan(
+        _build_spec(
+            error_mitigation=["zne"],
+            noise=QComputeNoiseSpec(model="depolarizing", depolarizing_prob=0.05),
+        )
+    )
+    executor = QComputeExecutorComponent()
+    await executor.activate(ComponentRuntime(storage_path=tmp_path))
+
+    artifact = executor.execute_plan(plan)
+
+    assert artifact.status == "completed"
+    mitigation = artifact.execution_policy.details["error_mitigation"]
+    assert mitigation["zne"]["applied"] is True
+    assert isinstance(mitigation["zne"]["expectation_zero"], float)
+    assert 0.0 <= mitigation["zne"]["expectation_zero"] <= 1.0
+    assert mitigation["zne"]["scale_factors"] == [1, 3, 5]
+    assert mitigation["requested"] == ["zne"]
+    assert mitigation["overhead"]["total_executor_calls"] == 3
+
+
+@pytest.mark.asyncio
+async def test_qcompute_executor_rem_applied(tmp_path: Path) -> None:
+    compiler = QComputeConfigCompilerComponent()
+    plan = compiler.build_plan(
+        _build_spec(
+            error_mitigation=["rem"],
+            noise=QComputeNoiseSpec(model="depolarizing", readout_error=0.05),
+        )
+    )
+    executor = QComputeExecutorComponent()
+    await executor.activate(ComponentRuntime(storage_path=tmp_path))
+
+    artifact = executor.execute_plan(plan)
+
+    assert artifact.status == "completed"
+    mitigation = artifact.execution_policy.details["error_mitigation"]
+    assert mitigation["rem"]["applied"] is True
+    assert mitigation["rem"]["readout_error"] == 0.05
+    assert mitigation["requested"] == ["rem"]
+
+
+@pytest.mark.asyncio
+async def test_qcompute_executor_zne_and_rem_combined(tmp_path: Path) -> None:
+    compiler = QComputeConfigCompilerComponent()
+    plan = compiler.build_plan(
+        _build_spec(
+            error_mitigation=["zne", "rem"],
+            noise=QComputeNoiseSpec(
+                model="depolarizing", depolarizing_prob=0.05, readout_error=0.03
+            ),
+        )
+    )
+    executor = QComputeExecutorComponent()
+    await executor.activate(ComponentRuntime(storage_path=tmp_path))
+
+    artifact = executor.execute_plan(plan)
+
+    assert artifact.status == "completed"
+    mitigation = artifact.execution_policy.details["error_mitigation"]
+    assert mitigation["zne"]["applied"] is True
+    assert mitigation["rem"]["applied"] is True
+    assert mitigation["overhead"]["total_executor_calls"] == 4
+    assert mitigation["requested"] == ["rem", "zne"]
+
+
+@pytest.mark.asyncio
+async def test_qcompute_executor_rem_fallback(tmp_path: Path) -> None:
+    compiler = QComputeConfigCompilerComponent()
+    plan = compiler.build_plan(
+        _build_spec(
+            error_mitigation=["rem"],
+            noise=QComputeNoiseSpec(model="none"),
+        )
+    )
+    executor = QComputeExecutorComponent()
+    await executor.activate(ComponentRuntime(storage_path=tmp_path))
+
+    artifact = executor.execute_plan(plan)
+
+    assert artifact.status == "completed"
+    mitigation = artifact.execution_policy.details["error_mitigation"]
+    assert mitigation["rem"]["applied"] is False
+    assert mitigation["rem"]["reason"] == "no_readout_error"
+
+
+@pytest.mark.asyncio
+async def test_qcompute_executor_no_mitigation_no_metadata(tmp_path: Path) -> None:
+    compiler = QComputeConfigCompilerComponent()
+    plan = compiler.build_plan(_build_spec())
+    executor = QComputeExecutorComponent()
+    await executor.activate(ComponentRuntime(storage_path=tmp_path))
+
+    artifact = executor.execute_plan(plan)
+
+    assert artifact.status == "completed"
+    assert "error_mitigation" not in artifact.execution_policy.details

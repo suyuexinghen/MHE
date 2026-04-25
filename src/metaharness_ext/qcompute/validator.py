@@ -53,7 +53,7 @@ class QComputeValidatorComponent(HarnessComponent):
             fidelity=plan.estimated_fidelity,
             circuit_depth_executed=plan.estimated_depth,
             swap_count_executed=plan.estimated_swap_count,
-            noise_impact_score=self._noise_impact_score(plan),
+            noise_impact_score=self._adjusted_noise_impact_score(plan, artifact),
             gate_error_accumulation=self._gate_error_accumulation(plan),
             readout_confidence=self._readout_confidence(plan),
             syntax_valid=True,
@@ -279,11 +279,28 @@ class QComputeValidatorComponent(HarnessComponent):
             return 0.0
         gate_error = self._gate_error_accumulation(plan)
         readout_error = plan.noise.readout_error or 0.0
+        base: float
         if plan.noise.model == "thermal_relaxation":
-            return min(1.0, gate_error + readout_error + 0.05)
-        if plan.noise.model == "depolarizing":
-            return min(1.0, gate_error + readout_error)
-        return 1.0
+            base = min(1.0, gate_error + readout_error + 0.05)
+        elif plan.noise.model == "depolarizing":
+            base = min(1.0, gate_error + readout_error)
+        else:
+            base = 1.0
+        return base
+
+    def _adjusted_noise_impact_score(
+        self, plan: QComputeRunPlan, artifact: QComputeRunArtifact
+    ) -> float:
+        raw = self._noise_impact_score(plan)
+        mitigation = artifact.execution_policy.details.get("error_mitigation", {})
+        if not mitigation:
+            return raw
+        factor = 1.0
+        if mitigation.get("zne", {}).get("applied"):
+            factor *= 0.7
+        if mitigation.get("rem", {}).get("applied"):
+            factor *= 0.8
+        return raw * factor
 
     def _gate_error_accumulation(self, plan: QComputeRunPlan) -> float:
         if plan.noise is None:

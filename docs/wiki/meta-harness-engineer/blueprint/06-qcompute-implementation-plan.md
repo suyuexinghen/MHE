@@ -1,6 +1,6 @@
 # 06. QCompute Implementation Plan
 
-> 状态：pre-implementation | 对 `06-qcompute-roadmap.md` Phase 0–5 的逐步实施计划
+> 状态：Phase 0–3 implemented | Phase 4–5 pending | 对 `06-qcompute-roadmap.md` Phase 0–5 的逐步实施计划
 
 ## Technical Alignment Notes
 

@@ -58,10 +58,10 @@ class QComputeExecutorComponent(HarnessComponent):
 
         try:
             circuit = self._load_circuit(plan.circuit_openqasm)
-            result = QiskitAerBackend().run(
+            result = self._execute_with_optional_mitigation(
+                backend=QiskitAerBackend(),
                 circuit=circuit,
-                shots=plan.execution_params.shots,
-                noise=plan.noise,
+                plan=plan,
             )
         except Exception as error:
             return self._failed_artifact(
@@ -73,6 +73,10 @@ class QComputeExecutorComponent(HarnessComponent):
 
         raw_output_path = run_dir / "result.json"
         raw_output_path.write_text(json.dumps(result, sort_keys=True, indent=2))
+        execution_policy = plan.execution_policy.model_copy(deep=True)
+        mitigation_metadata = result.get("metadata", {}).get("error_mitigation")
+        if mitigation_metadata:
+            execution_policy.details["error_mitigation"] = mitigation_metadata
         return QComputeRunArtifact(
             artifact_id=f"{plan.plan_id}-artifact-{uuid.uuid4().hex[:8]}",
             plan_ref=plan.plan_id,
@@ -90,8 +94,38 @@ class QComputeExecutorComponent(HarnessComponent):
             checkpoint_refs=list(plan.checkpoint_refs),
             provenance_refs=list(plan.provenance_refs),
             trace_refs=list(plan.trace_refs),
-            execution_policy=plan.execution_policy.model_copy(deep=True),
+            execution_policy=execution_policy,
         )
+
+    def _execute_with_optional_mitigation(
+        self,
+        *,
+        backend: QiskitAerBackend,
+        circuit: Any,
+        plan: QComputeRunPlan,
+    ) -> dict[str, Any]:
+        strategies = set(plan.execution_params.error_mitigation)
+        result = backend.run(
+            circuit=circuit,
+            shots=plan.execution_params.shots,
+            noise=plan.noise,
+        )
+        if not strategies:
+            return result
+
+        from metaharness_ext.qcompute.mitigation import mitigate_result
+
+        mitigation = mitigate_result(
+            backend,
+            circuit,
+            plan.execution_params.shots,
+            plan.noise,
+            sorted(strategies),
+        )
+        if mitigation is not None:
+            mitigation["requested"] = sorted(strategies)
+            result.setdefault("metadata", {})["error_mitigation"] = mitigation
+        return result
 
     def _resolve_run_dir(self, plan: QComputeRunPlan) -> Path:
         runtime = getattr(self, "_runtime", None)
