@@ -1,0 +1,75 @@
+{
+  "name": "qcompute_validator",
+  "version": "0.1.0",
+  "kind": "governance",
+  "entry": "metaharness_ext.qcompute.validator:QComputeValidatorComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [
+      {
+        "name": "run",
+        "type": "QComputeRunArtifact",
+        "required": true,
+        "description": "Validate quantum execution output.",
+        "cardinality": "one"
+      },
+      {
+        "name": "plan",
+        "type": "QComputeRunPlan",
+        "required": true,
+        "description": "Compiled plan used to interpret run completeness and thresholds.",
+        "cardinality": "one"
+      },
+      {
+        "name": "environment",
+        "type": "QComputeEnvironmentReport",
+        "required": true,
+        "description": "Environment probe used for backend readiness and promotion blocking.",
+        "cardinality": "one"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "validation",
+        "type": "QComputeValidationReport",
+        "mode": "sync",
+        "description": "Return validation metrics, issues, and scored evidence for governance."
+      }
+    ],
+    "events": [],
+    "provides": [
+      {
+        "name": "qcompute.result.validate",
+        "description": "Validate QCompute run artifacts for promotion evidence."
+      }
+    ],
+    "requires": [],
+    "slots": [
+      {
+        "slot": "qcompute_validator.primary",
+        "binding": "primary",
+        "required": true
+      }
+    ]
+  },
+  "safety": {
+    "protected": true,
+    "mutability": "mutable",
+    "sandbox_profile": "workspace-read",
+    "hot_swap": false
+  },
+  "policy": {
+    "sandbox": {
+      "tier": "workspace-read"
+    },
+    "credentials": {
+      "requires_subject": false,
+      "allow_inline_credentials": true,
+      "required_claims": []
+    }
+  },
+  "state_schema_version": 1,
+  "provides": [
+    "qcompute.result.validate"
+  ]
+}

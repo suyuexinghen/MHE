@@ -1,0 +1,68 @@
+{
+  "name": "qcompute_executor",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.qcompute.executor:QComputeExecutorComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [
+      {
+        "name": "plan",
+        "type": "QComputeRunPlan",
+        "required": true,
+        "description": "Execute a compiled QCompute run plan on the selected backend.",
+        "cardinality": "one"
+      },
+      {
+        "name": "environment",
+        "type": "QComputeEnvironmentReport",
+        "required": false,
+        "description": "Optional probe report used to reject unavailable backends before execution.",
+        "cardinality": "one"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "run",
+        "type": "QComputeRunArtifact",
+        "mode": "sync",
+        "description": "Return counts, probabilities, and archived backend metadata for the execution."
+      }
+    ],
+    "events": [],
+    "provides": [
+      {
+        "name": "qcompute.circuit.run",
+        "description": "Execute compiled QCompute plans against the Aer simulator backend."
+      }
+    ],
+    "requires": [],
+    "slots": [
+      {
+        "slot": "qcompute_executor.primary",
+        "binding": "primary",
+        "required": true
+      }
+    ]
+  },
+  "safety": {
+    "protected": false,
+    "mutability": "mutable",
+    "sandbox_profile": "workspace-write",
+    "hot_swap": true
+  },
+  "policy": {
+    "sandbox": {
+      "tier": "workspace-write"
+    },
+    "credentials": {
+      "requires_subject": false,
+      "allow_inline_credentials": true,
+      "required_claims": []
+    }
+  },
+  "state_schema_version": 1,
+  "provides": [
+    "qcompute.circuit.run"
+  ]
+}

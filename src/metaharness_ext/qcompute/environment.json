@@ -1,0 +1,61 @@
+{
+  "name": "qcompute_environment",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.qcompute.environment:QComputeEnvironmentProbeComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [
+      {
+        "name": "task",
+        "type": "QComputeExperimentSpec",
+        "required": true,
+        "description": "Probe QCompute backend readiness before compile or run.",
+        "cardinality": "one"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "environment",
+        "type": "QComputeEnvironmentReport",
+        "mode": "sync",
+        "description": "Return auditable backend availability and prerequisite errors."
+      }
+    ],
+    "events": [],
+    "provides": [
+      {
+        "name": "qcompute.environment.probe",
+        "description": "Report backend readiness for downstream quantum compilation and execution."
+      }
+    ],
+    "requires": [],
+    "slots": [
+      {
+        "slot": "qcompute_environment.primary",
+        "binding": "primary",
+        "required": true
+      }
+    ]
+  },
+  "safety": {
+    "protected": false,
+    "mutability": "mutable",
+    "sandbox_profile": "workspace-read",
+    "hot_swap": true
+  },
+  "policy": {
+    "sandbox": {
+      "tier": "workspace-read"
+    },
+    "credentials": {
+      "requires_subject": false,
+      "allow_inline_credentials": true,
+      "required_claims": []
+    }
+  },
+  "state_schema_version": 1,
+  "provides": [
+    "qcompute.environment.probe"
+  ]
+}

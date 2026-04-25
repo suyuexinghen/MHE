@@ -1,0 +1,73 @@
+{
+  "name": "qcompute_config_compiler",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.qcompute.config_compiler:QComputeConfigCompilerComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [
+      {
+        "name": "task",
+        "type": "QComputeExperimentSpec",
+        "required": true,
+        "description": "Compile a typed QCompute spec into an executable run plan.",
+        "cardinality": "one"
+      },
+      {
+        "name": "environment",
+        "type": "QComputeEnvironmentReport",
+        "required": false,
+        "description": "Optional environment readiness report used to gate compilation.",
+        "cardinality": "one"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "plan",
+        "type": "QComputeRunPlan",
+        "mode": "sync",
+        "description": "Emit a compiled OpenQASM-backed run plan for execution."
+      }
+    ],
+    "events": [],
+    "provides": [
+      {
+        "name": "qcompute.compile.case",
+        "description": "Compile experiment specifications into controlled QCompute run plans."
+      },
+      {
+        "name": "qcompute.circuit.compile",
+        "description": "Lower circuit sources into executable OpenQASM with compilation metadata."
+      }
+    ],
+    "requires": [],
+    "slots": [
+      {
+        "slot": "qcompute_config_compiler.primary",
+        "binding": "primary",
+        "required": true
+      }
+    ]
+  },
+  "safety": {
+    "protected": false,
+    "mutability": "mutable",
+    "sandbox_profile": "workspace-write",
+    "hot_swap": true
+  },
+  "policy": {
+    "sandbox": {
+      "tier": "workspace-write"
+    },
+    "credentials": {
+      "requires_subject": false,
+      "allow_inline_credentials": true,
+      "required_claims": []
+    }
+  },
+  "state_schema_version": 1,
+  "provides": [
+    "qcompute.compile.case",
+    "qcompute.circuit.compile"
+  ]
+}

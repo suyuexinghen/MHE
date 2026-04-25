@@ -1,0 +1,53 @@
+{
+  "name": "qcompute_gateway",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.qcompute.gateway:QComputeGatewayComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "task",
+        "type": "QComputeExperimentSpec",
+        "mode": "sync",
+        "description": ""
+      }
+    ],
+    "events": [],
+    "provides": [
+      {
+        "name": "qcompute.compile.case",
+        "description": ""
+      }
+    ],
+    "requires": [],
+    "slots": [
+      {
+        "slot": "qcompute_gateway.primary",
+        "binding": "primary",
+        "required": true
+      }
+    ]
+  },
+  "safety": {
+    "protected": false,
+    "mutability": "mutable",
+    "sandbox_profile": "workspace-read",
+    "hot_swap": true
+  },
+  "policy": {
+    "sandbox": {
+      "tier": "workspace-read"
+    },
+    "credentials": {
+      "requires_subject": false,
+      "allow_inline_credentials": true,
+      "required_claims": []
+    }
+  },
+  "state_schema_version": 1,
+  "provides": [
+    "qcompute.compile.case"
+  ]
+}
