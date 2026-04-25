@@ -35,10 +35,15 @@ BaseModel
   ├─ Bundle 类型（证据元组）
   │   └─ QComputeEvidenceBundle
   │
-  └─ Study 类型（突变/扫描）
-      ├─ QComputeStudySpec
-      ├─ QComputeStudyTrial
-      └─ QComputeStudyReport
+  ├─ Study 类型（突变/扫描）
+  │   ├─ QComputeStudySpec
+  │   ├─ QComputeStudyTrial
+  │   └─ QComputeStudyReport
+  │
+  └─ 治理元数据类型
+      ├─ QComputeCandidateIdentity
+      ├─ QComputePromotionMetadata
+      └─ QComputeExecutionPolicy
 ```
 
 ## 3.3 QComputeExecutionMode
@@ -52,6 +57,41 @@ QComputeExecutionMode = Literal[
     "hybrid",     # 经典-量子混合
 ]
 ```
+
+## 3.3b MHE 治理元数据
+
+QCompute 的所有核心 contract 类型共享一组 MHE 治理元数据字段，
+使每个产物都能参与 graph promotion、checkpoint、provenance 与审计流。
+该模式与 `nektar` 扩展的治理元数据约定对齐。
+
+```python
+class QComputeCandidateIdentity(BaseModel):
+    """Candidate/graph version identity for promotion tracking."""
+    candidate_id: str | None = None
+    proposed_graph_version: int | None = None
+    graph_version_id: int | None = None
+    actor: str | None = None
+
+class QComputePromotionMetadata(BaseModel):
+    """Promotion outcome and tracking metadata."""
+    outcome: Literal["pending", "approved", "rejected", "unknown"] = "pending"
+    affected_components: list[str] = Field(default_factory=list)
+    created_at: str | None = None
+    details: dict[str, Any] = Field(default_factory=dict)
+
+class QComputeExecutionPolicy(BaseModel):
+    """Execution constraints: sandbox, API token, quota, retry."""
+    sandbox_profile: str | None = None
+    requires_api_token: bool = False
+    api_token_env: str | None = None
+    daily_quota: int | None = None
+    max_retry: int = 3
+    details: dict[str, Any] = Field(default_factory=dict)
+```
+
+以下各 contract 类型中的 `graph_metadata`、`candidate_identity`、`promotion_metadata`、
+`checkpoint_refs`、`provenance_refs`、`trace_refs`、`execution_policy`、`scored_evidence`
+字段均引用上述类型，不再逐一展开。
 
 ## 3.4 QComputeExperimentSpec —— 实验规格
 
@@ -78,6 +118,15 @@ class QComputeExperimentSpec(BaseModel):
     reference_energy: float | None = None            # Classical reference energy (e.g. DFT result)
 
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    # MHE governance metadata
+    graph_metadata: dict[str, Any] = Field(default_factory=dict)
+    candidate_identity: QComputeCandidateIdentity = Field(default_factory=QComputeCandidateIdentity)
+    promotion_metadata: QComputePromotionMetadata = Field(default_factory=QComputePromotionMetadata)
+    checkpoint_refs: list[str] = Field(default_factory=list)
+    provenance_refs: list[str] = Field(default_factory=list)
+    trace_refs: list[str] = Field(default_factory=list)
+    execution_policy: QComputeExecutionPolicy = Field(default_factory=QComputeExecutionPolicy)
 ```
 
 ### 3.4.1 字段语义
@@ -170,6 +219,15 @@ class QComputeRunPlan(BaseModel):
     estimated_swap_count: int = 0
     estimated_fidelity: float | None = None      # 编译时预估保真度
     execution_params: QComputeExecutionParams
+
+    # MHE governance metadata
+    graph_metadata: dict[str, Any] = Field(default_factory=dict)
+    candidate_identity: QComputeCandidateIdentity = Field(default_factory=QComputeCandidateIdentity)
+    promotion_metadata: QComputePromotionMetadata = Field(default_factory=QComputePromotionMetadata)
+    checkpoint_refs: list[str] = Field(default_factory=list)
+    provenance_refs: list[str] = Field(default_factory=list)
+    trace_refs: list[str] = Field(default_factory=list)
+    execution_policy: QComputeExecutionPolicy = Field(default_factory=QComputeExecutionPolicy)
 ```
 
 ### 3.8.1 QComputeExecutionParams
@@ -203,6 +261,16 @@ class QComputeRunArtifact(BaseModel):
     shots_completed: int | None = None               # Actually completed shots
     retry_count: int = 0                             # Number of retries
     terminal_error_type: str | None = None           # "retriable" | "non_retriable" | None
+
+    # MHE governance metadata
+    graph_metadata: dict[str, Any] = Field(default_factory=dict)
+    candidate_identity: QComputeCandidateIdentity = Field(default_factory=QComputeCandidateIdentity)
+    promotion_metadata: QComputePromotionMetadata = Field(default_factory=QComputePromotionMetadata)
+    checkpoint_refs: list[str] = Field(default_factory=list)
+    provenance_refs: list[str] = Field(default_factory=list)
+    trace_refs: list[str] = Field(default_factory=list)
+    scored_evidence: ScoredEvidence | None = None
+    execution_policy: QComputeExecutionPolicy = Field(default_factory=QComputeExecutionPolicy)
 ```
 
 ## 3.10 QComputeEnvironmentReport
@@ -265,6 +333,12 @@ class QComputeValidationReport(BaseModel):
     issues: list[ValidationIssue] = Field(default_factory=list)
     promotion_ready: bool = False
     evidence_refs: list[str] = Field(default_factory=list)
+
+    # MHE governance metadata
+    checkpoint_refs: list[str] = Field(default_factory=list)
+    provenance_refs: list[str] = Field(default_factory=list)
+    trace_refs: list[str] = Field(default_factory=list)
+    scored_evidence: ScoredEvidence | None = None
 ```
 
 ### 3.11.1 QComputeValidationMetrics

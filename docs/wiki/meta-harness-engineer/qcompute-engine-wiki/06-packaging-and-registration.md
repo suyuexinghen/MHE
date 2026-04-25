@@ -121,10 +121,6 @@ CANONICAL_CAPABILITIES = frozenset({
     ],
     "capabilities": []
   },
-  "optional_deps": {
-    "components": ["qsteed_compiler"],
-    "capabilities": ["error_mitigation.zne", "error_mitigation.mem"]
-  },
   "bins": ["qsteed (optional)"],
   "env": [],
   "provides": [
@@ -196,7 +192,7 @@ CANONICAL_CAPABILITIES = frozenset({
 | `policy.credentials` | `requires_subject=False`：量子 API token 通过环境变量注入，不在 manifest 中声明 |
 | `policy.sandbox` | Executor 需要 `workspace-write`（保存 raw_output）；其余使用 `workspace-read` |
 | `bins` | 不依赖外部二进制文件（通过 Python SDK 交互）；可选 `qsteed` |
-| `optional_deps` | 可选集成：QSteed（编译加速）、Mitiq（错误缓解）、TensorCircuit（模拟器） |
+| `optional_deps` | 不在 manifest 中声明。QSteed / Mitiq / TensorCircuit 等可选依赖通过运行时 `try/except import` 检测，不纳入 `ComponentManifest.deps`。详见 6.9 |
 | `env` | 运行时需注入：`QUAFU_API_TOKEN`（真机必需）、`QISKIT_CACHE_DIR`（可选）；MCP 通道需 `ALIBABA_API_KEY` |
 
 ## 6.6 依赖关系图
