@@ -364,16 +364,16 @@ class HarnessRuntime:
             )
         self.version_manager.save_candidate(reviewed_candidate)
         if not reviewed_candidate.promoted:
-            blocking_issues = [issue for issue in reviewed_candidate.report.issues if issue.blocks_promotion]
+            blocking_issues = [
+                issue for issue in reviewed_candidate.report.issues if issue.blocks_promotion
+            ]
             self._append_runtime_evidence(
                 SessionEventType.CANDIDATE_REJECTED,
                 promotion,
                 graph_version=effective_graph_version,
                 payload={
                     "reason": review.reason,
-                    "blocking_issues": [
-                        issue.model_dump(mode="json") for issue in blocking_issues
-                    ],
+                    "blocking_issues": [issue.model_dump(mode="json") for issue in blocking_issues],
                     "safety": {
                         "allowed": False,
                         "rejected_by": review.reviewer,
@@ -430,8 +430,11 @@ class HarnessRuntime:
         blocking_issues = [issue for issue in report.issues if issue.blocks_promotion]
         policy_component = self.components.get("policy.primary")
         reviewer = None
-        if policy_component is not None and hasattr(policy_component, "review_graph_promotion"):
-            reviewer = policy_component.review_graph_promotion
+        if policy_component is not None:
+            if hasattr(policy_component, "evaluate_promotion"):
+                reviewer = policy_component.evaluate_promotion
+            elif hasattr(policy_component, "review_graph_promotion"):
+                reviewer = policy_component.review_graph_promotion
         safety_result = self.safety_pipeline.evaluate_graph_promotion(
             promotion,
             reviewer=reviewer,
@@ -444,9 +447,8 @@ class HarnessRuntime:
         )
         if blocking_issues or not safety_result.allowed:
             self.engine.discard_candidate(candidate_id, candidate, report)
-            deferred = (
-                not blocking_issues
-                and any(result.decision.value == "defer" for result in safety_result.results)
+            deferred = not blocking_issues and any(
+                result.decision.value == "defer" for result in safety_result.results
             )
             event_type = (
                 SessionEventType.CANDIDATE_DEFERRED
@@ -462,7 +464,10 @@ class HarnessRuntime:
             rejection_reason = (
                 "; ".join(f"{issue.code}:{issue.subject}" for issue in blocking_issues)
                 if blocking_issues
-                else (safety_result.rejected_reason or ("safety_deferred" if deferred else "safety_rejected"))
+                else (
+                    safety_result.rejected_reason
+                    or ("safety_deferred" if deferred else "safety_rejected")
+                )
             )
             self._append_runtime_evidence(
                 event_type,
@@ -481,7 +486,9 @@ class HarnessRuntime:
             if blocking_issues:
                 reason = "; ".join(f"{issue.code}:{issue.subject}" for issue in blocking_issues)
             else:
-                reason = safety_result.rejected_reason or ("safety_deferred" if deferred else "safety_rejected")
+                reason = safety_result.rejected_reason or (
+                    "safety_deferred" if deferred else "safety_rejected"
+                )
             outcome = "deferred" if deferred else "failed"
             raise ValueError(f"Candidate graph '{candidate_id}' {outcome} promotion gate: {reason}")
 

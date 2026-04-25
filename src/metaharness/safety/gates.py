@@ -53,4 +53,10 @@ class SafetyGate(Protocol):
 
     def evaluate_promotion(
         self, promotion: PromotionContext, context: dict[str, Any] | None = None
-    ) -> GateResult: ...
+    ) -> GateResult:
+        """Evaluate a staged graph promotion.
+
+        Gates that do not implement promotion-specific logic should return an
+        allow result so the promotion chain remains backward compatible.
+        """
+        ...

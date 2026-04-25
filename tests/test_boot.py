@@ -18,7 +18,13 @@ from metaharness.core.event_bus import (
     CANDIDATE_REJECTED,
 )
 from metaharness.core.graph_versions import CandidateRecord, ExternalCandidateReviewState
-from metaharness.core.models import GraphSnapshot, PendingConnectionSet, SessionEventType, ValidationIssue, ValidationReport
+from metaharness.core.models import (
+    GraphSnapshot,
+    PendingConnectionSet,
+    SessionEventType,
+    ValidationIssue,
+    ValidationReport,
+)
 from metaharness.hotreload import HotSwapOrchestrator
 from metaharness.identity import InMemoryIdentityBoundary
 from metaharness.observability.events import InMemorySessionStore
@@ -108,7 +114,10 @@ def test_commit_graph_rejects_on_blocks_promotion_and_records_failure(
 
     runtime.event_bus.subscribe(BEFORE_COMMIT_GRAPH, lambda event: events.append(event.name))
     runtime.event_bus.subscribe(AFTER_COMMIT_GRAPH, lambda event: events.append(event.name))
-    runtime.event_bus.subscribe(CANDIDATE_REJECTED, lambda event: (events.append(event.name), rejected.append(event.payload)))
+    runtime.event_bus.subscribe(
+        CANDIDATE_REJECTED,
+        lambda event: (events.append(event.name), rejected.append(event.payload)),
+    )
 
     original_stage = runtime.engine.stage
 
@@ -310,13 +319,13 @@ def test_commit_graph_rejects_when_policy_vetoes(manifest_dir: Path, graphs_dir:
     runtime.boot()
     snapshot = parse_graph_xml(graphs_dir / "default-topology.xml")
     policy = runtime.components["policy.primary"]
-    original_review = policy.review_graph_promotion
+    original_review = policy.evaluate_promotion
 
     def reject_review(promotion):
         decision = original_review(promotion)
         return decision.model_copy(update={"decision": "reject", "reason": "policy_veto"})
 
-    policy.review_graph_promotion = reject_review
+    policy.evaluate_promotion = reject_review
 
     with pytest.raises(ValueError, match="policy_veto"):
         runtime.commit_graph(
@@ -338,7 +347,7 @@ def test_commit_graph_defers_when_policy_requests_manual_review(
     runtime.boot()
     snapshot = parse_graph_xml(graphs_dir / "default-topology.xml")
     policy = runtime.components["policy.primary"]
-    original_review = policy.review_graph_promotion
+    original_review = policy.evaluate_promotion
     bus_events: list[str] = []
     runtime.event_bus.subscribe(CANDIDATE_DEFERRED, lambda event: bus_events.append(event.name))
     runtime.event_bus.subscribe(CANDIDATE_REJECTED, lambda event: bus_events.append(event.name))
@@ -347,7 +356,7 @@ def test_commit_graph_defers_when_policy_requests_manual_review(
         decision = original_review(promotion)
         return decision.model_copy(update={"decision": "defer", "reason": "manual_review"})
 
-    policy.review_graph_promotion = defer_review
+    policy.evaluate_promotion = defer_review
 
     with pytest.raises(ValueError, match="manual_review"):
         runtime.commit_graph(

@@ -210,7 +210,7 @@ def test_pipeline_evaluate_graph_promotion_delegates_to_reviewer(
     )
     allowed = pipeline.evaluate_graph_promotion(
         allowed_promotion,
-        reviewer=policy.review_graph_promotion,
+        reviewer=policy.evaluate_promotion,
     )
     assert allowed.allowed is True
     assert allowed.results[-1].decision == GateDecision.ALLOW
@@ -226,7 +226,7 @@ def test_pipeline_evaluate_graph_promotion_delegates_to_reviewer(
     )
     rejected = pipeline.evaluate_graph_promotion(
         allowed_promotion.model_copy(update={"validation_report": blocked_report}),
-        reviewer=policy.review_graph_promotion,
+        reviewer=policy.evaluate_promotion,
     )
     assert rejected.allowed is False
     assert rejected.rejected_by == "policy_review"
@@ -259,7 +259,7 @@ def test_pipeline_rejects_promotion_when_protected_components_are_flagged(
 
     result = SafetyPipeline().evaluate_graph_promotion(
         promotion,
-        reviewer=policy.review_graph_promotion,
+        reviewer=policy.evaluate_promotion,
     )
 
     assert result.allowed is False

@@ -115,7 +115,9 @@ class SafetyPipeline:
             policy_result = GateResult(
                 gate="policy_review",
                 decision=gate_decision,
-                reason="" if gate_decision == GateDecision.ALLOW else (decision.reason or "policy_veto"),
+                reason=""
+                if gate_decision == GateDecision.ALLOW
+                else (decision.reason or "policy_veto"),
                 evidence={"decision_id": decision.proposal_id},
             )
             result.results.append(policy_result)

@@ -24,10 +24,10 @@ class MutationProposal(BaseModel):
 
 
 class MutationDecision(BaseModel):
-    """Governance decision against a mutation proposal."""
+    """Governance decision against a mutation proposal or graph promotion."""
 
     proposal_id: str
-    decision: str  # "allow" | "reject"
+    decision: str  # "allow" | "defer" | "reject"
     reason: str = ""
     report: ValidationReport | None = None
 

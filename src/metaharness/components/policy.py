@@ -67,8 +67,8 @@ class PolicyComponent(HarnessComponent):
         self.record(decision.decision, proposal.proposal_id)
         return decision
 
-    def review_graph_promotion(self, context: PromotionContext) -> MutationDecision:
-        """Governance hook: allow/reject a candidate graph promotion."""
+    def evaluate_promotion(self, context: PromotionContext) -> MutationDecision:
+        """Governance hook: allow/defer/reject a candidate graph promotion."""
 
         blocking_issues = [
             issue for issue in context.validation_report.issues if issue.blocks_promotion
@@ -90,3 +90,8 @@ class PolicyComponent(HarnessComponent):
         self.proposal_reviews.append(decision)
         self.record(decision.decision, context.candidate_id)
         return decision
+
+    def review_graph_promotion(self, context: PromotionContext) -> MutationDecision:
+        """Backward-compatible alias for promotion review."""
+
+        return self.evaluate_promotion(context)

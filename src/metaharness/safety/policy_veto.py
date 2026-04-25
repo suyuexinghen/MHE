@@ -45,6 +45,13 @@ class PolicyVetoGate:
                 decision=GateDecision.ALLOW,
                 evidence={"decision_id": decision.proposal_id},
             )
+        if decision.decision == "defer":
+            return GateResult(
+                gate=self.name,
+                decision=GateDecision.DEFER,
+                reason=decision.reason or "policy_deferred",
+                evidence={"decision_id": decision.proposal_id},
+            )
         return GateResult(
             gate=self.name,
             decision=GateDecision.REJECT,
