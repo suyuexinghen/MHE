@@ -39,6 +39,37 @@ class JobHandle(BaseModel):
         return stripped
 
 
+class ResourceQuota(BaseModel):
+    """Shared resource quota snapshot exposed to runtime services."""
+
+    quota_id: str | None = None
+    resource_type: str
+    provider: str | None = None
+    limit: float | int | None = None
+    used: float | int = 0
+    remaining: float | int | None = None
+    unit: str = ""
+    scope: str = ""
+    exhausted: bool = False
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+@runtime_checkable
+class ResourceQuotaProtocol(Protocol):
+    """Structural protocol for extension-provided resource quota state."""
+
+    quota_id: str | None
+    resource_type: str
+    provider: str | None
+    limit: float | int | None
+    used: float | int
+    remaining: float | int | None
+    unit: str
+    scope: str
+    exhausted: bool
+    metadata: dict[str, Any]
+
+
 @runtime_checkable
 class RunPlanProtocol(Protocol):
     """Compiled execution plan exposed by an extension."""
@@ -164,6 +195,8 @@ __all__ = [
     "FibonacciPollingStrategy",
     "JobHandle",
     "PollingStrategy",
+    "ResourceQuota",
+    "ResourceQuotaProtocol",
     "RunArtifactProtocol",
     "RunPlanProtocol",
     "ValidationOutcomeProtocol",

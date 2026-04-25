@@ -34,7 +34,7 @@ from metaharness.core.port_index import PortIndex, RouteTable
 from metaharness.hotreload.migration import MigrationAdapterRegistry
 from metaharness.identity import InMemoryIdentityBoundary
 from metaharness.observability.events import InMemorySessionStore, SessionStore, make_session_event
-from metaharness.provenance import AuditLog, ProvGraph, RelationKind
+from metaharness.provenance import ArtifactSnapshotStore, AuditLog, ProvGraph, RelationKind
 from metaharness.safety import SafetyPipeline, parse_sandbox_tier
 from metaharness.sdk.base import HarnessComponent
 from metaharness.sdk.dependency import resolve_boot_order
@@ -43,7 +43,7 @@ from metaharness.sdk.lifecycle import ComponentPhase
 from metaharness.sdk.loader import declare_component, validate_manifest_static
 from metaharness.sdk.manifest import ComponentManifest
 from metaharness.sdk.registry import ComponentRegistry, filter_enabled
-from metaharness.sdk.runtime import ComponentRuntime
+from metaharness.sdk.runtime import ComponentRuntime, RuntimeServices
 
 
 @dataclass(slots=True)
@@ -82,6 +82,8 @@ class HarnessRuntime:
         trace_collector: Any | None = None,
         audit_log: AuditLog | None = None,
         provenance_graph: ProvGraph | None = None,
+        artifact_store: ArtifactSnapshotStore | None = None,
+        resource_quota: Any | None = None,
     ) -> None:
         self.discovery = discovery
         self.registry = registry or ComponentRegistry()
@@ -102,6 +104,8 @@ class HarnessRuntime:
         self.trace_collector = trace_collector
         self.audit_log = audit_log or AuditLog()
         self.provenance_graph = provenance_graph or ProvGraph()
+        self.artifact_store = artifact_store or ArtifactSnapshotStore()
+        self.resource_quota = resource_quota
 
     def _instance_id(self, manifest: ComponentManifest) -> str:
         base = manifest.resolved_id()
@@ -234,8 +238,38 @@ class HarnessRuntime:
                     identity_boundary=self._default_identity_boundary,
                 )
             )
+            services = RuntimeServices(
+                event_bus=runtime.event_bus or self.event_bus,
+                session_store=runtime.session_store or self.session_store,
+                artifact_store=runtime.artifact_store or self.artifact_store,
+                audit_log=runtime.audit_log or self.audit_log,
+                provenance_graph=runtime.provenance_graph or self.provenance_graph,
+                identity_boundary=runtime.identity_boundary or self._default_identity_boundary,
+                trace_store=runtime.trace_store or self.trace_collector,
+                metrics=runtime.metrics,
+                graph_reader=runtime.graph_reader,
+                mutation_submitter=runtime.mutation_submitter or self.submitter,
+                resource_quota=runtime.resource_quota or self.resource_quota,
+            )
+            runtime.services = services
+            if runtime.event_bus is None:
+                runtime.event_bus = services.event_bus
+            if runtime.session_store is None:
+                runtime.session_store = services.session_store
+            if runtime.artifact_store is None:
+                runtime.artifact_store = services.artifact_store
+            if runtime.audit_log is None:
+                runtime.audit_log = services.audit_log
+            if runtime.provenance_graph is None:
+                runtime.provenance_graph = services.provenance_graph
             if runtime.identity_boundary is None:
-                runtime.identity_boundary = self._default_identity_boundary
+                runtime.identity_boundary = services.identity_boundary
+            if runtime.trace_store is None:
+                runtime.trace_store = services.trace_store
+            if runtime.mutation_submitter is None:
+                runtime.mutation_submitter = services.mutation_submitter
+            if runtime.resource_quota is None:
+                runtime.resource_quota = services.resource_quota
             if runtime.migration_adapters is None:
                 runtime.migration_adapters = self.migration_adapters
             component, api = declare_component(component_id, manifest, runtime=runtime)

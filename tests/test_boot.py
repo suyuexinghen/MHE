@@ -30,9 +30,10 @@ from metaharness.identity import InMemoryIdentityBoundary
 from metaharness.observability.events import InMemorySessionStore
 from metaharness.provenance import RelationKind
 from metaharness.safety import SandboxTier
+from metaharness.sdk import ResourceQuota
 from metaharness.sdk.discovery import ComponentDiscovery
 from metaharness.sdk.lifecycle import ComponentPhase
-from metaharness.sdk.runtime import ComponentRuntime
+from metaharness.sdk.runtime import ComponentRuntime, RuntimeServices
 
 
 def test_boot_registers_discovered_components(manifest_dir: Path) -> None:
@@ -499,6 +500,87 @@ def test_boot_preserves_explicit_identity_boundary(manifest_dir: Path) -> None:
 
     assert gateway._runtime.identity_boundary is boundary
     assert policy._runtime.identity_boundary is boundary
+
+
+def test_boot_injects_runtime_services(manifest_dir: Path) -> None:
+    quota = ResourceQuota(resource_type="gpu", remaining=1)
+    runtime = HarnessRuntime(ComponentDiscovery(bundled=manifest_dir), resource_quota=quota)
+    runtime.boot()
+
+    gateway_runtime = runtime.components["gateway.primary"]._runtime
+
+    assert gateway_runtime.services is not None
+    assert gateway_runtime.services.event_bus is runtime.event_bus
+    assert gateway_runtime.services.session_store is runtime.session_store
+    assert gateway_runtime.services.artifact_store is runtime.artifact_store
+    assert gateway_runtime.services.audit_log is runtime.audit_log
+    assert gateway_runtime.services.provenance_graph is runtime.provenance_graph
+    assert gateway_runtime.services.identity_boundary is runtime._default_identity_boundary
+    assert gateway_runtime.services.mutation_submitter is runtime.submitter
+    assert gateway_runtime.services.resource_quota is quota
+    assert gateway_runtime.resolved_resource_quota() is quota
+
+
+def test_component_runtime_resolvers_prefer_services_over_legacy_fields() -> None:
+    legacy_boundary = object()
+    service_boundary = object()
+    services = RuntimeServices(
+        event_bus=object(),
+        session_store=object(),
+        artifact_store=object(),
+        audit_log=object(),
+        provenance_graph=object(),
+        identity_boundary=service_boundary,
+        graph_reader=object(),
+        mutation_submitter=object(),
+        resource_quota=ResourceQuota(resource_type="cpu", remaining=4),
+    )
+    runtime = ComponentRuntime(
+        services=services,
+        event_bus=object(),
+        session_store=object(),
+        artifact_store=object(),
+        audit_log=object(),
+        provenance_graph=object(),
+        identity_boundary=legacy_boundary,
+        graph_reader=object(),
+        mutation_submitter=object(),
+        resource_quota=ResourceQuota(resource_type="gpu", remaining=1),
+    )
+
+    assert runtime.resolved_event_bus() is services.event_bus
+    assert runtime.resolved_session_store() is services.session_store
+    assert runtime.resolved_artifact_store() is services.artifact_store
+    assert runtime.resolved_audit_log() is services.audit_log
+    assert runtime.resolved_provenance_graph() is services.provenance_graph
+    assert runtime.resolved_identity_boundary() is service_boundary
+    assert runtime.resolved_graph_reader() is services.graph_reader
+    assert runtime.resolved_mutation_submitter() is services.mutation_submitter
+    assert runtime.resolved_resource_quota() is services.resource_quota
+
+
+def test_component_runtime_resolvers_fall_back_to_legacy_fields() -> None:
+    runtime = ComponentRuntime(
+        event_bus=object(),
+        session_store=object(),
+        artifact_store=object(),
+        audit_log=object(),
+        provenance_graph=object(),
+        identity_boundary=object(),
+        graph_reader=object(),
+        mutation_submitter=object(),
+        resource_quota=ResourceQuota(resource_type="gpu", remaining=1),
+    )
+
+    assert runtime.resolved_event_bus() is runtime.event_bus
+    assert runtime.resolved_session_store() is runtime.session_store
+    assert runtime.resolved_artifact_store() is runtime.artifact_store
+    assert runtime.resolved_audit_log() is runtime.audit_log
+    assert runtime.resolved_provenance_graph() is runtime.provenance_graph
+    assert runtime.resolved_identity_boundary() is runtime.identity_boundary
+    assert runtime.resolved_graph_reader() is runtime.graph_reader
+    assert runtime.resolved_mutation_submitter() is runtime.mutation_submitter
+    assert runtime.resolved_resource_quota() is runtime.resource_quota
 
 
 def test_component_runtime_prefers_brain_provider_and_falls_back_to_llm() -> None:
