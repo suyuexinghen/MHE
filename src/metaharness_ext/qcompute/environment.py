@@ -56,9 +56,12 @@ class QComputeEnvironmentProbeComponent(HarnessComponent):
                 status = "dependency_missing"
                 prerequisite_errors.append("pennylane must be installed for pennylane_aer")
         elif spec.backend.platform == "quafu":
-            available, status, prerequisite_errors = self._probe_quafu(spec, prerequisite_errors)
-            if available:
-                queue_depth = self._query_chip_status(spec.backend.chip_id or "default")
+            available, status, prerequisite_errors, qubit_count_found = self._probe_quafu(
+                spec, prerequisite_errors
+            )
+            if available and qubit_count_found is not None:
+                qubit_count_available = qubit_count_found
+                queue_depth = qubit_count_found
                 estimated_wait_seconds = None
 
         if qubit_count_available is not None and spec.circuit.num_qubits > qubit_count_available:
@@ -108,23 +111,42 @@ class QComputeEnvironmentProbeComponent(HarnessComponent):
         self,
         spec: QComputeExperimentSpec,
         prerequisite_errors: list[str],
-    ) -> tuple[bool, str, list[str]]:
-        """Probe Quafu platform availability.
+    ) -> tuple[bool, str, list[str], int | None]:
+        """Probe Quafu platform availability using quarkstudio SDK.
 
-        Returns (available, status, prerequisite_errors).
+        Returns (available, status, prerequisite_errors, qubit_count_available).
         """
-        if find_spec("pyquafu") is None:
-            prerequisite_errors.append("pyquafu must be installed for quafu backend")
-            return False, "dependency_missing", prerequisite_errors
+        from metaharness_ext.qcompute.backends.quafu import _detect_quark
 
-        token_env = spec.backend.api_token_env or "QUAFU_API_TOKEN"
+        task_cls = _detect_quark()
+        if task_cls is None:
+            prerequisite_errors.append(
+                "quarkstudio must be installed for quafu backend (pip install quarkstudio)"
+            )
+            return False, "dependency_missing", prerequisite_errors, None
+
+        token_env = spec.backend.api_token_env or "Qcompute_Token"
         token = os.getenv(token_env)
         if not token:
             prerequisite_errors.append(f"Missing Quafu API token: {token_env}")
-            return False, "missing_api_token", prerequisite_errors
+            return False, "missing_api_token", prerequisite_errors, None
+
+        try:
+            tmgr = task_cls(token=token)
+            chip_statuses = tmgr.status()
+            chip_id = spec.backend.chip_id or "Baihua"
+            chip_status = chip_statuses.get(chip_id, "unknown")
+
+            if isinstance(chip_status, str) and chip_status in ("Maintenance", "Calibrating"):
+                prerequisite_errors.append(f"Chip {chip_id} is {chip_status}")
+                return False, f"chip_{chip_status.lower()}", prerequisite_errors, None
+
+            qubit_count_available = chip_status if isinstance(chip_status, int) else None
+        except Exception as exc:
+            prerequisite_errors.append(f"Quafu connection error: {exc}")
+            return False, "connection_error", prerequisite_errors, None
 
         # Check calibration freshness for the target chip.
-        chip_id = spec.backend.chip_id or "default"
         calibration = self._query_calibration(chip_id)
         if calibration is not None:
             freshness = self._check_calibration_freshness(calibration)
@@ -132,13 +154,13 @@ class QComputeEnvironmentProbeComponent(HarnessComponent):
                 prerequisite_errors.append(
                     f"Calibration data for chip {chip_id} is very stale (>24h)"
                 )
-                return False, "calibration_stale", prerequisite_errors
+                return False, "calibration_stale", prerequisite_errors, None
             if freshness == "stale":
                 prerequisite_errors.append(
                     f"Warning: calibration data for chip {chip_id} is stale (3-24h)"
                 )
 
-        return True, "online", prerequisite_errors
+        return True, "online", prerequisite_errors, qubit_count_available
 
     def _check_calibration_freshness(
         self, calibration_timestamp: datetime

@@ -1,10 +1,10 @@
-"""Quafu real-hardware backend adapter.
+"""Quafu real-hardware backend adapter using quarkstudio SDK.
 
-This module provides ``QuafuBackendAdapter`` which wraps the ``pyquafu``
-package for submitting circuits to real quantum hardware via the Quafu
-cloud platform.  When ``pyquafu`` is not installed every public method
-fails gracefully with ``RuntimeError`` so that callers can check
-``available`` first.
+This module provides ``QuafuBackendAdapter`` which wraps the ``quarkstudio``
+package (``from quark import Task``) for submitting circuits to real quantum
+hardware via the Quafu cloud platform.  When ``quarkstudio`` is not installed
+every public method fails gracefully with ``RuntimeError`` so that callers
+can check ``available`` first.
 """
 
 from __future__ import annotations
@@ -65,27 +65,27 @@ _NON_RETRIABLE_ERRORS: tuple[type[QuafuError], ...] = (
     QuafuCalibrationError,
 )
 
-# Status strings returned by the Quafu cloud API.
-_QUAFU_TO_EXECUTION_STATUS: dict[str, ExecutionStatus] = {
-    "created": ExecutionStatus.CREATED,
-    "queued": ExecutionStatus.QUEUED,
-    "running": ExecutionStatus.RUNNING,
-    "completed": ExecutionStatus.COMPLETED,
-    "failed": ExecutionStatus.FAILED,
-    "timeout": ExecutionStatus.TIMEOUT,
-    "cancelled": ExecutionStatus.CANCELLED,
+# quarkstudio status strings -> ExecutionStatus mapping
+_QUAFU_STATUS_MAP: dict[str, ExecutionStatus] = {
+    "Submitted": ExecutionStatus.QUEUED,
+    "Queued": ExecutionStatus.QUEUED,
+    "Running": ExecutionStatus.RUNNING,
+    "Finished": ExecutionStatus.COMPLETED,
+    "Failed": ExecutionStatus.FAILED,
+    "Cancelled": ExecutionStatus.CANCELLED,
 }
 
-_DEFAULT_CHIP_ID = "ScQ-P10"
+_DEFAULT_CHIP_ID = "Baihua"
+_DEFAULT_TOKEN_ENV = "Qcompute_Token"
 _DEFAULT_MAX_RETRIES = 3
 
 
-def _detect_pyquafu() -> Any:
-    """Return the ``pyquafu`` module if available, else ``None``."""
+def _detect_quark() -> Any:
+    """Return the quark ``Task`` class if available, else ``None``."""
     try:
-        import pyquafu  # noqa: F401
+        from quark import Task  # type: ignore[import-untyped]
 
-        return pyquafu
+        return Task
     except ImportError:
         return None
 
@@ -100,21 +100,23 @@ def _circuit_to_openqasm(circuit: Any) -> str:
 class QuafuBackendAdapter:
     """Adapter that executes circuits on Quafu real-hardware backends.
 
-    All methods are safe to call even when ``pyquafu`` is not installed;
-    callers should check the ``available`` property first or handle
-    ``RuntimeError``.
+    Uses the quarkstudio SDK (``pip install quarkstudio``,
+    ``from quark import Task``).  All methods are safe to call even when
+    ``quarkstudio`` is not installed; callers should check the ``available``
+    property first or handle ``RuntimeError``.
     """
 
     def __init__(
         self,
         chip_id: str | None = None,
-        api_token_env: str = "QUAFU_API_TOKEN",
+        api_token_env: str = _DEFAULT_TOKEN_ENV,
         max_retries: int = _DEFAULT_MAX_RETRIES,
     ) -> None:
         self._chip_id = chip_id or _DEFAULT_CHIP_ID
         self._api_token_env = api_token_env
         self._max_retries = max_retries
         self._polling = FibonacciPollingStrategy()
+        self._task_manager: Any | None = None  # Lazy-init'd quark.Task
 
     # ------------------------------------------------------------------
     # Public helpers
@@ -122,8 +124,21 @@ class QuafuBackendAdapter:
 
     @property
     def available(self) -> bool:
-        """Return ``True`` when ``pyquafu`` is importable."""
-        return _detect_pyquafu() is not None
+        """Return ``True`` when ``quarkstudio`` is importable."""
+        return _detect_quark() is not None
+
+    def _get_task_manager(self) -> Any:
+        """Lazy-initialize and return the quark Task manager."""
+        if self._task_manager is not None:
+            return self._task_manager
+        task_cls = _detect_quark()
+        if task_cls is None:
+            raise RuntimeError("quarkstudio is not installed (pip install quarkstudio)")
+        token = os.getenv(self._api_token_env)
+        if not token:
+            raise QuafuAuthenticationError(f"Missing Quafu API token: {self._api_token_env}")
+        self._task_manager = task_cls(token=token)
+        return self._task_manager
 
     # ------------------------------------------------------------------
     # Sync interface (matching QiskitAerBackend.run)
@@ -143,18 +158,32 @@ class QuafuBackendAdapter:
         polls until completion using the Fibonacci strategy, and returns
         a normalised result dict.
         """
-        self._require_pyquafu()
+        tmgr = self._get_task_manager()
         qasm_str = _circuit_to_openqasm(circuit)
 
-        task_id = self._submit_raw(qasm_str, shots)
-        counts = self._poll_until_complete(task_id)
+        task_id = self._execute_with_retries(
+            lambda: tmgr.run(
+                {
+                    "chip": self._chip_id,
+                    "name": f"MHE_{self._chip_id}",
+                    "circuit": qasm_str,
+                    "compile": True,
+                }
+            )
+        )
+
+        counts = self._poll_until_complete(tmgr, str(task_id), shots)
         total_shots = sum(counts.values())
         probabilities = {bs: cnt / total_shots for bs, cnt in counts.items()} if total_shots else {}
         return {
             "counts": counts,
             "probabilities": probabilities,
             "execution_time_ms": None,
-            "metadata": {"backend": "quafu", "chip_id": self._chip_id},
+            "metadata": {
+                "backend": "quafu",
+                "chip_id": self._chip_id,
+                "task_id": str(task_id),
+            },
             "shots_completed": total_shots,
         }
 
@@ -164,14 +193,22 @@ class QuafuBackendAdapter:
 
     async def submit(self, plan: Any) -> JobHandle:
         """Submit a compiled run plan and return a stable ``JobHandle``."""
-        self._require_pyquafu()
+        tmgr = self._get_task_manager()
 
         circuit_openqasm: str = plan.circuit_openqasm
-        shots: int = plan.execution_params.shots
 
-        task_id = self._execute_with_retries(lambda: self._submit_raw(circuit_openqasm, shots))
+        task_id = self._execute_with_retries(
+            lambda: tmgr.run(
+                {
+                    "chip": self._chip_id,
+                    "name": f"MHE_{plan.experiment_ref}",
+                    "circuit": circuit_openqasm,
+                    "compile": True,
+                }
+            )
+        )
         return JobHandle(
-            job_id=task_id,
+            job_id=str(task_id),
             backend="quafu",
             status=ExecutionStatus.QUEUED,
             submitted_at=datetime.now(timezone.utc),
@@ -179,15 +216,14 @@ class QuafuBackendAdapter:
 
     async def poll(self, job_id: str) -> ExecutionStatus:
         """Return the latest ``ExecutionStatus`` for *job_id*."""
-        self._require_pyquafu()
-        raw_status = self._query_task_status(job_id)
-        return _QUAFU_TO_EXECUTION_STATUS.get(raw_status, ExecutionStatus.FAILED)
+        tmgr = self._get_task_manager()
+        raw_status = tmgr.status(int(job_id))
+        return _QUAFU_STATUS_MAP.get(str(raw_status), ExecutionStatus.FAILED)
 
     async def cancel(self, job_id: str) -> None:
         """Request cancellation of a queued / running task."""
-        self._require_pyquafu()
-        pyquafu = _detect_pyquafu()
-        pyquafu.cancel_task(task_id=job_id)  # type: ignore[attr-defined]
+        tmgr = self._get_task_manager()
+        tmgr.cancel(int(job_id))
 
     async def await_result(
         self,
@@ -198,21 +234,20 @@ class QuafuBackendAdapter:
 
         Raises ``TimeoutError`` when ``max_total_wait`` is exceeded.
         """
-        self._require_pyquafu()
-
         polling = (
             FibonacciPollingStrategy(max_total_wait=timeout)
             if timeout is not None
             else self._polling
         )
+        tmgr = self._get_task_manager()
 
         delays = polling.schedule(max_attempts=1000)
         for delay in delays:
-            raw_status = self._query_task_status(job_id)
-            status = _QUAFU_TO_EXECUTION_STATUS.get(raw_status, ExecutionStatus.FAILED)
+            raw_status = str(tmgr.status(int(job_id)))
+            status = _QUAFU_STATUS_MAP.get(raw_status, ExecutionStatus.FAILED)
 
             if status == ExecutionStatus.COMPLETED:
-                return self._fetch_result(job_id)
+                return self._fetch_result(tmgr, job_id)
             if status in {
                 ExecutionStatus.FAILED,
                 ExecutionStatus.TIMEOUT,
@@ -228,60 +263,17 @@ class QuafuBackendAdapter:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _require_pyquafu(self) -> None:
-        if not self.available:
-            raise RuntimeError("pyQuafu is not installed")
-
-    def _get_token(self) -> str:
-        token = os.getenv(self._api_token_env)
-        if not token:
-            raise QuafuAuthenticationError(f"Missing Quafu API token: {self._api_token_env}")
-        return token
-
-    def _submit_raw(self, openqasm: str, shots: int) -> str:
-        """Submit OpenQASM to Quafu and return the task id."""
-        pyquafu = _detect_pyquafu()
-        self._get_token()  # ensure token is present
-        result = pyquafu.execute_task(  # type: ignore[attr-defined]
-            openqasm=openqasm,
-            shots=shots,
-            chip_id=self._chip_id,
-        )
-        task_id: str = result["task_id"]
-        return task_id
-
-    def _query_task_status(self, task_id: str) -> str:
-        pyquafu = _detect_pyquafu()
-        info = pyquafu.query_task(task_id=task_id)  # type: ignore[attr-defined]
-        return str(info.get("status", "failed"))
-
-    def _fetch_result(self, task_id: str) -> dict[str, Any]:
-        pyquafu = _detect_pyquafu()
-        info = pyquafu.query_task(task_id=task_id)  # type: ignore[attr-defined]
-        raw_res = info.get("res", {})
-        counts = {str(k): int(v) for k, v in raw_res.items()}
-        total_shots = sum(counts.values())
-        probabilities = {bs: cnt / total_shots for bs, cnt in counts.items()} if total_shots else {}
-        return {
-            "counts": counts,
-            "probabilities": probabilities,
-            "execution_time_ms": None,
-            "metadata": {"backend": "quafu", "chip_id": self._chip_id},
-            "shots_completed": total_shots,
-        }
-
-    def _poll_until_complete(self, task_id: str) -> dict[str, int]:
+    def _poll_until_complete(self, tmgr: Any, task_id: str, shots: int) -> dict[str, int]:
         """Block until task completes and return the raw counts dict."""
         delays = self._polling.schedule(max_attempts=1000)
         for delay in delays:
-            raw_status = self._query_task_status(task_id)
-            status = _QUAFU_TO_EXECUTION_STATUS.get(raw_status, ExecutionStatus.FAILED)
+            raw_status = str(tmgr.status(int(task_id)))
+            status = _QUAFU_STATUS_MAP.get(raw_status, ExecutionStatus.FAILED)
 
             if status == ExecutionStatus.COMPLETED:
-                pyquafu = _detect_pyquafu()
-                info = pyquafu.query_task(task_id=task_id)  # type: ignore[attr-defined]
-                raw_res = info.get("res", {})
-                return {str(k): int(v) for k, v in raw_res.items()}
+                result = tmgr.result(int(task_id))
+                counts = result.get("count", {})
+                return {str(k): int(v) for k, v in counts.items()}
 
             if status in {
                 ExecutionStatus.FAILED,
@@ -295,6 +287,27 @@ class QuafuBackendAdapter:
         raise TimeoutError(
             f"Task {task_id} did not complete within {self._polling.max_total_wait}s"
         )
+
+    def _fetch_result(self, tmgr: Any, job_id: str) -> dict[str, Any]:
+        """Fetch and normalize the result dict for a completed task."""
+        result = tmgr.result(int(job_id))
+        counts = result.get("count", {})
+        normalized = {str(k): int(v) for k, v in counts.items()}
+        total_shots = sum(normalized.values())
+        probabilities = (
+            {bs: cnt / total_shots for bs, cnt in normalized.items()} if total_shots else {}
+        )
+        return {
+            "counts": normalized,
+            "probabilities": probabilities,
+            "execution_time_ms": None,
+            "metadata": {
+                "backend": "quafu",
+                "chip_id": self._chip_id,
+                "task_id": job_id,
+            },
+            "shots_completed": total_shots,
+        }
 
     def _execute_with_retries(self, fn: Any) -> Any:
         """Execute *fn* with retry logic for retriable Quafu errors."""
