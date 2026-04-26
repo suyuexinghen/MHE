@@ -151,14 +151,14 @@ This document tracks how the current `MHE/` implementation maps to the master ro
 
 | Item | Status | Notes |
 |---|---|---|
-| 7.1.1 Extension guide for custom components | Done | `docs/EXTENSION_GUIDE.md` walks through components, handlers, templates, packaging |
-| 7.1.2 Candidate-graph-first workflow docs | Done | Covered in README and `docs/USER_GUIDE.md` |
-| 7.1.3 Protected component constraints docs | Done | `docs/PROTECTED_COMPONENTS.md` plus ADR-004 |
-| 7.1.4 Optimizer extension points docs | Done | `docs/OPTIMIZER_EXTENSIONS.md` lists every extension point |
+| 7.1.1 Extension guide for custom components | Done | `docs/wiki/meta-harness-engineer/meta-harness-wiki/10-extension-guide.md` walks through components, handlers, templates, packaging |
+| 7.1.2 Candidate-graph-first workflow docs | Done | Covered in `README.md` and `docs/USER_GUIDE.md` |
+| 7.1.3 Protected component constraints docs | Done | `docs/wiki/meta-harness-engineer/meta-harness-wiki/03-core-components.md` plus ADR-004 |
+| 7.1.4 Optimizer extension points docs | Done | `docs/wiki/meta-harness-engineer/meta-harness-wiki/05-self-growth.md` summarizes extension points |
 | 7.2.1 Safety-chain evaluation fixtures | Done | `metaharness.fixtures.safety_scenarios` ships five canonical scenarios |
 | 7.2.2 Hot-reload evaluation fixtures | Done | `metaharness.fixtures.hot_reload_scenarios` covers success, failure, empty-state cases |
 | 7.2.3 Optimizer evaluation fixtures | Done | `metaharness.fixtures.optimizer_scenarios` plus dedicated optimizer test suites |
-| 7.2.4 API stability guarantees | Done | `docs/API_STABILITY.md` documents the tiered stability model |
+| 7.2.4 API stability guarantees | Done | `docs/wiki/meta-harness-engineer/meta-harness-wiki/02-component-sdk.md` documents the tiered stability model |
 | 7.2.5 Performance benchmarks | Done | `metaharness.benchmarks` runs connection-engine / Bayesian / audit-log microsweeps |
 
 ## Version / Gate Assessment
@@ -244,10 +244,10 @@ This document tracks how the current `MHE/` implementation maps to the master ro
   - `MHE/src/metaharness/fixtures/optimizer_scenarios.py`
   - `MHE/src/metaharness/benchmarks/runner.py`
 - Productization docs
-  - `MHE/docs/EXTENSION_GUIDE.md`
-  - `MHE/docs/OPTIMIZER_EXTENSIONS.md`
-  - `MHE/docs/PROTECTED_COMPONENTS.md`
-  - `MHE/docs/API_STABILITY.md`
+  - `MHE/docs/wiki/meta-harness-engineer/meta-harness-wiki/10-extension-guide.md`
+  - `MHE/docs/wiki/meta-harness-engineer/meta-harness-wiki/05-self-growth.md`
+  - `MHE/docs/wiki/meta-harness-engineer/meta-harness-wiki/03-core-components.md`
+  - `MHE/docs/wiki/meta-harness-engineer/meta-harness-wiki/02-component-sdk.md`
 - Demo, CLI, and docs
   - `MHE/src/metaharness/demo.py`
   - `MHE/src/metaharness/cli.py`

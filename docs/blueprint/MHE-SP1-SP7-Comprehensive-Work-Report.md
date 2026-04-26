@@ -339,10 +339,10 @@ This report documents the complete implementation of all seven Strategic Phases 
 ### Deliverables
 
 **Documentation**
-- `EXTENSION_GUIDE.md` — step-by-step for components, handlers, templates, packaging
-- `OPTIMIZER_EXTENSIONS.md` — every extension point with code examples
-- `PROTECTED_COMPONENTS.md` — protection contract, operator/developer checklists
-- `API_STABILITY.md` — tiered stability model (Stable/Experimental/Internal), SemVer, deprecation policy
+- `docs/wiki/meta-harness-engineer/meta-harness-wiki/10-extension-guide.md` — step-by-step for components, handlers, templates, packaging
+- `docs/wiki/meta-harness-engineer/meta-harness-wiki/05-self-growth.md` — optimizer extension points summary and related guidance
+- `docs/wiki/meta-harness-engineer/meta-harness-wiki/03-core-components.md` — protection contract and operator/developer checklists
+- `docs/wiki/meta-harness-engineer/meta-harness-wiki/02-component-sdk.md` — tiered stability model (Stable/Experimental/Internal), SemVer, deprecation policy
 
 **Evaluation Fixtures**
 - `fixtures/safety_scenarios.py` — 5 canonical safety scenarios (L1 happy path, L1 missing input, L2 shadow divergence, L3 policy veto, L4 rollback)
@@ -359,10 +359,10 @@ This report documents the complete implementation of all seven Strategic Phases 
 
 | File | Lines | Purpose |
 |---|---|---|
-| `docs/EXTENSION_GUIDE.md` | ~150 | Extension guide |
-| `docs/OPTIMIZER_EXTENSIONS.md` | ~200 | Optimizer extension points |
-| `docs/PROTECTED_COMPONENTS.md` | ~150 | Protected component contract |
-| `docs/API_STABILITY.md` | ~150 | API stability guarantees |
+| `docs/wiki/meta-harness-engineer/meta-harness-wiki/10-extension-guide.md` | canonical | Extension guide |
+| `docs/wiki/meta-harness-engineer/meta-harness-wiki/05-self-growth.md` | canonical | Optimizer extension points |
+| `docs/wiki/meta-harness-engineer/meta-harness-wiki/03-core-components.md` | canonical | Protected component contract |
+| `docs/wiki/meta-harness-engineer/meta-harness-wiki/02-component-sdk.md` | canonical | API stability guarantees |
 | `src/metaharness/fixtures/safety_scenarios.py` | ~80 | Safety evaluation scenarios |
 | `src/metaharness/fixtures/hot_reload_scenarios.py` | ~60 | Hot-reload evaluation scenarios |
 | `src/metaharness/fixtures/optimizer_scenarios.py` | ~60 | Optimizer evaluation scenarios |
@@ -445,10 +445,10 @@ $ pytest -q
 - `MHE/src/metaharness/optimizer/templates/` — Registry, slots, codegen, migration
 
 ### Productization
-- `MHE/docs/EXTENSION_GUIDE.md`
-- `MHE/docs/OPTIMIZER_EXTENSIONS.md`
-- `MHE/docs/PROTECTED_COMPONENTS.md`
-- `MHE/docs/API_STABILITY.md`
+- `MHE/docs/wiki/meta-harness-engineer/meta-harness-wiki/10-extension-guide.md`
+- `MHE/docs/wiki/meta-harness-engineer/meta-harness-wiki/05-self-growth.md`
+- `MHE/docs/wiki/meta-harness-engineer/meta-harness-wiki/03-core-components.md`
+- `MHE/docs/wiki/meta-harness-engineer/meta-harness-wiki/02-component-sdk.md`
 - `MHE/src/metaharness/fixtures/` — Evaluation scenarios
 - `MHE/src/metaharness/benchmarks/` — Performance microsweeps
 

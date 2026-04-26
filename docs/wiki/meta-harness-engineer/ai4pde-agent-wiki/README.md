@@ -27,6 +27,7 @@
 | [03-数据模型](03-data-models.md) | task、team、mailbox、graph version、evidence、template 等 typed object 边界 | 核心开发 / 存储维护者 |
 | [04-治理与可观测性](04-governance-and-observability.md) | 科学治理不变量、预算、风险分级、观察窗口、审计与回放 | 平台 / 治理 / reviewer |
 | [05-模板库与自增长](05-template-library-and-self-growth.md) | workflow template、状态流转、受控变体空间与失败记忆 | 架构师 / optimizer 维护者 |
+| [06-AI4PDE 与 Nektar 对比手册](06-ai4pde-nektar-comparison.md) | 在同一 PDE 问题上运行 AI4PDE 与 Nektar 并做诚实对比的方法说明 | 使用者 / reviewer |
 
 ---
 
@@ -104,6 +105,10 @@ AI4PDE 的正式实施材料位于 `MHE/docs/wiki/meta-harness-engineer/blueprin
 ### 想理解模板化演化与受控改进
 
 先看：[05-模板库与自增长](05-template-library-and-self-growth.md)
+
+### 想做 AI4PDE 与 Nektar 的同题对比
+
+先看：[06-AI4PDE 与 Nektar 对比手册](06-ai4pde-nektar-comparison.md)
 
 ### 想看实施材料
 

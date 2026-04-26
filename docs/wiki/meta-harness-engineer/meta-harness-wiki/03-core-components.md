@@ -98,6 +98,16 @@ Gateway -> Planner -> Runtime -> Executor -> Evaluation
 
 ### 2.3 protected components
 
+protected components 是优化器不得直接改写的运行时边界。默认情况下，manifest 中声明 `safety.protected = true` 的组件会进入保护集合；在 baseline 语义中，`policy.primary` 与关键观测/治理位点属于该集合。扩展也可以声明自己的 protected slots，例如 Nektar 的 `validator.primary`，以及 AI4PDE 中负责 evidence / observability / policy guard / reference solver 的关键位点。
+
+protected 语义至少保证：
+- 不允许把受保护组件作为普通重接线目标；
+- 不允许对受保护组件做模板替换；
+- 任意热替换都必须先经过治理与 checkpoint 路径；
+- 自定义 action generator 不能绕过 `ContractPruner` 与 `MutationSubmitter` 直接改图。
+
+规范性决策依据仍以 `docs/adr/ADR-004-protected-components.md` 为准；本章只保留工程实现和扩展对齐所需的摘要。
+
 建议默认把以下组件或子能力标记为 `protected: true`：
 
 | 组件/能力 | 原因 |

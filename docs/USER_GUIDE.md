@@ -11,9 +11,9 @@ It focuses on the practical surfaces that work today:
 - interpreting lifecycle, routing, identity, and hot-reload behavior
 - troubleshooting common setup and validation issues
 
-For internal architecture details, read `MHE/docs/TECHNICAL_MANUAL.md` after this guide.
+For internal architecture details, read `MHE/docs/wiki/meta-harness-engineer/meta-harness-wiki/11-current-technical-manual.md` after this guide.
 
-For a cross-extension workflow that runs `AI4PDE` and `Nektar` against the same PDE problem definition and compares their outputs honestly, read `MHE/docs/AI4PDE_NEKTAR_COMPARISON_MANUAL.md`.
+For a cross-extension workflow that runs `AI4PDE` and `Nektar` against the same PDE problem definition and compares their outputs honestly, read `MHE/docs/wiki/meta-harness-engineer/ai4pde-agent-wiki/06-ai4pde-nektar-comparison.md`.
 
 ## 1. What MHE Is
 
@@ -54,11 +54,11 @@ The bundled components are intentionally simple, but the runtime flow around the
 MHE/
 ├── README.md
 ├── docs/
+│   ├── README.md
 │   ├── USER_GUIDE.md
-│   ├── TECHNICAL_MANUAL.md
-│   ├── EXTENSION_GUIDE.md
-│   ├── API_STABILITY.md
-│   ├── ROADMAP_STATUS.md
+│   ├── TEST_GUIDE.md
+│   ├── blueprint/
+│   ├── wiki/
 │   └── adr/
 ├── examples/
 │   ├── graphs/
@@ -652,7 +652,7 @@ For full Nektar extension documentation, see:
 `MHE/docs/wiki/meta-harness-engineer/nektar-engine-wiki/`
 
 For the current AI4PDE-versus-Nektar same-problem run-and-compare workflow, see:
-`MHE/docs/AI4PDE_NEKTAR_COMPARISON_MANUAL.md`
+`MHE/docs/wiki/meta-harness-engineer/ai4pde-agent-wiki/06-ai4pde-nektar-comparison.md`
 
 ### 15.2 AI4PDE Extension (`metaharness_ext.ai4pde`)
 
@@ -681,7 +681,7 @@ For full AI4PDE extension documentation, see:
 `MHE/docs/wiki/meta-harness-engineer/ai4pde-agent-wiki/`
 
 For the current AI4PDE-versus-Nektar same-problem run-and-compare workflow, see:
-`MHE/docs/AI4PDE_NEKTAR_COMPARISON_MANUAL.md`
+`MHE/docs/wiki/meta-harness-engineer/ai4pde-agent-wiki/06-ai4pde-nektar-comparison.md`
 
 ## 16. Common Workflows
 
@@ -858,9 +858,9 @@ No. The demo parses and commits the graph at startup for that run, then continue
 
 After this guide, read:
 
-- `MHE/docs/TECHNICAL_MANUAL.md` for internals
-- `MHE/docs/EXTENSION_GUIDE.md` for extension work
-- `MHE/docs/API_STABILITY.md` before depending on internal APIs
+- `MHE/docs/wiki/meta-harness-engineer/meta-harness-wiki/11-current-technical-manual.md` for internals
+- `MHE/docs/wiki/meta-harness-engineer/meta-harness-wiki/10-extension-guide.md` for extension work
+- `MHE/docs/wiki/meta-harness-engineer/meta-harness-wiki/02-component-sdk.md` before depending on internal APIs
 - `MHE/tests/` for executable examples of intended behavior
 
 ## 20. Summary

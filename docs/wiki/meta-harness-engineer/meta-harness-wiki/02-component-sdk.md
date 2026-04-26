@@ -22,6 +22,18 @@ Meta-Harness 的组件 SDK 需要同时解决四类问题：
 - `ComponentLoader`：发现、校验、导入、实例化、挂入候选图
 - `ComponentRegistry`：组件目录、slot 绑定、pending mutations、graph versions 的统一注册表
 
+## 1.1 API 稳定性与兼容性约定
+
+当前工程约定可以按模块前缀判断 API 稳定性：
+
+| Tier | Module prefix | Stability contract |
+|---|---|---|
+| **Stable** | `metaharness.sdk.*`, `metaharness.core.*`, `metaharness.safety.*`, `metaharness.hotreload.*`, `metaharness.observability.*`, `metaharness.provenance.*` | Breaking changes 只应在 major version 出现；弃用至少保留一个 minor release。 |
+| **Experimental** | `metaharness.optimizer.*` | 语义尽量稳定，但允许在 minor 版本中迭代，并应提供迁移说明。 |
+| **Internal** | `metaharness._*`、`*.internal.*` | 不提供外部兼容性保证。 |
+
+组件、manifest 与 XML schema 视为稳定接口；运行时会在静态校验阶段检查 `harness_version` 与当前 runtime 的兼容性，不兼容组件不会进入注册流程。
+
 ## 2. 分层视图
 
 ```text

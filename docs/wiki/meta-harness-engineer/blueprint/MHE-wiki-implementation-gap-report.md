@@ -167,14 +167,14 @@
 - **wiki 依据**：`docs/wiki/meta-harness-engineer/meta-harness-wiki/07-observability-audit.md`
 - **相关实现证据**：
   - `src/metaharness/provenance/counter_factual.py:1`
-  - `docs/TECHNICAL_MANUAL.md:530`
+  - `docs/wiki/meta-harness-engineer/meta-harness-wiki/11-current-technical-manual.md:530`
 
 **判断**：存在相关基础模块，但难以确认是否已经形成完整的“端到端运行时重放系统”。当前更稳妥的结论应为“具备部分支撑能力，但未证实 fully replayable runtime”。
 
 #### 3.4.2 热更新期间的集中式 drain / buffer 协议
 
 - **wiki 依据**：`docs/wiki/meta-harness-engineer/meta-harness-wiki/08-hot-reload.md`
-- **相关文档证据**：`docs/TECHNICAL_MANUAL.md:375`
+- **相关文档证据**：`docs/wiki/meta-harness-engineer/meta-harness-wiki/11-current-technical-manual.md:375`
 
 **判断**：热更新机制已经存在，但技术手册同时暗示仍缺少统一的 orchestrator 级 drain 协议，因此 wiki 在这里可能略微超前。
 

@@ -23,6 +23,7 @@
 | [08-热加载与状态迁移](08-hot-reload.md) | STR协议、Checkpoint策略、组件级蓝绿部署、观察窗口、Saga回滚、迁移适配器 |
 | [09-模板库与代码生成](09-template-library.md) | 模板设计原则、slot filling vs 自由生成、6步代码生成管线、MVP Proposer、反事实诊断提示 |
 | [10-开发与扩展指南](10-extension-guide.md) | 候选图优先的扩展流程、新建组件、替换核心组件、创建模板、扩展搜索策略、添加安全规则与hooks、5阶段实施路线图 |
+| [11-当前实现技术手册](11-current-technical-manual.md) | 面向当前仓库实现真相的英文技术手册，补充说明 boot / graph / safety / hot reload / provenance 的现状 |
 
 ---
 

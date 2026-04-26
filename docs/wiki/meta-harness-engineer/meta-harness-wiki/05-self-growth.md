@@ -255,6 +255,17 @@ class LLMProposer:
 
 **Meta-Harness 论文的关键发现**：proposer 每轮中位数读取 82 个文件，其中约 41% 是旧 harness 代码，40% 是执行轨迹。**保留原始执行轨迹中的诊断细节**比精致的摘要更有效。
 
+### 5.3.6 Optimizer 扩展点摘要
+
+当前 `metaharness.optimizer` 更适合被理解为一组可组合扩展点，而不是单一搜索器。核心扩展面包括：
+- trigger system：控制何时进入优化循环；
+- proposer / evaluator：替换候选提议或评估逻辑；
+- fitness evaluator：把领域结果映射为统一 reward components；
+- convergence / dead-end detector：控制停止条件与失败记忆；
+- search strategies：在参数搜索、拓扑搜索、受限合成之间切换。
+
+实现者在扩展 optimizer 时，应优先复用这些边界，而不是在 `Optimizer` 组件内直接塞入不可审计的新分支逻辑。
+
 ### 5.3.7 RL 增强（可选）
 
 **适用阶段**：系统积累足够运行数据后（候选配置评估记录达数百条以上）。

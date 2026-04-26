@@ -12,6 +12,14 @@
 - **graph versions**：候选图、活动图、回滚图版本体系
 - **contracts**：输入/输出/Event 契约
 
+## 10.0 扩展兼容性与公共约束
+
+在编写扩展前，需要先接受两类公共约束：
+- **稳定性约束**：优先依赖 `metaharness.sdk.*`、`metaharness.core.*` 等稳定前缀；对 `metaharness.optimizer.*` 的依赖应视为实验性；不要从 internal 路径导入实现细节。
+- **protected 约束**：扩展不能绕过 `ContractPruner`、`MutationSubmitter` 或统一治理链直接改写 protected components；涉及 validator / policy / evidence sink 的变更需要更高等级审查。
+
+更完整的背景分别见 `02-component-sdk.md`、`03-core-components.md` 与 `06-safety-governance.md`。
+
 ## 10.1 扩展前的总原则
 
 在 Meta-Harness 中，"能扩展"不等于"能直接改"。任何新组件、新模板、新搜索器或新治理规则，都应满足以下原则：

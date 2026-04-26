@@ -19,7 +19,7 @@ If you are new to MHE, read in this order:
 
 1. `MHE/README.md`
 2. `MHE/docs/USER_GUIDE.md`
-3. `MHE/docs/TECHNICAL_MANUAL.md`
+3. `MHE/docs/wiki/meta-harness-engineer/meta-harness-wiki/11-current-technical-manual.md`
 4. `MHE/src/metaharness/core/boot.py`
 5. `MHE/src/metaharness/core/connection_engine.py`
 6. `MHE/src/metaharness/core/validators.py`

@@ -401,5 +401,5 @@
 
 - 任意一份 wiki 不再把当前已落地能力写成纯 future plan。
 - 任意一份 wiki 都能回答“这个扩展如何进入 strengthened MHE 的 promotion / policy / evidence 主路径”。
-- 三套 wiki 的治理术语不互相冲突，且与 `docs/MHE_RECENT_WORK_REPORT.md` 的主线叙述一致。
+- 三套 wiki 的治理术语不互相冲突，且与 `docs/wiki/meta-harness-engineer/blueprint/MHE-recent-work-report.md` 的主线叙述一致。
 - 三套 wiki 不需要照搬同一模板，但都能落到各自 extension 的真实代码能力与约束上。

@@ -16,6 +16,8 @@
   - `metaharness_ext.deepmd` 的 JSON/workspace 执行模型、contracts、blueprint 与 roadmap
 - [abacus-engine-wiki/](abacus-engine-wiki/README.md)
   - `metaharness_ext.abacus` 的 file-driven / launcher-aware 扩展设计、blueprint 与 roadmap
+- [blueprint/](blueprint/)
+  - 扩展 blueprint、路线图、handoff、gap report、对齐报告与近期工作材料的集中目录
 
 ## 推荐阅读路径
 
