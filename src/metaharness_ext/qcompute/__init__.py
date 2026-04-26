@@ -18,7 +18,10 @@ from metaharness_ext.qcompute.capabilities import (
 from metaharness_ext.qcompute.config_compiler import QComputeConfigCompilerComponent
 from metaharness_ext.qcompute.contracts import (
     CalibrationSnapshot,
+    FCIDumpData,
+    QComputeActiveSpace,
     QComputeBackendSpec,
+    QComputeBaselineResult,
     QComputeCalibrationData,
     QComputeCandidateIdentity,
     QComputeCircuitSpec,
@@ -39,6 +42,8 @@ from metaharness_ext.qcompute.contracts import (
     QComputeStudyTrial,
     QComputeValidationMetrics,
     QComputeValidationReport,
+    QubitHamiltonian,
+    QubitHamiltonianTerm,
 )
 from metaharness_ext.qcompute.environment import QComputeEnvironmentProbeComponent
 from metaharness_ext.qcompute.evidence import build_evidence_bundle
@@ -66,6 +71,7 @@ from metaharness_ext.qcompute.validator import QComputeValidatorComponent
 __all__ = [
     "CalibrationSnapshot",
     "CANONICAL_CAPABILITIES",
+    "FCIDumpData",
     "CAP_QCOMPUTE_CASE_COMPILE",
     "CAP_QCOMPUTE_CIRCUIT_COMPILE",
     "CAP_QCOMPUTE_CIRCUIT_RUN",
@@ -85,7 +91,9 @@ __all__ = [
     "QCOMPUTE_GATEWAY_SLOT",
     "QCOMPUTE_STUDY_SLOT",
     "QCOMPUTE_VALIDATOR_SLOT",
+    "QComputeActiveSpace",
     "QComputeBackendSpec",
+    "QComputeBaselineResult",
     "QComputeConfigCompilerComponent",
     "QComputeCalibrationData",
     "QComputeStudyComponent",
@@ -116,6 +124,8 @@ __all__ = [
     "QComputeValidationReport",
     "QComputeValidationStatus",
     "QComputeValidatorComponent",
+    "QubitHamiltonian",
+    "QubitHamiltonianTerm",
     "build_evidence_bundle",
     "mitigate_result",
     "mitigate_with_pennylane_transforms",

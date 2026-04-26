@@ -191,6 +191,12 @@ class QComputeValidatorComponent(HarnessComponent):
             if plan.estimated_fidelity == 1.0
             else QComputeValidationStatus.VALIDATED
         )
+
+        # Compute energy_error when reference_energy is available.
+        energy_error = self._compute_energy_error(plan, metrics)
+        if energy_error is not None:
+            metrics.energy_error = energy_error
+
         return self._build_report(
             artifact,
             plan,
@@ -322,3 +328,30 @@ class QComputeValidatorComponent(HarnessComponent):
         if readout_error is None:
             return 1.0
         return max(0.0, min(1.0, 1.0 - readout_error))
+
+    def _compute_energy_error(
+        self, plan: QComputeRunPlan, metrics: QComputeValidationMetrics
+    ) -> float | None:
+        """Compute energy error when a reference energy is available.
+
+        The reference energy can come from the compilation metadata (set
+        during hamiltonian-based compilation) or from the plan-level
+        metadata. The VQE/computed energy is taken from ``metrics.energy``
+        if already set, or from the compilation metadata.
+        """
+        hamiltonian_meta = plan.compilation_metadata.get("hamiltonian")
+        if not isinstance(hamiltonian_meta, dict):
+            return None
+
+        reference_energy = hamiltonian_meta.get("reference_energy")
+        if reference_energy is None:
+            return None
+
+        reference_energy = float(reference_energy)
+        computed_energy = metrics.energy
+        if computed_energy is None:
+            computed_energy = plan.compilation_metadata.get("computed_energy")
+        if computed_energy is None:
+            return None
+
+        return abs(float(computed_energy) - reference_energy)

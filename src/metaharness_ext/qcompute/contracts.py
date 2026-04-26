@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from metaharness.core.models import ScoredEvidence, ValidationIssue
+from metaharness.core.models import ScoredEvidence, ValidationIssue, ValidationReport
 from metaharness.safety.gates import GateResult
 from metaharness_ext.qcompute.types import QComputeExecutionMode, QComputeValidationStatus
 
@@ -306,6 +306,66 @@ class QComputePolicyReport(BaseModel):
     evidence: dict[str, Any] = Field(default_factory=dict)
 
 
+class FCIDumpData(BaseModel):
+    norb: int
+    nelec: int
+    ms2: int = 0
+    orbsym: list[int] = Field(default_factory=list)
+    isym: int = 1
+    one_electron_integrals: dict[tuple[int, int], float] = Field(default_factory=dict)
+    two_electron_integrals: dict[tuple[int, int, int, int], float] = Field(default_factory=dict)
+
+    @field_validator("one_electron_integrals", mode="before")
+    @classmethod
+    def _parse_one_electron(
+        cls, v: dict[tuple[int, int] | str, float]
+    ) -> dict[tuple[int, int], float]:
+        if not v:
+            return v
+        result: dict[tuple[int, int], float] = {}
+        for key, val in v.items():
+            if isinstance(key, str):
+                parts = tuple(int(x.strip()) for x in key.strip("()").split(","))
+                result[parts] = val  # type: ignore[index]
+            else:
+                result[key] = val
+        return result
+
+    @field_validator("two_electron_integrals", mode="before")
+    @classmethod
+    def _parse_two_electron(
+        cls, v: dict[tuple[int, int, int, int] | str, float]
+    ) -> dict[tuple[int, int, int, int], float]:
+        if not v:
+            return v
+        result: dict[tuple[int, int, int, int], float] = {}
+        for key, val in v.items():
+            if isinstance(key, str):
+                parts = tuple(int(x.strip()) for x in key.strip("()").split(","))
+                result[parts] = val  # type: ignore[index]
+            else:
+                result[key] = val
+        return result
+
+
+class QubitHamiltonianTerm(BaseModel):
+    pauli_string: str
+    coefficient: float
+
+
+class QubitHamiltonian(BaseModel):
+    num_qubits: int
+    terms: list[QubitHamiltonianTerm] = Field(default_factory=list)
+    source_format: str = "fcidump"
+    mapping_method: str = "jordan_wigner"
+
+
+class QComputeActiveSpace(BaseModel):
+    n_electrons: int
+    n_orbitals: int
+    method: str = "manual"
+
+
 class QComputeStudyAxis(BaseModel):
     parameter_path: str
     values: list[Any] | None = None
@@ -342,3 +402,12 @@ class QComputeStudyReport(BaseModel):
     best_trial_id: str | None = None
     pareto_front: list[str] = Field(default_factory=list)
     convergence_analysis: dict[str, Any] = Field(default_factory=dict)
+
+
+class QComputeBaselineResult(BaseModel):
+    environment: QComputeEnvironmentReport
+    plan_id: str | None = None
+    artifact_id: str | None = None
+    bundle: QComputeEvidenceBundle | None = None
+    policy: QComputePolicyReport | None = None
+    core_validation: ValidationReport | None = None

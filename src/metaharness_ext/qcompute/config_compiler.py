@@ -203,6 +203,57 @@ class QComputeConfigCompilerComponent(HarnessComponent):
             return spec.fidelity_threshold
         return None
 
+    def build_plan_from_hamiltonian(
+        self,
+        spec: QComputeExperimentSpec,
+        environment_report: QComputeEnvironmentReport | None = None,
+    ) -> QComputeRunPlan:
+        """Build a run plan starting from a Hamiltonian file (FCIDUMP).
+
+        Parses the Hamiltonian, optionally applies active-space selection,
+        maps fermionic operators to qubit Pauli operators, then delegates
+        to :meth:`build_plan` for circuit compilation.
+
+        The resulting qubit Hamiltonian metadata is stored in
+        ``plan.compilation_metadata["hamiltonian"]``.
+        """
+        if spec.hamiltonian_file is None:
+            raise ValueError("spec.hamiltonian_file must be set for hamiltonian-based compilation")
+
+        from metaharness_ext.qcompute.fcidump import parse_fcidump
+        from metaharness_ext.qcompute.fermion_mapper import (
+            build_active_space,
+            map_fermionic_to_qubit,
+        )
+
+        fcidata = parse_fcidump(spec.hamiltonian_file)
+
+        if spec.active_space is not None:
+            n_elec, n_orb = spec.active_space
+            active_space = build_active_space(
+                fcidata, n_electrons=n_elec, n_orbitals=n_orb, method="manual"
+            )
+        else:
+            active_space = build_active_space(fcidata, method="full")
+
+        mapping_method = spec.fermion_mapping
+        qubit_hamiltonian = map_fermionic_to_qubit(fcidata, active_space, method=mapping_method)
+
+        plan = self.build_plan(spec, environment_report)
+
+        # Inject hamiltonian metadata into the compilation metadata.
+        plan.compilation_metadata["hamiltonian"] = qubit_hamiltonian.model_dump()
+        plan.compilation_metadata["hamiltonian_file"] = spec.hamiltonian_file
+        plan.compilation_metadata["active_space"] = active_space.model_dump()
+        plan.compilation_metadata["mapping_method"] = mapping_method
+
+        # Add hamiltonian file to provenance refs if not already present.
+        hamiltonian_ref = f"abacus://hamiltonian/{spec.hamiltonian_file}"
+        if hamiltonian_ref not in plan.provenance_refs:
+            plan.provenance_refs.append(hamiltonian_ref)
+
+        return plan
+
     def _qiskit_modules(self) -> tuple[Any, Any, Any, Any]:
         import qiskit.qasm2 as qasm2
         from qiskit import QuantumCircuit, qpy
