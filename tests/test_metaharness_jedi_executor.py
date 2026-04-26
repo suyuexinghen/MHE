@@ -403,7 +403,10 @@ async def test_jedi_executor_threads_environment_prerequisite_handoff_into_artif
         shared_libraries_resolved=True,
         required_paths_present=True,
         data_prerequisites_ready=True,
-        ready_prerequisites=["workspace testinput", "ctest -R qg_get_data or equivalent QG data preparation"],
+        ready_prerequisites=[
+            "workspace testinput",
+            "ctest -R qg_get_data or equivalent QG data preparation",
+        ],
         prerequisite_evidence={
             "workspace testinput": [str((tmp_path / "testinput").resolve())],
             "ctest -R qg_get_data or equivalent QG data preparation": [str(background.resolve())],
@@ -413,7 +416,9 @@ async def test_jedi_executor_threads_environment_prerequisite_handoff_into_artif
     artifact = executor.execute_plan(plan, environment_report=environment_report)
     report = validator.validate_run(artifact)
 
-    assert artifact.result_summary["prerequisite_evidence"] == environment_report.prerequisite_evidence
+    assert (
+        artifact.result_summary["prerequisite_evidence"] == environment_report.prerequisite_evidence
+    )
     assert report.prerequisite_evidence == environment_report.prerequisite_evidence
     assert report.checkpoint_refs == [
         "checkpoint://jedi/prerequisite/workspace-testinput",
@@ -427,7 +432,9 @@ async def test_jedi_executor_times_out_and_returns_runtime_failed(
 ) -> None:
     spec = _build_spec(execution_mode="validate_only")
     plan = JediConfigCompilerComponent().build_plan(
-        spec.model_copy(update={"executable": spec.executable.model_copy(update={"timeout_seconds": 5})})
+        spec.model_copy(
+            update={"executable": spec.executable.model_copy(update={"timeout_seconds": 5})}
+        )
     )
     executor = JediExecutorComponent()
     validator = JediValidatorComponent()
@@ -459,7 +466,9 @@ async def test_jedi_executor_times_out_and_returns_runtime_failed(
     assert report.policy_decision == "defer"
 
 
-def test_jedi_preprocessor_materializes_config_and_checks_required_runtime_paths(tmp_path: Path) -> None:
+def test_jedi_preprocessor_materializes_config_and_checks_required_runtime_paths(
+    tmp_path: Path,
+) -> None:
     background = tmp_path / "background.nc"
     background.write_text("background")
     spec = JediVariationalSpec(

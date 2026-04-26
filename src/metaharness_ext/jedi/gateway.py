@@ -2,22 +2,34 @@ from __future__ import annotations
 
 from typing import Literal
 
+from metaharness.core.boot import HarnessRuntime
 from metaharness.sdk.api import HarnessAPI
 from metaharness.sdk.base import HarnessComponent
 from metaharness.sdk.manifest import ComponentManifest
 from metaharness.sdk.runtime import ComponentRuntime
 from metaharness_ext.jedi.capabilities import CAP_JEDI_CASE_COMPILE
+from metaharness_ext.jedi.config_compiler import JediConfigCompilerComponent
 from metaharness_ext.jedi.contracts import (
+    JediBaselineReport,
     JediEnvironmentReport,
     JediExecutableSpec,
+    JediExperimentSpec,
     JediForecastSpec,
     JediHofXSpec,
     JediLocalEnsembleDASpec,
     JediVariationalSpec,
 )
+from metaharness_ext.jedi.diagnostics import JediDiagnosticsCollectorComponent
+from metaharness_ext.jedi.environment import JediEnvironmentProbeComponent
+from metaharness_ext.jedi.evidence import build_evidence_bundle
+from metaharness_ext.jedi.executor import JediExecutorComponent
+from metaharness_ext.jedi.governance import JediGovernanceAdapter
+from metaharness_ext.jedi.policy import JediEvidencePolicy
+from metaharness_ext.jedi.runtime_handoff import handoff_governed_candidate
 from metaharness_ext.jedi.slots import JEDI_GATEWAY_SLOT
 from metaharness_ext.jedi.smoke_policy import JediSmokePolicyComponent
 from metaharness_ext.jedi.types import JediExecutionMode
+from metaharness_ext.jedi.validator import JediValidatorComponent
 
 
 class JediGatewayComponent(HarnessComponent):
@@ -273,6 +285,50 @@ class JediGatewayComponent(HarnessComponent):
             output={"filename": "forecast.out"},
             test={"reference": {"filename": "forecast_reference.json"}},
             working_directory=working_directory,
+        )
+
+    def run_baseline(
+        self,
+        task: JediExperimentSpec,
+        *,
+        environment: JediEnvironmentProbeComponent,
+        compiler: JediConfigCompilerComponent,
+        executor: JediExecutorComponent,
+        validator: JediValidatorComponent,
+        diagnostics: JediDiagnosticsCollectorComponent | None = None,
+        runtime: HarnessRuntime | None = None,
+    ) -> JediBaselineReport:
+        environment_report = environment.probe(task)
+        plan = compiler.build_plan(task)
+        run = executor.execute_plan(plan, environment_report=environment_report)
+        diagnostic_summary = diagnostics.collect(run) if diagnostics is not None else None
+        validation = (
+            validator.validate_run_with_diagnostics(run, diagnostic_summary)
+            if diagnostic_summary is not None
+            else validator.validate_run(run)
+        )
+        evidence_bundle = build_evidence_bundle(run, validation, diagnostic_summary)
+        policy_report = JediEvidencePolicy().evaluate(evidence_bundle)
+        governance = JediGovernanceAdapter()
+        core_validation_report = governance.build_core_validation_report(validation, policy_report)
+        candidate_record = governance.build_candidate_record(evidence_bundle, policy_report)
+        candidate_record = handoff_governed_candidate(
+            runtime,
+            candidate_record,
+            bundle=evidence_bundle,
+            policy=policy_report,
+            component_runtime=getattr(executor, "_runtime", None),
+        )
+        return JediBaselineReport(
+            task=task,
+            environment=environment_report,
+            plan=plan,
+            run=run,
+            validation=validation,
+            evidence_bundle=evidence_bundle,
+            policy_report=policy_report,
+            core_validation_report=core_validation_report,
+            candidate_record=candidate_record,
         )
 
     def _enforce_ingress_policy(

@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from metaharness.config.xml_parser import parse_graph_xml
+from metaharness.core.boot import HarnessRuntime, bundled_discovery
 from metaharness.core.connection_engine import ConnectionEngine
 from metaharness.core.graph_versions import GraphVersionStore
 from metaharness.core.models import PendingConnectionSet, SessionEventType
@@ -353,6 +354,162 @@ async def test_jedi_real_run_happy_path_runs(
     assert validation.graph_version_id == 9
     assert validation.session_id == "runtime-session-1"
     assert validation.audit_refs == ["audit-record:real-run-1"]
+
+
+def test_jedi_gateway_baseline_real_run_hands_off_to_runtime_and_persists_snapshots(
+    examples_dir: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runtime = HarnessRuntime(bundled_discovery(examples_dir / "manifests" / "jedi"))
+    runtime.boot()
+
+    session_store = InMemorySessionStore()
+    runtime.session_store = session_store
+
+    gateway = JediGatewayComponent()
+    environment = JediEnvironmentProbeComponent()
+    compiler = JediConfigCompilerComponent()
+    executor = JediExecutorComponent()
+    validator = JediValidatorComponent()
+    diagnostics = JediDiagnosticsCollectorComponent()
+
+    import asyncio
+
+    asyncio.run(
+        executor.activate(
+            ComponentRuntime(
+                storage_path=tmp_path,
+                session_store=session_store,
+                artifact_store=runtime.artifact_store,
+                audit_log=runtime.audit_log,
+                provenance_graph=runtime.provenance_graph,
+            )
+        )
+    )
+
+    workspace = tmp_path / "jedi-runtime-handoff-workspace"
+    (workspace / "testinput").mkdir(parents=True)
+    background = workspace / "background.nc"
+    observations = workspace / "obs.ioda"
+    background.write_text("background")
+    observations.write_text("observations")
+
+    task = gateway.issue_task(
+        task_id="jedi-runtime-handoff-1",
+        execution_mode="real_run",
+        binary_name="qg4DVar.x",
+        background_path=str(background),
+        observation_paths=[str(observations)],
+        working_directory=str(workspace),
+        scientific_check="rms_improves",
+        candidate_id="candidate-runtime-handoff-1",
+        graph_version_id=1,
+        session_id="jedi-runtime-handoff-session",
+        audit_refs=["audit-record:jedi-runtime-seed"],
+    )
+
+    def fake_which(name: str) -> str | None:
+        if name == "ldd":
+            return "/usr/bin/ldd"
+        if name == "qg4DVar.x":
+            return "/usr/bin/qg4DVar.x"
+        return None
+
+    class _LddResult:
+        returncode = 0
+        stdout = ""
+
+    monkeypatch.setattr("metaharness_ext.jedi.environment.shutil.which", fake_which)
+    monkeypatch.setattr(
+        "metaharness_ext.jedi.environment.subprocess.run",
+        lambda *args, **kwargs: _LddResult(),
+    )
+    monkeypatch.setattr(
+        "metaharness_ext.jedi.executor.JediExecutorComponent._resolve_binary",
+        lambda self, binary_name: f"/usr/bin/{Path(binary_name).name}",
+    )
+
+    def fake_run_command(self, command, *, cwd, timeout_seconds):
+        (cwd / "analysis.out").write_text("analysis")
+        (cwd / "departures.json").write_text(
+            '{"MetaData": {"nlocs": 1}, '
+            '"ObsValue": {"temperature": [280.0]}, '
+            '"HofX": {"temperature": [279.5]}, '
+            '"rms_observation_minus_analysis": 0.5, '
+            '"rms_observation_minus_background": 1.2}'
+        )
+        (cwd / "reference.json").write_text('{"baseline": "runtime-reference"}')
+        return type(
+            "_RuntimeHandoffCompletedProcess",
+            (),
+            {
+                "returncode": 0,
+                "stdout": (
+                    "run ok\n"
+                    "Outer iteration: 1\n"
+                    "Inner iteration: 3\n"
+                    "Minimizer iteration: 4\n"
+                    "Cost function: 12.5\n"
+                    "Gradient norm: 8.0\n"
+                    "Outer iteration: 2\n"
+                    "Inner iteration: 5\n"
+                    "Cost function: 3.125\n"
+                    "Gradient norm: 0.5\n"
+                    "observer summary available\n"
+                ),
+                "stderr": "",
+            },
+        )()
+
+    monkeypatch.setattr(
+        "metaharness_ext.jedi.executor.JediExecutorComponent._run_command",
+        fake_run_command,
+    )
+
+    baseline_report = gateway.run_baseline(
+        task,
+        environment=environment,
+        compiler=compiler,
+        executor=executor,
+        validator=validator,
+        diagnostics=diagnostics,
+        runtime=runtime,
+    )
+
+    assert runtime.version_manager.candidates[-1] == baseline_report.candidate_record
+    assert runtime.version_manager.candidates[-1].promoted is True
+    governance_events = session_store.get_events("jedi-runtime-handoff-session")
+    recorder_events = session_store.get_events(runtime.session_id)
+    assert [event.event_type for event in governance_events] == [
+        SessionEventType.CANDIDATE_VALIDATED,
+        SessionEventType.SAFETY_GATE_EVALUATED,
+    ]
+    assert [event.event_type for event in recorder_events] == [
+        SessionEventType.CANDIDATE_VALIDATED,
+        SessionEventType.SAFETY_GATE_EVALUATED,
+    ]
+    assert all(
+        event.candidate_id == baseline_report.candidate_record.candidate_id
+        for event in [*governance_events, *recorder_events]
+    )
+    assert len(runtime.audit_log.by_kind("jedi.governance_handoff")) == 1
+    assert len(runtime.audit_log.by_kind("execution.artifact_snapshots_recorded")) == 1
+    assert (
+        f"graph-candidate:{baseline_report.candidate_record.candidate_id}"
+        in runtime.provenance_graph.to_dict()["entities"]
+    )
+    assert any(
+        entity.startswith("artifact-snapshot:")
+        for entity in runtime.provenance_graph.to_dict()["entities"]
+    )
+    run_history = runtime.artifact_store.history(baseline_report.run.run_id)
+    validation_history = runtime.artifact_store.history(baseline_report.validation.task_id)
+    evidence_history = runtime.artifact_store.history(f"evidence:{baseline_report.run.run_id}")
+    assert len(run_history) == 1
+    assert len(validation_history) == 1
+    assert len(evidence_history) == 1
+    assert all(
+        ref.startswith("audit-record:") for ref in baseline_report.evidence_bundle.audit_refs
+    )
 
 
 @pytest.mark.asyncio

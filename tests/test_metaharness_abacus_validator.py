@@ -1,6 +1,8 @@
 from pathlib import Path
 
 from metaharness.core.models import ValidationIssueCategory
+from metaharness.provenance import ArtifactSnapshotStore
+from metaharness.sdk.runtime import ComponentRuntime
 from metaharness_ext.abacus.contracts import AbacusRunArtifact
 from metaharness_ext.abacus.validator import AbacusValidatorComponent
 
@@ -368,3 +370,32 @@ def test_abacus_validator_keeps_prerequisite_rejection_evidence_linked() -> None
     assert "/tmp/OUT.ABACUS/MD_dump" in report.evidence_files
     assert "/tmp/OUT.ABACUS/running_md.log" in report.evidence_files
     assert report.missing_evidence == ["deeppmd_support"]
+
+
+def test_abacus_validator_records_validation_snapshot(tmp_path: Path) -> None:
+    output_root = tmp_path / "OUT.ABACUS"
+    output_root.mkdir()
+    (output_root / "running_nscf.log").write_text("ok")
+    artifact = AbacusRunArtifact(
+        task_id="task-persist",
+        run_id="run-persist",
+        application_family="nscf",
+        return_code=0,
+        status="completed",
+        working_directory=str(tmp_path),
+        prepared_inputs=["INPUT", "STRU", "KPT"],
+        output_root=str(output_root),
+        output_files=[str(output_root)],
+        diagnostic_files=[str(output_root / "running_nscf.log")],
+    )
+    validator = AbacusValidatorComponent()
+    import asyncio
+
+    artifact_store = ArtifactSnapshotStore()
+    asyncio.run(validator.activate(ComponentRuntime(artifact_store=artifact_store)))
+    report = validator.validate_run(artifact)
+
+    history = artifact_store.history(report.task_id)
+    assert len(history) == 1
+    assert history[0].artifact_kind == "validation_outcome"
+    assert history[0].payload["task_id"] == report.task_id

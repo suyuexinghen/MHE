@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from metaharness.provenance import ArtifactSnapshotStore
+from metaharness.sdk.runtime import ComponentRuntime
 from metaharness_ext.abacus.contracts import (
     AbacusExecutableSpec,
     AbacusRunPlan,
@@ -171,3 +173,31 @@ def test_abacus_executor_discovers_diagnostics_and_structures(tmp_path: Path, mo
     assert artifact.artifact_groups.output_files == artifact.output_files
     assert artifact.artifact_groups.structure_files == artifact.structure_files
     assert artifact.lifecycle_state.evidence_discovered is True
+
+
+def test_abacus_executor_records_run_artifact_snapshot(tmp_path: Path) -> None:
+    executor = AbacusExecutorComponent()
+    import asyncio
+
+    artifact_store = ArtifactSnapshotStore()
+    asyncio.run(
+        executor.activate(ComponentRuntime(storage_path=tmp_path, artifact_store=artifact_store))
+    )
+    plan = AbacusRunPlan(
+        task_id="task-persist",
+        run_id="run-persist",
+        application_family="scf",
+        command=[],
+        working_directory=str(tmp_path / "abacus_test"),
+        input_content="INPUT_PARAMETERS\nsuffix ABACUS\n",
+        structure_content="ATOMIC_SPECIES\nSi 28.0 Si.upf\n",
+        suffix="ABACUS",
+        executable=AbacusExecutableSpec(binary_name="echo", launcher="direct"),
+    )
+
+    artifact = executor.execute_plan(plan)
+
+    history = artifact_store.history(artifact.run_id)
+    assert len(history) == 1
+    assert history[0].artifact_kind == "run_artifact"
+    assert history[0].payload["run_id"] == artifact.run_id

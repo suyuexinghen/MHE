@@ -73,7 +73,7 @@ class AbacusValidatorComponent(HarnessComponent):
                 )
                 for item in missing_list
             )
-            return self._build_report(
+            report = self._build_report(
                 artifact,
                 passed=False,
                 status="environment_invalid",
@@ -83,6 +83,7 @@ class AbacusValidatorComponent(HarnessComponent):
                 missing_evidence=missing_list,
                 issues=issues,
             )
+            return self._finalize_report(report)
 
         if artifact.status == "unavailable" and fallback_reason:
             messages.append(f"ABACUS run unavailable: {fallback_reason}.")
@@ -95,7 +96,7 @@ class AbacusValidatorComponent(HarnessComponent):
                     blocks_promotion=True,
                 )
             )
-            return self._build_report(
+            report = self._build_report(
                 artifact,
                 passed=False,
                 status="environment_invalid",
@@ -104,6 +105,7 @@ class AbacusValidatorComponent(HarnessComponent):
                 evidence_refs=evidence_refs,
                 issues=issues,
             )
+            return self._finalize_report(report)
 
         if fallback_reason == "command_timeout":
             messages.append("ABACUS command timed out.")
@@ -116,7 +118,7 @@ class AbacusValidatorComponent(HarnessComponent):
                     blocks_promotion=True,
                 )
             )
-            return self._build_report(
+            report = self._build_report(
                 artifact,
                 passed=False,
                 status="runtime_failed",
@@ -125,6 +127,7 @@ class AbacusValidatorComponent(HarnessComponent):
                 evidence_refs=evidence_refs,
                 issues=issues,
             )
+            return self._finalize_report(report)
 
         if artifact.return_code is None:
             messages.append("ABACUS command did not report an exit code.")
@@ -137,7 +140,7 @@ class AbacusValidatorComponent(HarnessComponent):
                     blocks_promotion=True,
                 )
             )
-            return self._build_report(
+            report = self._build_report(
                 artifact,
                 passed=False,
                 status="runtime_failed",
@@ -146,6 +149,7 @@ class AbacusValidatorComponent(HarnessComponent):
                 evidence_refs=evidence_refs,
                 issues=issues,
             )
+            return self._finalize_report(report)
 
         if artifact.return_code != 0 or artifact.status == "failed":
             messages.append(f"ABACUS command exited with code {artifact.return_code}.")
@@ -158,7 +162,7 @@ class AbacusValidatorComponent(HarnessComponent):
                     blocks_promotion=True,
                 )
             )
-            return self._build_report(
+            report = self._build_report(
                 artifact,
                 passed=False,
                 status="runtime_failed",
@@ -167,6 +171,7 @@ class AbacusValidatorComponent(HarnessComponent):
                 evidence_refs=evidence_refs,
                 issues=issues,
             )
+            return self._finalize_report(report)
 
         passed, missing = self._check_family_evidence(artifact)
         if not passed:
@@ -184,7 +189,7 @@ class AbacusValidatorComponent(HarnessComponent):
                 )
                 for item in missing
             )
-            return self._build_report(
+            report = self._build_report(
                 artifact,
                 passed=False,
                 status="validation_failed",
@@ -194,11 +199,12 @@ class AbacusValidatorComponent(HarnessComponent):
                 missing_evidence=missing,
                 issues=issues,
             )
+            return self._finalize_report(report)
 
         messages.append(
             f"ABACUS {artifact.application_family} run completed with sufficient evidence."
         )
-        return self._build_report(
+        report = self._build_report(
             artifact,
             passed=True,
             status="executed",
@@ -207,6 +213,7 @@ class AbacusValidatorComponent(HarnessComponent):
             evidence_refs=evidence_refs,
             issues=issues,
         )
+        return self._finalize_report(report)
 
     def _build_report(
         self,
@@ -349,3 +356,18 @@ class AbacusValidatorComponent(HarnessComponent):
                 missing.append("MD evidence (MD_dump, Restart_md, STRU_MD*)")
 
         return (not missing, missing)
+
+    def _record_validation_snapshot(self, report: AbacusValidationReport) -> None:
+        runtime = getattr(self, "_runtime", None)
+        artifact_store = runtime.resolved_artifact_store() if runtime is not None else None
+        if artifact_store is None:
+            return
+        artifact_store.save(
+            "validation_outcome",
+            report.task_id,
+            report.model_dump(mode="json"),
+        )
+
+    def _finalize_report(self, report: AbacusValidationReport) -> AbacusValidationReport:
+        self._record_validation_snapshot(report)
+        return report

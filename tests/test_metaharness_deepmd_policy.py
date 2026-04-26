@@ -189,7 +189,10 @@ def test_deepmd_policy_defers_for_environment_findings() -> None:
     assert report.decision == "defer"
     assert report.passed is False
     assert report.gates[0].gate == "environment_prerequisites"
-    assert report.gates[0].reason == "Environment findings report missing prerequisites or required paths."
+    assert (
+        report.gates[0].reason
+        == "Environment findings report missing prerequisites or required paths."
+    )
 
 
 def test_deepmd_policy_keeps_run_status_rejection_when_environment_findings_exist() -> None:

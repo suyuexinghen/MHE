@@ -17,6 +17,7 @@ from metaharness_ext.jedi.config_compiler import (
 )
 from metaharness_ext.jedi.contracts import (
     JEDI_EXPERIMENT_SPEC_ADAPTER,
+    JediBaselineReport,
     JediDiagnosticSummary,
     JediEnvironmentReport,
     JediEvidenceBundle,
@@ -44,6 +45,10 @@ from metaharness_ext.jedi.gateway import JediGatewayComponent
 from metaharness_ext.jedi.governance import JediGovernanceAdapter
 from metaharness_ext.jedi.policy import JediEvidencePolicy
 from metaharness_ext.jedi.preprocessor import JediRunPreprocessor
+from metaharness_ext.jedi.runtime_handoff import (
+    handoff_candidate_record,
+    handoff_governed_candidate,
+)
 from metaharness_ext.jedi.slots import (
     JEDI_CONFIG_COMPILER_SLOT,
     JEDI_DIAGNOSTICS_SLOT,
@@ -88,6 +93,7 @@ __all__ = [
     "JEDI_STUDY_SLOT",
     "JEDI_VALIDATOR_SLOT",
     "JediApplicationFamily",
+    "JediBaselineReport",
     "JediConfigCompilerComponent",
     "JediCostType",
     "JediDiagnosticSummary",
@@ -114,6 +120,8 @@ __all__ = [
     "JediRunPreprocessor",
     "JediRunStatus",
     "JediSmokePolicyComponent",
+    "handoff_candidate_record",
+    "handoff_governed_candidate",
     "JediSmokePolicyReport",
     "JediStudyComponent",
     "JediStudyReport",

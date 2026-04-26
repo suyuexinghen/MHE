@@ -230,7 +230,11 @@ class JediEnvironmentProbeComponent(HarnessComponent):
     def _paths_prerequisite_status(self, paths: list[str]) -> tuple[str, list[str]]:
         if not paths:
             return "unevaluated", []
-        existing = [str(Path(path).expanduser().resolve()) for path in paths if Path(path).expanduser().exists()]
+        existing = [
+            str(Path(path).expanduser().resolve())
+            for path in paths
+            if Path(path).expanduser().exists()
+        ]
         if len(existing) == len(paths):
             return "ready", existing
         return "missing", []

@@ -137,7 +137,9 @@ def test_jedi_environment_checks_family_required_paths(tmp_path: Path, monkeypat
     assert report.data_paths_present is False
     assert str(missing_obs) in report.missing_required_paths
     assert str(missing_background) in report.missing_required_paths
-    assert "ctest -R get_ or equivalent observation data preparation" in report.missing_prerequisites
+    assert (
+        "ctest -R get_ or equivalent observation data preparation" in report.missing_prerequisites
+    )
     assert "ctest -R qg_get_data or equivalent QG data preparation" in report.missing_prerequisites
     assert report.data_prerequisites_ready is False
     assert any(str(missing_obs) in message for message in report.messages)

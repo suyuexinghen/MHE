@@ -46,7 +46,7 @@ class SolverExecutorComponent(HarnessComponent):
                 stdout_text="",
                 stderr_text="External mesh overlay mode requires an existing mesh.source_path.",
             )
-            return self._build_run_artifact(
+            artifact = self._build_run_artifact(
                 plan,
                 session_path=session_path,
                 mesh_path=None,
@@ -68,6 +68,7 @@ class SolverExecutorComponent(HarnessComponent):
                     "session_file": str(session_path),
                 },
             )
+            return self._finalize_run_artifact(plan, artifact)
 
         session_path = write_session_xml(plan, run_dir / plan.session_file_name)
         resolved_binary = self._resolve_solver_binary(plan)
@@ -77,7 +78,7 @@ class SolverExecutorComponent(HarnessComponent):
                 stdout_text="",
                 stderr_text=f"Solver binary not found: {plan.solver_binary}",
             )
-            return self._build_run_artifact(
+            artifact = self._build_run_artifact(
                 plan,
                 session_path=session_path,
                 mesh_path=mesh_path,
@@ -99,6 +100,7 @@ class SolverExecutorComponent(HarnessComponent):
                     "session_file": str(session_path),
                 },
             )
+            return self._finalize_run_artifact(plan, artifact)
 
         command = self._build_solver_command(
             plan,
@@ -148,7 +150,7 @@ class SolverExecutorComponent(HarnessComponent):
                 },
             )
             artifact.filter_output.metrics.update(step_metrics)
-            return artifact
+            return self._finalize_run_artifact(plan, artifact)
 
         log_files = self._write_solver_logs(
             run_dir,
@@ -184,7 +186,7 @@ class SolverExecutorComponent(HarnessComponent):
             },
         )
         artifact.filter_output.metrics.update(step_metrics)
-        return artifact
+        return self._finalize_run_artifact(plan, artifact)
 
     def _validate_equation_type(self, plan: NektarSessionPlan) -> None:
         if plan.solver_family == NektarSolverFamily.ADR and not isinstance(
@@ -357,6 +359,23 @@ class SolverExecutorComponent(HarnessComponent):
             scored_evidence=scored_evidence,
             execution_policy=plan.execution_policy.model_copy(deep=True),
         )
+
+    def _record_run_artifact(self, artifact: NektarRunArtifact) -> None:
+        runtime = getattr(self, "_runtime", None)
+        artifact_store = runtime.resolved_artifact_store() if runtime is not None else None
+        if artifact_store is None:
+            return
+        artifact_store.save(
+            "run_artifact",
+            artifact.run_id,
+            artifact.model_dump(mode="json"),
+        )
+
+    def _finalize_run_artifact(
+        self, plan: NektarSessionPlan, artifact: NektarRunArtifact
+    ) -> NektarRunArtifact:
+        self._record_run_artifact(artifact)
+        return artifact
 
     _COORDINATE_VARIABLES = frozenset({"x", "y", "z"})
 

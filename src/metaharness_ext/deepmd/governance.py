@@ -27,6 +27,7 @@ class DeepMDGovernanceAdapter:
     ) -> None:
         self.session_id = session_id
         self.actor = actor
+
     def build_core_validation_report(
         self,
         validation: DeepMDValidationReport,
@@ -243,7 +244,8 @@ class DeepMDGovernanceAdapter:
         raw_candidate_id = (
             metadata.get("candidate_id")
             or validation.summary_metrics.get("candidate_id")
-            or snapshot.graph_version and f"deepmd-candidate-v{snapshot.graph_version}"
+            or snapshot.graph_version
+            and f"deepmd-candidate-v{snapshot.graph_version}"
             or bundle.run_id
         )
         return str(raw_candidate_id)

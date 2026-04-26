@@ -126,7 +126,9 @@ def test_jedi_policy_allows_complete_executed_evidence_bundle() -> None:
     assert report.passed is True
     warning_codes = {warning.code for warning in report.warnings}
     assert "handoff_refs_present" in warning_codes
-    diagnostics_gate = next(gate for gate in report.gates if gate.gate == "diagnostics_structured_signal")
+    diagnostics_gate = next(
+        gate for gate in report.gates if gate.gate == "diagnostics_structured_signal"
+    )
     assert diagnostics_gate.decision.value == "allow"
     assert diagnostics_gate.evidence["ioda_groups_found"] == ["MetaData", "ObsValue", "HofX"]
     assert diagnostics_gate.evidence["ioda_groups_missing"] == ["ObsError"]
@@ -184,6 +186,8 @@ def test_jedi_policy_defers_when_real_run_diagnostics_summary_has_no_structured_
 
     assert report.decision == "defer"
     assert report.passed is False
-    diagnostics_gate = next(gate for gate in report.gates if gate.gate == "diagnostics_structured_signal")
+    diagnostics_gate = next(
+        gate for gate in report.gates if gate.gate == "diagnostics_structured_signal"
+    )
     assert diagnostics_gate.decision.value == "defer"
     assert "structured diagnostics evidence" in diagnostics_gate.reason

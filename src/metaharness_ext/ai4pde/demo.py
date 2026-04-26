@@ -6,7 +6,7 @@ from pathlib import Path
 
 from metaharness.config.xml_parser import parse_graph_xml
 from metaharness.core.boot import HarnessRuntime, bundled_discovery
-from metaharness.core.models import PendingConnectionSet
+from metaharness.core.models import GraphSnapshot, PendingConnectionSet
 from metaharness_ext.ai4pde.components.evidence_manager import EvidenceManagerComponent
 from metaharness_ext.ai4pde.components.experiment_memory import ExperimentMemoryComponent
 from metaharness_ext.ai4pde.components.method_router import MethodRouterComponent
@@ -22,6 +22,7 @@ from metaharness_ext.ai4pde.contracts import (
     ScientificEvidenceBundle,
     ValidationBundle,
 )
+from metaharness_ext.ai4pde.runtime_handoff import AI4PDEGovernanceAdapter
 
 
 @dataclass(slots=True)
@@ -111,6 +112,12 @@ class AI4PDECaseDemoHarness:
             validation_bundle,
             reference_result=reference_result,
             graph_family=plan.graph_family,
+        )
+        AI4PDEGovernanceAdapter(session_id=self.runtime.session_id).handoff_candidate_record(
+            self.runtime,
+            evidence_bundle,
+            validation=validation_bundle,
+            snapshot=GraphSnapshot(graph_version=graph_version),
         )
         memory_record = memory.remember(validation_bundle, evidence_bundle)
         return AI4PDECaseDemoResult(

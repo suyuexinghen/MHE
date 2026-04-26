@@ -102,7 +102,9 @@ class JediGovernanceAdapter:
         policy: JediPolicyReport,
     ) -> list[SessionEvent]:
         validation = self._require_validation(bundle)
-        session_id = validation.session_id or bundle.session_id or self.session_id or validation.task_id
+        session_id = (
+            validation.session_id or bundle.session_id or self.session_id or validation.task_id
+        )
         events = list(validation.session_events)
         if not any(event.event_type == SessionEventType.SAFETY_GATE_EVALUATED for event in events):
             events.append(
@@ -135,7 +137,9 @@ class JediGovernanceAdapter:
         graph_version = validation.graph_version_id or bundle.graph_version_id
         session_events = self.build_session_events(bundle, policy)
         audit_refs = list(bundle.audit_refs)
-        provenance_refs = list(dict.fromkeys([*validation.provenance_refs, *bundle.run.reference_files]))
+        provenance_refs = list(
+            dict.fromkeys([*validation.provenance_refs, *bundle.run.reference_files])
+        )
 
         candidate_entity = provenance_graph.add_entity(
             id=f"graph-candidate:{candidate_id}",

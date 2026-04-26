@@ -61,7 +61,9 @@ class TestJediSmokePolicyComponent:
         assert policy.recommended_family == "variational"
         assert policy.recommended_binary == "qg4DVar.x"
 
-    def test_falls_back_from_variational_to_forecast_when_qg_data_prerequisites_missing(self) -> None:
+    def test_falls_back_from_variational_to_forecast_when_qg_data_prerequisites_missing(
+        self,
+    ) -> None:
         env = JediEnvironmentReport(
             binary_available=True,
             launcher_available=True,
@@ -80,7 +82,9 @@ class TestJediSmokePolicyComponent:
         assert policy.recommended_family == "forecast"
         assert policy.recommended_binary == "qgForecast.x"
 
-    def test_falls_back_from_local_ensemble_da_to_forecast_when_data_prerequisites_missing(self) -> None:
+    def test_falls_back_from_local_ensemble_da_to_forecast_when_data_prerequisites_missing(
+        self,
+    ) -> None:
         env = JediEnvironmentReport(
             binary_available=True,
             launcher_available=True,

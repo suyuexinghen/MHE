@@ -59,5 +59,8 @@ def build_evidence_bundle(
         rollback_context=validation.rollback_context,
         scored_evidence=scored_evidence,
         session_events=list(validation.session_events),
-        provenance=dict(validation.provenance),
+        provenance={
+            **dict(validation.provenance),
+            "validation_bundle": validation.model_dump(mode="json"),
+        },
     )

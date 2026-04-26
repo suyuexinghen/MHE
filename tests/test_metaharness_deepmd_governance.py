@@ -1,3 +1,4 @@
+from metaharness.core.boot import HarnessRuntime
 from metaharness.core.graph_versions import ExternalCandidateReview, ExternalCandidateReviewState
 from metaharness.core.models import (
     GraphSnapshot,
@@ -6,8 +7,10 @@ from metaharness.core.models import (
     ValidationIssueCategory,
 )
 from metaharness.observability.events import InMemorySessionStore
-from metaharness.provenance import AuditLog, ProvGraph, RelationKind
+from metaharness.provenance import ArtifactSnapshotStore, AuditLog, ProvGraph, RelationKind
 from metaharness.safety.gates import GateDecision, GateResult
+from metaharness.sdk.discovery import ComponentDiscovery
+from metaharness.sdk.runtime import ComponentRuntime
 from metaharness_ext.deepmd.contracts import (
     DeepMDDiagnosticSummary,
     DeepMDEvidenceBundle,
@@ -16,6 +19,7 @@ from metaharness_ext.deepmd.contracts import (
     DeepMDValidationReport,
 )
 from metaharness_ext.deepmd.governance import DeepMDGovernanceAdapter
+from metaharness_ext.deepmd.runtime_handoff import handoff_governed_candidate
 
 
 def _bundle(
@@ -200,3 +204,47 @@ def test_deepmd_governance_adapter_emits_session_audit_and_provenance_evidence()
         and relation["object"] == "graph-candidate:candidate-1"
         for relation in provenance["relations"]
     )
+
+
+def test_deepmd_runtime_handoff_uses_resolvers_and_snapshots(manifest_dir) -> None:
+    bundle, policy = _bundle()
+    runtime = HarnessRuntime(ComponentDiscovery(bundled=manifest_dir))
+    runtime.boot()
+    candidate_record = DeepMDGovernanceAdapter().build_candidate_record(bundle, policy)
+
+    session_store = InMemorySessionStore()
+    artifact_store = ArtifactSnapshotStore()
+    audit_log = AuditLog()
+    provenance_graph = ProvGraph()
+    custom_runtime = ComponentRuntime(
+        session_store=session_store,
+        artifact_store=artifact_store,
+        audit_log=audit_log,
+        provenance_graph=provenance_graph,
+    )
+    runtime.components["runtime.primary"]._runtime = custom_runtime
+
+    handed_off = handoff_governed_candidate(
+        runtime,
+        candidate_record,
+        bundle=bundle,
+        policy=policy,
+    )
+
+    assert handed_off.candidate_id == candidate_record.candidate_id
+    events = session_store.get_events(runtime.session_id)
+    assert [event.event_type for event in events] == [
+        SessionEventType.CANDIDATE_VALIDATED,
+        SessionEventType.SAFETY_GATE_EVALUATED,
+        SessionEventType.CANDIDATE_VALIDATED,
+        SessionEventType.SAFETY_GATE_EVALUATED,
+    ]
+    run_history = artifact_store.history(bundle.run.run_id)
+    validation_history = artifact_store.history(bundle.validation.task_id)
+    evidence_history = artifact_store.history(bundle.run.run_id)
+    assert len(run_history) == 1
+    assert len(validation_history) == 1
+    assert len(evidence_history) >= 1
+    assert len(audit_log.by_kind("execution.artifact_snapshots_recorded")) == 1
+    provenance = provenance_graph.to_dict()
+    assert any(entity.startswith("artifact-snapshot:") for entity in provenance["entities"])

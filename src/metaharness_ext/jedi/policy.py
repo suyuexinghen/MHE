@@ -5,7 +5,9 @@ from metaharness_ext.jedi.contracts import JediEvidenceBundle, JediEvidenceWarni
 
 
 class JediEvidencePolicy:
-    def _report_evidence(self, bundle: JediEvidenceBundle, validation_status: str | None) -> dict[str, object]:
+    def _report_evidence(
+        self, bundle: JediEvidenceBundle, validation_status: str | None
+    ) -> dict[str, object]:
         evidence: dict[str, object] = {"run_id": bundle.run_id, "status": validation_status}
         for key in (
             "diagnostic_files_scanned",
@@ -115,7 +117,11 @@ class JediEvidencePolicy:
                 )
             )
 
-        if bundle.execution_mode == "real_run" and not bundle.run.diagnostic_files and not bundle.run.reference_files:
+        if (
+            bundle.execution_mode == "real_run"
+            and not bundle.run.diagnostic_files
+            and not bundle.run.reference_files
+        ):
             incomplete = True
             gates.append(
                 GateResult(
@@ -184,7 +190,10 @@ class JediEvidencePolicy:
                 JediEvidenceWarning(
                     code="blocking_reasons_present",
                     message="Validation report includes blocking reasons for downstream review.",
-                    evidence={"run_id": bundle.run_id, "blocking_reasons": validation.blocking_reasons},
+                    evidence={
+                        "run_id": bundle.run_id,
+                        "blocking_reasons": validation.blocking_reasons,
+                    },
                 )
             )
 

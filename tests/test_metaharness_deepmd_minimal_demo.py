@@ -302,14 +302,19 @@ def test_deepmd_gateway_baseline_train_hands_off_to_runtime_consumer(
     assert runtime.version_manager.candidates[-1] == baseline_report.candidate_record
     assert runtime.version_manager.candidates[-1].promoted is True
     assert baseline_report.validation.scored_evidence is not None
-    assert baseline_report.validation.scored_evidence.attributes["application_family"] == "deepmd_train"
+    assert (
+        baseline_report.validation.scored_evidence.attributes["application_family"]
+        == "deepmd_train"
+    )
     assert any(ref.startswith("deepmd://run/") for ref in baseline_report.validation.evidence_refs)
     events = session_store.get_events(runtime.session_id)
     assert [event.event_type for event in events] == [
         SessionEventType.CANDIDATE_VALIDATED,
         SessionEventType.SAFETY_GATE_EVALUATED,
     ]
-    assert all(event.candidate_id == baseline_report.candidate_record.candidate_id for event in events)
+    assert all(
+        event.candidate_id == baseline_report.candidate_record.candidate_id for event in events
+    )
     assert len(runtime.audit_log.by_kind("deepmd.governance_handoff")) == 1
     assert (
         f"graph-candidate:{baseline_report.candidate_record.candidate_id}"
@@ -560,7 +565,9 @@ def test_deepmd_gateway_baseline_dpgen_run_hands_off_to_runtime_consumer(
         SessionEventType.CANDIDATE_VALIDATED,
         SessionEventType.SAFETY_GATE_EVALUATED,
     ]
-    assert all(event.candidate_id == baseline_report.candidate_record.candidate_id for event in events)
+    assert all(
+        event.candidate_id == baseline_report.candidate_record.candidate_id for event in events
+    )
 
 
 @pytest.mark.asyncio
@@ -696,7 +703,9 @@ def test_deepmd_gateway_baseline_dpgen_simplify_hands_off_to_runtime_consumer(
         SessionEventType.CANDIDATE_VALIDATED,
         SessionEventType.SAFETY_GATE_EVALUATED,
     ]
-    assert all(event.candidate_id == baseline_report.candidate_record.candidate_id for event in events)
+    assert all(
+        event.candidate_id == baseline_report.candidate_record.candidate_id for event in events
+    )
 
 
 @pytest.mark.asyncio
@@ -818,4 +827,6 @@ def test_deepmd_gateway_baseline_dpgen_autotest_hands_off_to_runtime_consumer(
         SessionEventType.CANDIDATE_VALIDATED,
         SessionEventType.SAFETY_GATE_EVALUATED,
     ]
-    assert all(event.candidate_id == baseline_report.candidate_record.candidate_id for event in events)
+    assert all(
+        event.candidate_id == baseline_report.candidate_record.candidate_id for event in events
+    )

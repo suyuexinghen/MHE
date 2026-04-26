@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from metaharness.provenance import ArtifactSnapshotStore
 from metaharness.sdk.runtime import ComponentRuntime
 from metaharness_ext.nektar.contracts import NektarProblemSpec
 from metaharness_ext.nektar.postprocess import PostprocessComponent
@@ -747,3 +748,71 @@ async def test_solver_executor_step_metrics_empty_when_no_output(
     artifact = executor.execute_plan(plan)
 
     assert artifact.filter_output.metrics == {}
+
+
+@pytest.mark.asyncio
+async def test_solver_executor_records_run_artifact_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    problem = NektarProblemSpec(
+        task_id="task-persist",
+        title="helmholtz",
+        solver_family=NektarSolverFamily.ADR,
+        dimension=2,
+        variables=["u"],
+    )
+    plan = build_session_plan(problem)
+    executor = SolverExecutorComponent()
+    artifact_store = ArtifactSnapshotStore()
+    await executor.activate(ComponentRuntime(storage_path=tmp_path, artifact_store=artifact_store))
+
+    monkeypatch.setattr(
+        "metaharness_ext.nektar.solver_executor.shutil.which",
+        lambda binary: f"/usr/bin/{binary}",
+    )
+    monkeypatch.setattr(
+        "metaharness_ext.nektar.solver_executor.subprocess.run",
+        lambda command, *, cwd, text, capture_output, check, timeout: _FakeCompletedProcess(
+            returncode=0, stdout="ok", stderr=""
+        ),
+    )
+
+    artifact = executor.execute_plan(plan)
+
+    history = artifact_store.history(artifact.run_id)
+    assert len(history) == 1
+    assert history[0].artifact_kind == "run_artifact"
+    assert history[0].payload["run_id"] == artifact.run_id
+
+
+def test_nektar_validator_records_validation_snapshot(tmp_path: Path) -> None:
+    problem = NektarProblemSpec(
+        task_id="task-validate-persist",
+        title="helmholtz",
+        solver_family=NektarSolverFamily.ADR,
+        dimension=2,
+        variables=["u"],
+    )
+    plan = build_session_plan(problem)
+    artifact = SolverExecutorComponent()._build_run_artifact(
+        plan,
+        session_path=tmp_path / "session.xml",
+        mesh_path=None,
+        field_files=[str(tmp_path / "solution.fld")],
+        checkpoint_files=[],
+        log_files=[str(tmp_path / "solver.log")],
+        status="completed",
+        result_summary={"exit_code": 0, "fallback_reason": None},
+    )
+
+    validator = NektarValidatorComponent()
+    import asyncio
+
+    artifact_store = ArtifactSnapshotStore()
+    asyncio.run(validator.activate(ComponentRuntime(artifact_store=artifact_store)))
+    report = validator.validate_run(artifact)
+
+    history = artifact_store.history(report.task_id)
+    assert len(history) == 1
+    assert history[0].artifact_kind == "validation_outcome"
+    assert history[0].payload["task_id"] == report.task_id

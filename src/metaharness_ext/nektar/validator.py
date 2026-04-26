@@ -101,7 +101,7 @@ class NektarValidatorComponent(HarnessComponent):
             reasons=list(messages),
             attributes={"status": artifact.status, "solver_family": artifact.solver_family.value},
         )
-        return NektarValidationReport(
+        report = NektarValidationReport(
             task_id=artifact.task_id,
             passed=passed,
             solver_exited_cleanly=solver_exited_cleanly,
@@ -114,6 +114,7 @@ class NektarValidatorComponent(HarnessComponent):
             trace_refs=list(artifact.trace_refs),
             scored_evidence=scored_evidence,
         )
+        return self._finalize_report(artifact, report)
 
     def _evaluate_error_vs_reference(self, artifact: NektarRunArtifact) -> bool | None:
         if not artifact.filter_output.error_norms:
@@ -130,3 +131,22 @@ class NektarValidatorComponent(HarnessComponent):
         if not l2_values:
             return None
         return max(l2_values) <= tolerance
+
+    def _record_validation_snapshot(
+        self, artifact: NektarRunArtifact, report: NektarValidationReport
+    ) -> None:
+        runtime = getattr(self, "_runtime", None)
+        artifact_store = runtime.resolved_artifact_store() if runtime is not None else None
+        if artifact_store is None:
+            return
+        artifact_store.save(
+            "validation_outcome",
+            artifact.task_id,
+            report.model_dump(mode="json"),
+        )
+
+    def _finalize_report(
+        self, artifact: NektarRunArtifact, report: NektarValidationReport
+    ) -> NektarValidationReport:
+        self._record_validation_snapshot(artifact, report)
+        return report

@@ -76,7 +76,9 @@ class _FakeDiagnostics:
     def collect(self, artifact: JediRunArtifact) -> JediDiagnosticSummary:
         metric_value = artifact.result_summary.get("final_cost_function")
         axis_value = artifact.result_summary.get("axis_value")
-        files_scanned = [] if axis_value in self.deferred_axis_values else list(artifact.diagnostic_files)
+        files_scanned = (
+            [] if axis_value in self.deferred_axis_values else list(artifact.diagnostic_files)
+        )
         summary = JediDiagnosticSummary(
             files_scanned=files_scanned,
             final_cost_function=float(metric_value)
@@ -185,7 +187,11 @@ async def test_study_minimizes_variational_iterations_metric(tmp_path: Path) -> 
     assert report.summary_metrics["best_final_cost_function"] == pytest.approx(3.0)
     assert all(trial.evidence_bundle is not None for trial in report.trials)
     assert all(trial.policy_report is not None for trial in report.trials)
-    assert all(trial.policy_report.decision == "allow" for trial in report.trials if trial.policy_report is not None)
+    assert all(
+        trial.policy_report.decision == "allow"
+        for trial in report.trials
+        if trial.policy_report is not None
+    )
     assert all(trial.validation.candidate_id == "candidate-study-1" for trial in report.trials)
     assert all(trial.validation.graph_version_id == 21 for trial in report.trials)
     assert all(trial.validation.session_id == "session-study-1" for trial in report.trials)
@@ -429,7 +435,9 @@ async def test_study_prefers_allow_trial_over_better_deferred_trial(tmp_path: Pa
 
     assert report.recommended_value == pytest.approx(1.0)
     assert report.summary_metrics["best_posterior_spread"] == pytest.approx(2.0)
-    deferred_trial = next(trial for trial in report.trials if trial.axis_value == pytest.approx(0.8))
+    deferred_trial = next(
+        trial for trial in report.trials if trial.axis_value == pytest.approx(0.8)
+    )
     assert deferred_trial.metric_value == pytest.approx(1.5)
     assert deferred_trial.policy_report is not None
     assert deferred_trial.policy_report.decision == "defer"
@@ -464,8 +472,13 @@ async def test_study_reports_when_all_metric_trials_are_policy_blocked(tmp_path:
 
     assert report.recommended_value is None
     assert report.recommended_trial_id is None
-    assert report.recommended_reason == "No policy-allowed trial produced the requested final_cost_function."
-    assert report.messages == ["All metric-producing trials were excluded by diagnostics-aware policy."]
+    assert (
+        report.recommended_reason
+        == "No policy-allowed trial produced the requested final_cost_function."
+    )
+    assert report.messages == [
+        "All metric-producing trials were excluded by diagnostics-aware policy."
+    ]
     assert "best_final_cost_function" not in report.summary_metrics
 
 

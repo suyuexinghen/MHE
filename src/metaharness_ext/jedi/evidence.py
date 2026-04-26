@@ -90,9 +90,7 @@ def build_evidence_bundle(
             "diagnostic_files_scanned": len(summary.files_scanned) if summary is not None else 0,
             "ioda_groups_found": list(summary.ioda_groups_found) if summary is not None else [],
             "ioda_groups_missing": list(summary.ioda_groups_missing) if summary is not None else [],
-            "minimizer_iterations": (
-                summary.minimizer_iterations if summary is not None else None
-            ),
+            "minimizer_iterations": (summary.minimizer_iterations if summary is not None else None),
             "outer_iterations": summary.outer_iterations if summary is not None else None,
             "inner_iterations": summary.inner_iterations if summary is not None else None,
             "initial_cost_function": (

@@ -130,8 +130,6 @@ def test_metaharness_jedi_manifest_entries_are_importable() -> None:
         assert getattr(module, class_name) is not None
 
 
-
-
 def test_metaharness_jedi_component_declarations_match_manifests() -> None:
     for filename, expected in EXPECTED_MANIFESTS.items():
         manifest = ComponentManifest.model_validate(

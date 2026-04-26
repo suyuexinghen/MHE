@@ -62,7 +62,7 @@ class AbacusExecutorComponent(HarnessComponent):
                 structure_files=[],
                 prepared_inputs=prepared_inputs,
             )
-            return self._build_artifact(
+            artifact = self._build_artifact(
                 plan,
                 run_dir=run_dir,
                 command=[plan.executable.binary_name],
@@ -79,6 +79,7 @@ class AbacusExecutorComponent(HarnessComponent):
                 ),
                 result_summary={"fallback_reason": "binary_not_found", "exit_code": None},
             )
+            return self._finalize_artifact(artifact)
 
         resolved_launcher: str | None = None
         if plan.executable.launcher != "direct":
@@ -98,7 +99,7 @@ class AbacusExecutorComponent(HarnessComponent):
                     structure_files=[],
                     prepared_inputs=prepared_inputs,
                 )
-                return self._build_artifact(
+                artifact = self._build_artifact(
                     plan,
                     run_dir=run_dir,
                     command=self._build_command(plan, resolved_binary, plan.executable.launcher),
@@ -115,6 +116,7 @@ class AbacusExecutorComponent(HarnessComponent):
                     ),
                     result_summary={"fallback_reason": "launcher_not_found", "exit_code": None},
                 )
+                return self._finalize_artifact(artifact)
 
         command = self._build_command(plan, resolved_binary, resolved_launcher)
         timeout_seconds = plan.executable.timeout_seconds
@@ -140,7 +142,7 @@ class AbacusExecutorComponent(HarnessComponent):
                 structure_files=[],
                 prepared_inputs=prepared_inputs,
             )
-            return self._build_artifact(
+            artifact = self._build_artifact(
                 plan,
                 run_dir=run_dir,
                 command=command,
@@ -157,6 +159,7 @@ class AbacusExecutorComponent(HarnessComponent):
                 ),
                 result_summary={"fallback_reason": "command_timeout", "exit_code": None},
             )
+            return self._finalize_artifact(artifact)
 
         stdout_path, stderr_path = self._write_logs(
             run_dir,
@@ -179,7 +182,7 @@ class AbacusExecutorComponent(HarnessComponent):
             prepared_inputs=prepared_inputs,
         )
 
-        return self._build_artifact(
+        artifact = self._build_artifact(
             plan,
             run_dir=run_dir,
             command=command,
@@ -210,6 +213,7 @@ class AbacusExecutorComponent(HarnessComponent):
                 "output_root": str(output_root) if output_root.exists() else None,
             },
         )
+        return self._finalize_artifact(artifact)
 
     def _resolve_run_dir(self, plan: AbacusRunPlan) -> Path:
         runtime = getattr(self, "_runtime", None)
@@ -362,6 +366,21 @@ class AbacusExecutorComponent(HarnessComponent):
         refs.extend(f"abacus://diagnostic/{Path(path).name}" for path in diagnostic_files)
         refs.extend(f"abacus://structure/{Path(path).name}" for path in structure_files)
         return list(dict.fromkeys(refs))
+
+    def _record_artifact_snapshot(self, artifact: AbacusRunArtifact) -> None:
+        runtime = getattr(self, "_runtime", None)
+        artifact_store = runtime.resolved_artifact_store() if runtime is not None else None
+        if artifact_store is None:
+            return
+        artifact_store.save(
+            "run_artifact",
+            artifact.run_id,
+            artifact.model_dump(mode="json"),
+        )
+
+    def _finalize_artifact(self, artifact: AbacusRunArtifact) -> AbacusRunArtifact:
+        self._record_artifact_snapshot(artifact)
+        return artifact
 
     def _build_artifact(
         self,

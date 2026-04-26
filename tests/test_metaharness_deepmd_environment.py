@@ -198,7 +198,9 @@ def test_deepmd_environment_reports_probe_output_when_binary_available(
     )
 
     def fake_run(command, *, text, capture_output, check, timeout):
-        return type("_FakeCompletedProcess", (), {"returncode": 0, "stdout": "deepmd help", "stderr": ""})()
+        return type(
+            "_FakeCompletedProcess", (), {"returncode": 0, "stdout": "deepmd help", "stderr": ""}
+        )()
 
     monkeypatch.setattr("metaharness_ext.deepmd.environment.subprocess.run", fake_run)
 
@@ -244,6 +246,12 @@ def test_deepmd_environment_sets_machine_fallback_reason(
 
 
 def test_dpgen_machine_spec_normalizes_blank_optional_fields() -> None:
-    machine = DPGenMachineSpec(batch_type="slurm", context_type="ssh", local_root=".", remote_root="/remote", command="sbatch")
+    machine = DPGenMachineSpec(
+        batch_type="slurm",
+        context_type="ssh",
+        local_root=".",
+        remote_root="/remote",
+        command="sbatch",
+    )
 
     assert machine.command == "sbatch"

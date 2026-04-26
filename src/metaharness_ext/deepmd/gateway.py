@@ -175,4 +175,3 @@ class DeepMDGatewayComponent(HarnessComponent):
             core_validation_report=core_validation_report,
             candidate_record=candidate_record,
         )
-

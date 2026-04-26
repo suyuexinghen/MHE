@@ -234,7 +234,9 @@ class DeepMDValidatorComponent(HarnessComponent):
             metrics["rmse_f_val"] = artifact.summary.rmse_f_val
 
         if not passed:
-            messages.append(f"DeepMD {artifact.execution_mode} run completed but evidence insufficient.")
+            messages.append(
+                f"DeepMD {artifact.execution_mode} run completed but evidence insufficient."
+            )
             issues.append(
                 ValidationIssue(
                     code="deepmd_missing_evidence",
@@ -315,7 +317,9 @@ class DeepMDValidatorComponent(HarnessComponent):
             scored_evidence=scored_evidence,
         )
 
-    def _build_evidence_refs(self, artifact: DeepMDRunArtifact, evidence_files: list[str]) -> list[str]:
+    def _build_evidence_refs(
+        self, artifact: DeepMDRunArtifact, evidence_files: list[str]
+    ) -> list[str]:
         refs = [
             f"deepmd://run/{artifact.task_id}/{artifact.run_id}",
             f"deepmd://run/{artifact.task_id}/{artifact.run_id}/mode/{artifact.execution_mode}",

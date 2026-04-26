@@ -53,8 +53,13 @@ class JediValidatorComponent(HarnessComponent):
         checkpoint_refs = self._coerce_string_list(artifact.result_summary.get("checkpoint_refs"))
         audit_refs = self._coerce_string_list(artifact.result_summary.get("audit_refs"))
         candidate_id = self._coerce_optional_string(artifact.result_summary.get("candidate_id"))
-        graph_version_id = self._coerce_optional_int(artifact.result_summary.get("graph_version_id"))
-        session_id = self._coerce_optional_string(artifact.result_summary.get("session_id")) or artifact.task_id
+        graph_version_id = self._coerce_optional_int(
+            artifact.result_summary.get("graph_version_id")
+        )
+        session_id = (
+            self._coerce_optional_string(artifact.result_summary.get("session_id"))
+            or artifact.task_id
+        )
 
         def build_report(
             *,
@@ -242,14 +247,8 @@ class JediValidatorComponent(HarnessComponent):
         blocking_reasons = list(report.blocking_reasons)
         session_events = list(report.session_events)
 
-        if (
-            artifact.execution_mode == "real_run"
-            and report.passed
-            and not has_structured_signal
-        ):
-            diagnostics_message = (
-                "JEDI real_run completed without structured diagnostics evidence."
-            )
+        if artifact.execution_mode == "real_run" and report.passed and not has_structured_signal:
+            diagnostics_message = "JEDI real_run completed without structured diagnostics evidence."
             enriched_messages.append(diagnostics_message)
             passed = False
             status = "validation_failed"

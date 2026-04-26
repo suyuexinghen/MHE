@@ -5,7 +5,8 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, TypeAdapter, field_validator, model_validator
 
-from metaharness.core.models import SessionEvent
+from metaharness.core.graph_versions import CandidateRecord
+from metaharness.core.models import SessionEvent, ValidationReport
 from metaharness.safety.gates import GateResult
 from metaharness_ext.jedi.types import (
     JediApplicationFamily,
@@ -303,6 +304,18 @@ class JediPolicyReport(BaseModel):
     warnings: list[JediEvidenceWarning] = Field(default_factory=list)
     gates: list[GateResult] = Field(default_factory=list)
     evidence: dict[str, Any] = Field(default_factory=dict)
+
+
+class JediBaselineReport(BaseModel):
+    task: JediExperimentSpec
+    environment: JediEnvironmentReport
+    plan: JediRunPlan
+    run: JediRunArtifact
+    validation: JediValidationReport
+    evidence_bundle: JediEvidenceBundle
+    policy_report: JediPolicyReport
+    core_validation_report: ValidationReport
+    candidate_record: CandidateRecord
 
 
 class JediMutationAxis(BaseModel):

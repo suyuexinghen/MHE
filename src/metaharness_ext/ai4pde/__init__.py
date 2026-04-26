@@ -13,6 +13,7 @@ from metaharness_ext.ai4pde.contracts import (
     ScientificEvidenceBundle,
     ValidationBundle,
 )
+from metaharness_ext.ai4pde.runtime_handoff import AI4PDEGovernanceAdapter
 from metaharness_ext.ai4pde.templates.catalog import PDETemplate
 from metaharness_ext.ai4pde.types import (
     NextAction,
@@ -32,6 +33,7 @@ __all__ = [
     "parse_ai4pde_case_xml",
     "parse_ai4pde_case_xml_text",
     "PDEPlan",
+    "AI4PDEGovernanceAdapter",
     "PDETemplate",
     "PDERunArtifact",
     "PDETaskRequest",

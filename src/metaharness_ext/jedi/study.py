@@ -249,7 +249,11 @@ class JediStudyComponent(HarnessComponent):
         direction = "lowest" if goal == "minimize" else "highest"
 
         if recommended is None:
-            if ranked_trials and policy_blocked_trials and len(policy_blocked_trials) == len(ranked_trials):
+            if (
+                ranked_trials
+                and policy_blocked_trials
+                and len(policy_blocked_trials) == len(ranked_trials)
+            ):
                 reason = f"No policy-allowed trial produced the requested {metric_key}."
                 return reason, [
                     "All metric-producing trials were excluded by diagnostics-aware policy."
@@ -282,7 +286,9 @@ class JediStudyComponent(HarnessComponent):
         reverse = goal == "maximize"
         return sorted(blocked, key=lambda trial: trial.metric_value, reverse=reverse)[0]
 
-    def _is_better_metric(self, candidate: float | None, baseline: float | None, *, goal: str) -> bool:
+    def _is_better_metric(
+        self, candidate: float | None, baseline: float | None, *, goal: str
+    ) -> bool:
         if candidate is None or baseline is None:
             return False
         if goal == "maximize":

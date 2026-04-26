@@ -130,8 +130,14 @@ class TestJediValidatorWithDiagnostics:
         assert report.passed is False
         assert report.status == "validation_failed"
         assert report.policy_decision == "defer"
-        assert report.blocking_reasons[-1] == "JEDI real_run completed without structured diagnostics evidence."
-        assert report.messages[-1] == "JEDI real_run completed without structured diagnostics evidence."
+        assert (
+            report.blocking_reasons[-1]
+            == "JEDI real_run completed without structured diagnostics evidence."
+        )
+        assert (
+            report.messages[-1]
+            == "JEDI real_run completed without structured diagnostics evidence."
+        )
         assert len(report.session_events) == 1
         assert report.session_events[0].payload["status"] == "defer"
         assert report.session_events[0].payload["blocking_reasons"][-1] == (
