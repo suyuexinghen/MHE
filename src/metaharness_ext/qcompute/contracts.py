@@ -360,6 +360,14 @@ class QubitHamiltonian(BaseModel):
     mapping_method: str = "jordan_wigner"
 
 
+class QComputeQuafuChipInfo(BaseModel):
+    chip_id: str
+    status: Literal["online", "maintenance", "offline"] = "online"
+    qubit_count: int
+    calibration_timestamp: datetime | None = None
+    queue_depth: int = 0
+
+
 class QComputeActiveSpace(BaseModel):
     n_electrons: int
     n_orbitals: int

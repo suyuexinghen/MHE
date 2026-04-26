@@ -40,6 +40,10 @@ class QComputeExecutorComponent(HarnessComponent):
             from metaharness_ext.qcompute.backends.pennylane_aer import PennyLaneBackend
 
             return PennyLaneBackend()
+        if platform == "quafu":
+            from metaharness_ext.qcompute.backends.quafu import QuafuBackendAdapter
+
+            return QuafuBackendAdapter()
         return None
 
     def execute_plan(

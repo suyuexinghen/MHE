@@ -171,12 +171,17 @@ class QComputeConfigCompilerComponent(HarnessComponent):
     def _compile_circuit(self, circuit: Any, spec: QComputeExperimentSpec) -> Any:
         _, _, _, generate_preset_pass_manager = self._qiskit_modules()
         backend = None
+        optimization_level = spec.circuit.transpiler_level
         if spec.backend.platform == "qiskit_aer":
             from qiskit_aer import AerSimulator
 
             backend = AerSimulator()
+        elif spec.backend.platform == "quafu":
+            # Real hardware: use level 3 (sabre) as default for maximum
+            # optimisation unless the caller explicitly requests otherwise.
+            optimization_level = max(optimization_level, 3)
         pass_manager = generate_preset_pass_manager(
-            optimization_level=spec.circuit.transpiler_level,
+            optimization_level=optimization_level,
             backend=backend,
         )
         return pass_manager.run(circuit)
