@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import time
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from typing import Any
 
@@ -69,10 +70,17 @@ _NON_RETRIABLE_ERRORS: tuple[type[QuafuError], ...] = (
 _QUAFU_STATUS_MAP: dict[str, ExecutionStatus] = {
     "Submitted": ExecutionStatus.QUEUED,
     "Queued": ExecutionStatus.QUEUED,
+    "In Queue": ExecutionStatus.QUEUED,
+    "Pending": ExecutionStatus.QUEUED,
     "Running": ExecutionStatus.RUNNING,
     "Finished": ExecutionStatus.COMPLETED,
+    "Completed": ExecutionStatus.COMPLETED,
     "Failed": ExecutionStatus.FAILED,
+    "Error": ExecutionStatus.FAILED,
+    "Timeout": ExecutionStatus.TIMEOUT,
+    "Timed Out": ExecutionStatus.TIMEOUT,
     "Cancelled": ExecutionStatus.CANCELLED,
+    "Canceled": ExecutionStatus.CANCELLED,
 }
 
 _DEFAULT_CHIP_ID = "Baihua"
@@ -220,8 +228,7 @@ class QuafuBackendAdapter:
     async def poll(self, job_id: str) -> ExecutionStatus:
         """Return the latest ``ExecutionStatus`` for *job_id*."""
         tmgr = self._get_task_manager()
-        raw_status = tmgr.status(int(job_id))
-        return _QUAFU_STATUS_MAP.get(str(raw_status), ExecutionStatus.FAILED)
+        return self._normalize_status(tmgr.status(int(job_id)))
 
     async def cancel(self, job_id: str) -> None:
         """Request cancellation of a queued / running task."""
@@ -246,11 +253,11 @@ class QuafuBackendAdapter:
 
         delays = polling.schedule(max_attempts=1000)
         for delay in delays:
-            raw_status = str(tmgr.status(int(job_id)))
-            status = _QUAFU_STATUS_MAP.get(raw_status, ExecutionStatus.FAILED)
+            raw_status = tmgr.status(int(job_id))
+            status = self._normalize_status(raw_status)
 
             if status == ExecutionStatus.COMPLETED:
-                return self._fetch_result(tmgr, job_id)
+                return self._fetch_result(tmgr, job_id, raw_status)
             if status in {
                 ExecutionStatus.FAILED,
                 ExecutionStatus.TIMEOUT,
@@ -270,13 +277,12 @@ class QuafuBackendAdapter:
         """Block until task completes and return the raw counts dict."""
         delays = self._polling.schedule(max_attempts=1000)
         for delay in delays:
-            raw_status = str(tmgr.status(int(task_id)))
-            status = _QUAFU_STATUS_MAP.get(raw_status, ExecutionStatus.FAILED)
+            raw_status = tmgr.status(int(task_id))
+            status = self._normalize_status(raw_status)
 
             if status == ExecutionStatus.COMPLETED:
-                result = tmgr.result(int(task_id))
-                counts = result.get("count", {})
-                return {str(k): int(v) for k, v in counts.items()}
+                result = self._fetch_result(tmgr, task_id, raw_status)
+                return result["counts"]
 
             if status in {
                 ExecutionStatus.FAILED,
@@ -291,26 +297,84 @@ class QuafuBackendAdapter:
             f"Task {task_id} did not complete within {self._polling.max_total_wait}s"
         )
 
-    def _fetch_result(self, tmgr: Any, job_id: str) -> dict[str, Any]:
+    def _fetch_result(
+        self,
+        tmgr: Any,
+        job_id: str,
+        raw_status: Any | None = None,
+    ) -> dict[str, Any]:
         """Fetch and normalize the result dict for a completed task."""
         result = tmgr.result(int(job_id))
-        counts = result.get("count", {})
-        normalized = {str(k): int(v) for k, v in counts.items()}
+        if not isinstance(result, Mapping):
+            raise QuafuError(f"Task {job_id} returned an invalid result payload")
+
+        counts_payload = self._extract_counts(result)
+        normalized = {str(k): int(v) for k, v in counts_payload.items()}
         total_shots = sum(normalized.values())
         probabilities = (
             {bs: cnt / total_shots for bs, cnt in normalized.items()} if total_shots else {}
         )
+        metadata = self._build_metadata(job_id, result, raw_status)
         return {
             "counts": normalized,
             "probabilities": probabilities,
-            "execution_time_ms": None,
-            "metadata": {
-                "backend": "quafu",
-                "chip_id": self._chip_id,
-                "task_id": job_id,
-            },
+            "execution_time_ms": self._extract_execution_time_ms(result),
+            "metadata": metadata,
             "shots_completed": total_shots,
         }
+
+    def _normalize_status(self, raw_status: Any) -> ExecutionStatus:
+        if isinstance(raw_status, Mapping):
+            for key in ("status", "state", "task_status"):
+                if key in raw_status:
+                    return self._normalize_status(raw_status[key])
+            if self._chip_id in raw_status:
+                return ExecutionStatus.QUEUED
+            return ExecutionStatus.FAILED
+        return _QUAFU_STATUS_MAP.get(str(raw_status), ExecutionStatus.FAILED)
+
+    def _extract_counts(self, result: Mapping[str, Any]) -> Mapping[Any, Any]:
+        for key in ("count", "counts", "measurement_counts"):
+            value = result.get(key)
+            if isinstance(value, Mapping):
+                return value
+        data = result.get("data")
+        if isinstance(data, Mapping):
+            for key in ("count", "counts", "measurement_counts"):
+                value = data.get(key)
+                if isinstance(value, Mapping):
+                    return value
+        raise QuafuError("Quafu result payload does not contain counts")
+
+    def _build_metadata(
+        self,
+        job_id: str,
+        result: Mapping[str, Any],
+        raw_status: Any | None,
+    ) -> dict[str, Any]:
+        metadata: dict[str, Any] = {
+            "backend": "quafu",
+            "chip_id": str(result.get("chip") or self._chip_id),
+            "task_id": str(result.get("tid") or result.get("task_id") or job_id),
+        }
+        for source in (raw_status, result):
+            if not isinstance(source, Mapping):
+                continue
+            for key in ("queue_depth", "queue_position", "quota", "quota_snapshot"):
+                if key in source:
+                    metadata[key] = source[key]
+        return metadata
+
+    def _extract_execution_time_ms(self, result: Mapping[str, Any]) -> float | None:
+        for key in ("execution_time_ms", "time_ms"):
+            value = result.get(key)
+            if value is not None:
+                return float(value)
+        for key in ("execution_time", "time", "elapsed"):
+            value = result.get(key)
+            if value is not None:
+                return float(value) * 1000.0
+        return None
 
     def _execute_with_retries(self, fn: Any) -> Any:
         """Execute *fn* with retry logic for retriable Quafu errors."""

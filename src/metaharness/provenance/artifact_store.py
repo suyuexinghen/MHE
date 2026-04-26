@@ -29,6 +29,18 @@ class ArtifactSnapshotStore:
         self.path = path
         self._snapshots: dict[str, ArtifactSnapshot] = {}
         self._history: dict[str, list[str]] = {}
+        if self.path is not None and self.path.exists():
+            self._load()
+
+    def _load(self) -> None:
+        assert self.path is not None
+        with self.path.open(encoding="utf-8") as fh:
+            for line in fh:
+                if not line.strip():
+                    continue
+                snapshot = ArtifactSnapshot(**json.loads(line))
+                self._snapshots[snapshot.snapshot_id] = snapshot
+                self._history.setdefault(snapshot.artifact_ref, []).append(snapshot.snapshot_id)
 
     def save(
         self,

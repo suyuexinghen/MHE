@@ -49,6 +49,27 @@ class AuditLog:
         self._records: list[AuditRecord] = []
         self._tree = MerkleTree()
         self.path = path
+        if self.path is not None and self.path.exists():
+            self._load()
+
+    def _load(self) -> None:
+        assert self.path is not None
+        with self.path.open(encoding="utf-8") as fh:
+            for line in fh:
+                if not line.strip():
+                    continue
+                data = json.loads(line)
+                record = AuditRecord(
+                    record_id=data["record_id"],
+                    timestamp=data["timestamp"],
+                    kind=data["kind"],
+                    actor=data["actor"],
+                    payload=data.get("payload", {}),
+                )
+                self._tree.append(record.canonical())
+                record.merkle_index = len(self._records)
+                record.merkle_root = self._tree.root_hash()
+                self._records.append(record)
 
     # ---------------------------------------------------------------- mutate
 

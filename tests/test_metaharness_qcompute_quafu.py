@@ -8,6 +8,8 @@ the ``quark`` module via ``unittest.mock``.
 from __future__ import annotations
 
 import importlib
+import importlib.util
+import os
 import sys
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
@@ -183,6 +185,26 @@ class TestQuafuPoll:
         assert status == ExecutionStatus.RUNNING
 
     @pytest.mark.asyncio
+    async def test_poll_maps_queue_status_payload(self, mock_quark, quafu_module, monkeypatch):
+        mock_task_cls, mock_instance = mock_quark
+        monkeypatch.setenv("Qcompute_Token", "fake-token-123")
+        adapter = quafu_module.QuafuBackendAdapter()
+
+        mock_instance.status.return_value = {"status": "In Queue", "queue_position": 4}
+        status = await adapter.poll("2604261809502337788")
+        assert status == ExecutionStatus.QUEUED
+
+    @pytest.mark.asyncio
+    async def test_poll_maps_timeout_status(self, mock_quark, quafu_module, monkeypatch):
+        mock_task_cls, mock_instance = mock_quark
+        monkeypatch.setenv("Qcompute_Token", "fake-token-123")
+        adapter = quafu_module.QuafuBackendAdapter()
+
+        mock_instance.status.return_value = "Timed Out"
+        status = await adapter.poll("2604261809502337788")
+        assert status == ExecutionStatus.TIMEOUT
+
+    @pytest.mark.asyncio
     async def test_poll_maps_failed(self, mock_quark, quafu_module, monkeypatch):
         mock_task_cls, mock_instance = mock_quark
         monkeypatch.setenv("Qcompute_Token", "fake-token-123")
@@ -238,6 +260,62 @@ class TestQuafuAwaitResult:
         assert result["counts"] == {"00": 500, "11": 524}
         assert result["shots_completed"] == 1024
         assert result["metadata"]["task_id"] == "2604261809502337788"
+
+    @pytest.mark.asyncio
+    async def test_await_result_includes_queue_and_quota_metadata(
+        self, mock_quark, quafu_module, monkeypatch
+    ):
+        mock_task_cls, mock_instance = mock_quark
+        monkeypatch.setenv("Qcompute_Token", "fake-token-123")
+        adapter = quafu_module.QuafuBackendAdapter()
+
+        mock_instance.status.return_value = {
+            "status": "Finished",
+            "queue_depth": 2,
+            "queue_position": 0,
+            "quota": {"remaining": 9, "limit": 10},
+        }
+        mock_instance.result.return_value = {
+            "counts": {"0": "7", "1": 3},
+            "chip": "Baihua",
+            "task_id": "2604261809502337788",
+            "execution_time_ms": 125.5,
+        }
+
+        with patch.object(quafu_module.time, "sleep"):
+            result = await adapter.await_result("2604261809502337788")
+
+        assert result["counts"] == {"0": 7, "1": 3}
+        assert result["execution_time_ms"] == 125.5
+        assert result["metadata"]["queue_depth"] == 2
+        assert result["metadata"]["queue_position"] == 0
+        assert result["metadata"]["quota"] == {"remaining": 9, "limit": 10}
+
+    @pytest.mark.asyncio
+    async def test_await_result_parses_nested_counts(self, mock_quark, quafu_module, monkeypatch):
+        mock_task_cls, mock_instance = mock_quark
+        monkeypatch.setenv("Qcompute_Token", "fake-token-123")
+        adapter = quafu_module.QuafuBackendAdapter()
+
+        mock_instance.status.return_value = "Finished"
+        mock_instance.result.return_value = {"data": {"measurement_counts": {"00": 2, "11": 2}}}
+
+        result = await adapter.await_result("2604261809502337788")
+
+        assert result["counts"] == {"00": 2, "11": 2}
+        assert result["shots_completed"] == 4
+
+    @pytest.mark.asyncio
+    async def test_await_result_rejects_missing_counts(self, mock_quark, quafu_module, monkeypatch):
+        mock_task_cls, mock_instance = mock_quark
+        monkeypatch.setenv("Qcompute_Token", "fake-token-123")
+        adapter = quafu_module.QuafuBackendAdapter()
+
+        mock_instance.status.return_value = "Finished"
+        mock_instance.result.return_value = {"status": "Finished"}
+
+        with pytest.raises(quafu_module.QuafuError, match="does not contain counts"):
+            await adapter.await_result("2604261809502337788")
 
     @pytest.mark.asyncio
     async def test_await_result_timeout(self, mock_quark, quafu_module, monkeypatch):
@@ -404,10 +482,17 @@ class TestQuafuStatusMapping:
         status_map = quafu_module._QUAFU_STATUS_MAP
         assert status_map["Submitted"] == ExecutionStatus.QUEUED
         assert status_map["Queued"] == ExecutionStatus.QUEUED
+        assert status_map["In Queue"] == ExecutionStatus.QUEUED
+        assert status_map["Pending"] == ExecutionStatus.QUEUED
         assert status_map["Running"] == ExecutionStatus.RUNNING
         assert status_map["Finished"] == ExecutionStatus.COMPLETED
+        assert status_map["Completed"] == ExecutionStatus.COMPLETED
         assert status_map["Failed"] == ExecutionStatus.FAILED
+        assert status_map["Error"] == ExecutionStatus.FAILED
+        assert status_map["Timeout"] == ExecutionStatus.TIMEOUT
+        assert status_map["Timed Out"] == ExecutionStatus.TIMEOUT
         assert status_map["Cancelled"] == ExecutionStatus.CANCELLED
+        assert status_map["Canceled"] == ExecutionStatus.CANCELLED
 
 
 # ===========================================================================
@@ -683,12 +768,13 @@ class TestQuafuChipInfoContract:
 @pytest.mark.quafu
 def test_quafu_real_baihua_bell_state():
     """Submit a real Bell state to Baihua chip. Requires Qcompute_Token in env."""
-    import os
     import time as real_time
 
     token = os.getenv("Qcompute_Token")
     if not token:
         pytest.skip("Qcompute_Token not set")
+    if importlib.util.find_spec("quark") is None:
+        pytest.skip("quarkstudio is not installed")
 
     from quark import Task  # type: ignore[import-untyped]
 

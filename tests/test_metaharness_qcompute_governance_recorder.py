@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 
 from metaharness.observability.events import InMemorySessionStore
@@ -114,6 +115,60 @@ class TestGovernanceRecordWithArtifactStore:
         assert "audit_refs" in refs
         assert "provenance_refs" in refs
         assert len(refs["provenance_refs"]) > 0
+
+    def test_record_with_file_backed_stores_recovers_after_reload(self, tmp_path: Path) -> None:
+        bundle, policy = _make_bundle()
+        governance = QComputeGovernanceAdapter(session_id="sess-reload")
+
+        session_store = InMemorySessionStore()
+        audit_path = tmp_path / "audit.jsonl"
+        artifact_path = tmp_path / "artifacts.jsonl"
+        provenance_path = tmp_path / "provenance.json"
+        audit_log = AuditLog(path=audit_path)
+        provenance_graph = ProvGraph()
+        artifact_store = ArtifactSnapshotStore(path=artifact_path)
+
+        refs = governance.record_with_artifact_store(
+            bundle,
+            policy,
+            session_store=session_store,
+            audit_log=audit_log,
+            provenance_graph=provenance_graph,
+            artifact_store=artifact_store,
+        )
+        provenance_path.write_text(json.dumps(provenance_graph.to_dict()), encoding="utf-8")
+
+        reloaded_artifacts = ArtifactSnapshotStore(path=artifact_path)
+        reloaded_audit = AuditLog(path=audit_path)
+        reloaded_provenance = ProvGraph.from_dict(
+            json.loads(provenance_path.read_text(encoding="utf-8"))
+        )
+
+        run_history = reloaded_artifacts.history(bundle.run_artifact.artifact_id)
+        validation_history = reloaded_artifacts.history(bundle.validation_report.task_id)
+        evidence_history = reloaded_artifacts.history(bundle.bundle_id)
+        assert [snapshot.artifact_kind for snapshot in run_history] == ["run_artifact"]
+        assert [snapshot.artifact_kind for snapshot in validation_history] == ["validation_outcome"]
+        assert [snapshot.artifact_kind for snapshot in evidence_history] == ["evidence_bundle"]
+        assert validation_history[0].parent_snapshot_id == run_history[0].snapshot_id
+        assert evidence_history[0].parent_snapshot_id == validation_history[0].snapshot_id
+        assert reloaded_audit.by_kind("execution.artifact_snapshots_recorded")[0].payload == {
+            "run_snapshot_id": run_history[0].snapshot_id,
+            "validation_snapshot_id": validation_history[0].snapshot_id,
+            "evidence_snapshot_id": evidence_history[0].snapshot_id,
+            "candidate_id": "art-1",
+            "graph_version": 0,
+        }
+        assert all(reloaded_audit.verify(record) for record in reloaded_audit.records())
+        assert f"artifact-snapshot:{run_history[0].snapshot_id}" in reloaded_provenance.entities
+        assert (
+            f"artifact-snapshot:{validation_history[0].snapshot_id}" in reloaded_provenance.entities
+        )
+        assert (
+            f"artifact-snapshot:{evidence_history[0].snapshot_id}" in reloaded_provenance.entities
+        )
+        assert any(ref.startswith("audit-record:") for ref in refs["audit_refs"])
+        assert f"artifact-snapshot:{evidence_history[0].snapshot_id}" in refs["provenance_refs"]
 
     def test_record_without_artifact_store_backward_compat(self) -> None:
         bundle, policy = _make_bundle()

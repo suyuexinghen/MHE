@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import io
+import math
 import uuid
 from typing import Any
 
@@ -208,6 +209,53 @@ class QComputeConfigCompilerComponent(HarnessComponent):
             return spec.fidelity_threshold
         return None
 
+    def _optimize_vqe_parameters(
+        self,
+        spec: QComputeExperimentSpec,
+        qubit_hamiltonian: Any,
+    ) -> tuple[dict[str, float], dict[str, Any]]:
+        grid_size = max(1, min(17, spec.max_iterations))
+        if grid_size == 1:
+            theta_values = [0.0]
+        else:
+            theta_values = [(2.0 * math.pi * index) / (grid_size - 1) for index in range(grid_size)]
+        best_energy = float("inf")
+        best_theta = theta_values[0]
+        for theta in theta_values:
+            energy = self._evaluate_vqe_energy(qubit_hamiltonian, theta)
+            if energy < best_energy:
+                best_energy = energy
+                best_theta = theta
+        parameters = {**spec.circuit.parameters, "theta": best_theta}
+        return parameters, {
+            "method": "deterministic_grid",
+            "objective": "energy",
+            "iterations": grid_size,
+            "parameter_grid": {"theta": theta_values},
+            "best_parameters": {"theta": best_theta},
+            "best_energy": best_energy,
+            "energy_target": spec.energy_target,
+        }
+
+    def _evaluate_vqe_energy(self, qubit_hamiltonian: Any, theta: float) -> float:
+        energy = 0.0
+        for term in qubit_hamiltonian.terms:
+            energy += term.coefficient * self._single_angle_expectation(term.pauli_string, theta)
+        return energy
+
+    def _single_angle_expectation(self, pauli_string: str, theta: float) -> float:
+        value = 1.0
+        for pauli in pauli_string:
+            if pauli == "I":
+                continue
+            if pauli == "Z":
+                value *= -math.cos(theta)
+            elif pauli == "X":
+                value *= math.sin(theta)
+            elif pauli == "Y":
+                return 0.0
+        return value
+
     def build_plan_from_hamiltonian(
         self,
         spec: QComputeExperimentSpec,
@@ -244,15 +292,35 @@ class QComputeConfigCompilerComponent(HarnessComponent):
         mapping_method = spec.fermion_mapping
         qubit_hamiltonian = map_fermionic_to_qubit(fcidata, active_space, method=mapping_method)
 
+        if spec.circuit.ansatz == "vqe":
+            optimized_parameters, optimization_metadata = self._optimize_vqe_parameters(
+                spec, qubit_hamiltonian
+            )
+            spec = spec.model_copy(
+                deep=True,
+                update={
+                    "circuit": spec.circuit.model_copy(
+                        deep=True,
+                        update={"parameters": optimized_parameters},
+                    )
+                },
+            )
+        else:
+            optimization_metadata = None
+
         plan = self.build_plan(spec, environment_report)
 
-        # Inject hamiltonian metadata into the compilation metadata.
-        plan.compilation_metadata["hamiltonian"] = qubit_hamiltonian.model_dump()
+        hamiltonian_metadata = qubit_hamiltonian.model_dump()
+        if spec.reference_energy is not None:
+            hamiltonian_metadata["reference_energy"] = spec.reference_energy
+        plan.compilation_metadata["hamiltonian"] = hamiltonian_metadata
         plan.compilation_metadata["hamiltonian_file"] = spec.hamiltonian_file
         plan.compilation_metadata["active_space"] = active_space.model_dump()
         plan.compilation_metadata["mapping_method"] = mapping_method
+        if optimization_metadata is not None:
+            plan.compilation_metadata["vqe_optimization"] = optimization_metadata
+            plan.compilation_metadata["computed_energy"] = optimization_metadata["best_energy"]
 
-        # Add hamiltonian file to provenance refs if not already present.
         hamiltonian_ref = f"abacus://hamiltonian/{spec.hamiltonian_file}"
         if hamiltonian_ref not in plan.provenance_refs:
             plan.provenance_refs.append(hamiltonian_ref)

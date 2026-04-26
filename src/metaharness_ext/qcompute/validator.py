@@ -192,7 +192,15 @@ class QComputeValidatorComponent(HarnessComponent):
             else QComputeValidationStatus.VALIDATED
         )
 
-        # Compute energy_error when reference_energy is available.
+        computed_energy = plan.compilation_metadata.get("computed_energy")
+        if computed_energy is not None:
+            metrics.energy = float(computed_energy)
+        optimization_metadata = plan.compilation_metadata.get("vqe_optimization")
+        if isinstance(optimization_metadata, dict):
+            iterations = optimization_metadata.get("iterations")
+            if isinstance(iterations, int):
+                metrics.convergence_iterations = iterations
+
         energy_error = self._compute_energy_error(plan, metrics)
         if energy_error is not None:
             metrics.energy_error = energy_error

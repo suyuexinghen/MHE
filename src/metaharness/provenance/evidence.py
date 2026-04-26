@@ -137,3 +137,37 @@ class ProvGraph:
                 for r in self.relations
             ],
         }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ProvGraph:
+        graph = cls()
+        for entity_data in data.get("entities", {}).values():
+            graph.entities[entity_data["id"]] = ProvEntity(
+                id=entity_data["id"],
+                kind=entity_data.get("kind", "entity"),
+                attributes=dict(entity_data.get("attributes", {})),
+            )
+        for activity_data in data.get("activities", {}).values():
+            graph.activities[activity_data["id"]] = ProvActivity(
+                id=activity_data["id"],
+                kind=activity_data.get("kind", "activity"),
+                started_at=activity_data.get("started_at", time.time()),
+                ended_at=activity_data.get("ended_at"),
+                attributes=dict(activity_data.get("attributes", {})),
+            )
+        for agent_data in data.get("agents", {}).values():
+            graph.agents[agent_data["id"]] = ProvAgent(
+                id=agent_data["id"],
+                kind=agent_data.get("kind", "agent"),
+                attributes=dict(agent_data.get("attributes", {})),
+            )
+        for relation_data in data.get("relations", []):
+            graph.relations.append(
+                ProvRelation(
+                    subject=relation_data["subject"],
+                    kind=RelationKind(relation_data["kind"]),
+                    object=relation_data["object"],
+                    attributes=dict(relation_data.get("attributes", {})),
+                )
+            )
+        return graph

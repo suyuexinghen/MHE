@@ -134,15 +134,25 @@ class TestEnergyComparisonWithReference:
         reference_energy = -1.137
         spec = _build_hamiltonian_spec(
             hamiltonian_file,
+            circuit={
+                "ansatz": "vqe",
+                "num_qubits": 2,
+                "repetitions": 1,
+                "entanglement": "linear",
+            },
+            max_iterations=5,
             reference_energy=reference_energy,
         )
 
         compiler = QComputeConfigCompilerComponent()
         plan = compiler.build_plan_from_hamiltonian(spec)
 
-        # Inject a computed energy into metadata to test energy_error calculation.
-        plan.compilation_metadata["computed_energy"] = -1.130
-        plan.compilation_metadata["hamiltonian"]["reference_energy"] = reference_energy
+        optimization = plan.compilation_metadata["vqe_optimization"]
+        assert optimization["method"] == "deterministic_grid"
+        assert optimization["iterations"] == 5
+        assert plan.compilation_metadata["computed_energy"] == optimization["best_energy"]
+        assert plan.compilation_metadata["hamiltonian"]["reference_energy"] == reference_energy
+        assert "theta" in optimization["best_parameters"]
 
         executor = QComputeExecutorComponent()
         await executor.activate(ComponentRuntime(storage_path=tmp_path))
@@ -153,10 +163,11 @@ class TestEnergyComparisonWithReference:
         await validator.activate(ComponentRuntime(storage_path=tmp_path))
         validation = validator.validate_run(artifact, plan, env_report)
 
-        # The energy_error should be computed from reference vs computed.
-        assert validation.metrics.energy_error is not None
-        expected_error = abs(-1.130 - (-1.137))
-        assert abs(validation.metrics.energy_error - expected_error) < 1e-10
+        assert validation.metrics.energy == optimization["best_energy"]
+        assert validation.metrics.convergence_iterations == 5
+        expected_error = abs(optimization["best_energy"] - reference_energy)
+        assert validation.metrics.energy_error == expected_error
+        assert any("abacus://hamiltonian/" in ref for ref in validation.provenance_refs)
 
     @pytest.mark.integration
     @pytest.mark.asyncio

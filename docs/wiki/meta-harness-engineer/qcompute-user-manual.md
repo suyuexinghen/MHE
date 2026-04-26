@@ -16,9 +16,10 @@
 8. [Policy & Governance](#8-policy--governance)
 9. [Parameter Study](#9-parameter-study)
 10. [VQE / Molecular Simulation](#10-vqe--molecular-simulation)
-11. [Core Integration](#11-core-integration)
-12. [Error Handling](#12-error-handling)
-13. [API Reference](#13-api-reference)
+11. [Tested Support Matrix](#11-tested-support-matrix)
+12. [Core Integration](#12-core-integration)
+13. [Error Handling](#13-error-handling)
+14. [API Reference](#14-api-reference)
 
 ---
 
@@ -144,6 +145,17 @@ print("Environment:", result.environment.available)
 print("Policy decision:", result.policy.decision)  # "allow" | "defer" | "reject"
 print("Core validation:", result.core_validation.valid)
 ```
+
+### 3.3 可直接运行的示例脚本
+
+仓库提供了与本手册场景对应的可运行脚本：
+
+- `examples/qcompute/bell.py` — Bell 态基线与 Artifact Store 持久化
+- `examples/qcompute/noise_mitigation.py` — 噪声模拟 + ZNE/REM 误差缓解
+- `examples/qcompute/study.py` — Grid / Random / Agentic Study 示例
+- `examples/qcompute/vqe.py` — 基于 FCIDUMP 的 H2 VQE 演示
+
+默认情况下这些脚本只使用模拟器；只有在显式设置 `QCOMPUTE_ENABLE_HARDWARE=1` 且配置 `Qcompute_Token` 时，`examples/qcompute/bell.py` 才会切换到 Quafu 真机路径。
 
 ---
 
@@ -651,7 +663,15 @@ spec = QComputeExperimentSpec(
 
 ---
 
-## 11. Core Integration
+## 11. Tested Support Matrix
+
+当前支持面的测试状态见 `docs/wiki/meta-harness-engineer/qcompute-tested-support-matrix.md`。
+
+该矩阵明确标注了 Qiskit、PennyLane、Quafu、ZNE、REM、Study、Governance、ArtifactStore 与 VQE 的 `tested` / `experimental` / `gated` 状态，并给出对应测试锚点。
+
+---
+
+## 12. Core Integration
 
 QCompute 实现了 MHE 增强核心的主要接口：
 
@@ -689,7 +709,7 @@ result = gateway.run_baseline_full(
 
 ---
 
-## 12. Error Handling
+## 13. Error Handling
 
 ### 常见错误状态
 
@@ -728,7 +748,7 @@ QComputeRunArtifactStatus = Literal[
 
 ---
 
-## 13. API Reference
+## 14. API Reference
 
 ### 主要组件
 
