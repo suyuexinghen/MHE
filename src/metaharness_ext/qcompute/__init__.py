@@ -59,6 +59,7 @@ from metaharness_ext.qcompute.slots import (
     QCOMPUTE_STUDY_SLOT,
     QCOMPUTE_VALIDATOR_SLOT,
 )
+from metaharness_ext.qcompute.study import QComputeStudyComponent
 from metaharness_ext.qcompute.types import QComputeExecutionMode, QComputeValidationStatus
 from metaharness_ext.qcompute.validator import QComputeValidatorComponent
 
@@ -87,6 +88,7 @@ __all__ = [
     "QComputeBackendSpec",
     "QComputeConfigCompilerComponent",
     "QComputeCalibrationData",
+    "QComputeStudyComponent",
     "QComputeCandidateIdentity",
     "QComputeCircuitSpec",
     "QComputeEnvironmentProbeComponent",

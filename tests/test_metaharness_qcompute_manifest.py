@@ -56,6 +56,17 @@ EXPECTED_MANIFESTS = {
         "protected": True,
         "kind": "governance",
     },
+    "study.json": {
+        "name": "qcompute_study",
+        "entry": "metaharness_ext.qcompute.study:QComputeStudyComponent",
+        "slot": "qcompute_study.primary",
+        "output": "report",
+        "output_type": "QComputeStudyReport",
+        "capabilities": ["qcompute.study.run"],
+        "sandbox_tier": "workspace-read",
+        "protected": False,
+        "kind": "core",
+    },
 }
 
 
@@ -89,6 +100,7 @@ def test_metaharness_qcompute_manifest_entries_are_importable() -> None:
         "metaharness_ext.qcompute.config_compiler": "QComputeConfigCompilerComponent",
         "metaharness_ext.qcompute.executor": "QComputeExecutorComponent",
         "metaharness_ext.qcompute.validator": "QComputeValidatorComponent",
+        "metaharness_ext.qcompute.study": "QComputeStudyComponent",
     }
     for module_name, class_name in modules.items():
         module = import_module(module_name)

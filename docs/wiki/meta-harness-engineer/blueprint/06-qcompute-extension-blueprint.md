@@ -1,6 +1,6 @@
 # 06. QCompute Extension Blueprint
 
-> 状态：Phase 0–3 implemented | Phase 4–5 pending | 以 `qcompute-engine-wiki` (01–08) 设计文档为准的实现蓝图
+> 状态：Phase 0–4 implemented | Phase 5 pending | 以 `qcompute-engine-wiki` (01–08) 设计文档为准的实现蓝图
 
 ## 6.1 目标
 

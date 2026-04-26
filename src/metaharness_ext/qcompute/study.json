@@ -1,0 +1,50 @@
+{
+  "name": "qcompute_study",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.qcompute.study:QComputeStudyComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [
+      {
+        "name": "study",
+        "type": "QComputeStudySpec",
+        "required": true
+      }
+    ],
+    "outputs": [
+      {
+        "name": "report",
+        "type": "QComputeStudyReport",
+        "mode": "sync"
+      }
+    ],
+    "provides": [
+      {
+        "name": "qcompute.study.run",
+        "description": "Run QCompute parameter study"
+      }
+    ],
+    "slots": [
+      {
+        "slot": "qcompute_study.primary",
+        "binding": "primary",
+        "required": true
+      }
+    ]
+  },
+  "safety": {
+    "protected": false,
+    "sandbox_profile": "workspace-read",
+    "hot_swap": false
+  },
+  "policy": {
+    "sandbox": {
+      "tier": "workspace-read"
+    }
+  },
+  "state_schema_version": 1,
+  "provides": [
+    "qcompute.study.run"
+  ]
+}
