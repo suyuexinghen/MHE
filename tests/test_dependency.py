@@ -99,10 +99,12 @@ def test_dependency_spec_supports_optional_fields_without_affecting_resolution()
         ),
     )
 
-    ordered = resolve_boot_order([
-        manifest,
-        _manifest("producer"),
-    ])
+    ordered = resolve_boot_order(
+        [
+            manifest,
+            _manifest("producer"),
+        ]
+    )
 
     assert [m.name for m in ordered] == ["producer", "consumer"]
     assert manifest.deps.optional_components == ["debugger"]
