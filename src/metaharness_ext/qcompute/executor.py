@@ -8,7 +8,6 @@ from typing import Any
 from metaharness.sdk.api import HarnessAPI
 from metaharness.sdk.base import HarnessComponent
 from metaharness.sdk.runtime import ComponentRuntime
-from metaharness_ext.qcompute.backends.qiskit_aer import QiskitAerBackend
 from metaharness_ext.qcompute.capabilities import CAP_QCOMPUTE_CIRCUIT_RUN
 from metaharness_ext.qcompute.contracts import (
     QComputeEnvironmentReport,
@@ -32,6 +31,17 @@ class QComputeExecutorComponent(HarnessComponent):
         api.declare_output("run", "QComputeRunArtifact", mode="sync")
         api.provide_capability(CAP_QCOMPUTE_CIRCUIT_RUN)
 
+    def _select_backend(self, platform: str) -> Any:
+        if platform == "qiskit_aer":
+            from metaharness_ext.qcompute.backends.qiskit_aer import QiskitAerBackend
+
+            return QiskitAerBackend()
+        if platform == "pennylane_aer":
+            from metaharness_ext.qcompute.backends.pennylane_aer import PennyLaneBackend
+
+            return PennyLaneBackend()
+        return None
+
     def execute_plan(
         self,
         plan: QComputeRunPlan,
@@ -48,18 +58,19 @@ class QComputeExecutorComponent(HarnessComponent):
                 terminal_error_type="environment_unavailable",
             )
 
-        if plan.target_backend.platform != "qiskit_aer":
+        backend = self._select_backend(plan.target_backend.platform)
+        if backend is None:
             return self._failed_artifact(
                 plan,
                 run_dir=run_dir,
-                error_message=f"Unsupported backend platform: {plan.target_backend.platform}",
+                error_message=(f"Unsupported backend platform: {plan.target_backend.platform}"),
                 terminal_error_type="unsupported_backend",
             )
 
         try:
             circuit = self._load_circuit(plan.circuit_openqasm)
             result = self._execute_with_optional_mitigation(
-                backend=QiskitAerBackend(),
+                backend=backend,
                 circuit=circuit,
                 plan=plan,
             )
@@ -80,7 +91,7 @@ class QComputeExecutorComponent(HarnessComponent):
         return QComputeRunArtifact(
             artifact_id=f"{plan.plan_id}-artifact-{uuid.uuid4().hex[:8]}",
             plan_ref=plan.plan_id,
-            backend_actual="qiskit_aer",
+            backend_actual=plan.target_backend.platform,
             status="completed",
             counts=result["counts"],
             probabilities=result["probabilities"],
@@ -100,7 +111,7 @@ class QComputeExecutorComponent(HarnessComponent):
     def _execute_with_optional_mitigation(
         self,
         *,
-        backend: QiskitAerBackend,
+        backend: Any,
         circuit: Any,
         plan: QComputeRunPlan,
     ) -> dict[str, Any]:
@@ -113,15 +124,28 @@ class QComputeExecutorComponent(HarnessComponent):
         if not strategies:
             return result
 
-        from metaharness_ext.qcompute.mitigation import mitigate_result
+        if plan.target_backend.platform == "pennylane_aer":
+            from metaharness_ext.qcompute.mitigation_pennylane import (
+                mitigate_with_pennylane_transforms,
+            )
 
-        mitigation = mitigate_result(
-            backend,
-            circuit,
-            plan.execution_params.shots,
-            plan.noise,
-            sorted(strategies),
-        )
+            mitigation = mitigate_with_pennylane_transforms(
+                circuit=circuit,
+                shots=plan.execution_params.shots,
+                noise=plan.noise,
+                strategies=sorted(strategies),
+                num_qubits=circuit.num_qubits,
+            )
+        else:
+            from metaharness_ext.qcompute.mitigation import mitigate_result
+
+            mitigation = mitigate_result(
+                backend,
+                circuit,
+                plan.execution_params.shots,
+                plan.noise,
+                sorted(strategies),
+            )
         if mitigation is not None:
             mitigation["requested"] = sorted(strategies)
             result.setdefault("metadata", {})["error_mitigation"] = mitigation

@@ -32,20 +32,27 @@ class QComputeEnvironmentProbeComponent(HarnessComponent):
         queue_depth = 0 if spec.backend.simulator else None
         estimated_wait_seconds = 0 if spec.backend.simulator else None
 
-        if spec.backend.platform != "qiskit_aer":
+        supported_platforms = {"qiskit_aer", "pennylane_aer"}
+        if spec.backend.platform not in supported_platforms:
             available = False
             status = "unsupported_platform"
             prerequisite_errors.append(
                 f"Unsupported backend platform for current executor: {spec.backend.platform}"
             )
-        elif find_spec("qiskit") is None or find_spec("qiskit_aer") is None:
-            available = False
-            status = "dependency_missing"
-            prerequisite_errors.append("qiskit and qiskit_aer must be installed for qiskit_aer")
-        elif not spec.backend.simulator:
-            available = False
-            status = "invalid_backend_spec"
-            prerequisite_errors.append("qiskit_aer backend must declare simulator=True")
+        elif spec.backend.platform == "qiskit_aer":
+            if find_spec("qiskit") is None or find_spec("qiskit_aer") is None:
+                available = False
+                status = "dependency_missing"
+                prerequisite_errors.append("qiskit and qiskit_aer must be installed for qiskit_aer")
+            elif not spec.backend.simulator:
+                available = False
+                status = "invalid_backend_spec"
+                prerequisite_errors.append("qiskit_aer backend must declare simulator=True")
+        elif spec.backend.platform == "pennylane_aer":
+            if find_spec("pennylane") is None:
+                available = False
+                status = "dependency_missing"
+                prerequisite_errors.append("pennylane must be installed for pennylane_aer")
 
         if qubit_count_available is not None and spec.circuit.num_qubits > qubit_count_available:
             available = False

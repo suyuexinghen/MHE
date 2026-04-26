@@ -1,4 +1,8 @@
-from metaharness_ext.qcompute.backends import MockQuantumBackend, QiskitAerBackend
+from metaharness_ext.qcompute.backends import (
+    MockQuantumBackend,
+    PennyLaneBackend,
+    QiskitAerBackend,
+)
 from metaharness_ext.qcompute.capabilities import (
     CANONICAL_CAPABILITIES,
     CAP_QCOMPUTE_CASE_COMPILE,
@@ -42,6 +46,9 @@ from metaharness_ext.qcompute.executor import QComputeExecutorComponent
 from metaharness_ext.qcompute.gateway import QComputeGatewayComponent
 from metaharness_ext.qcompute.governance import QComputeGovernanceAdapter
 from metaharness_ext.qcompute.mitigation import mitigate_result
+from metaharness_ext.qcompute.mitigation_pennylane import (
+    mitigate_with_pennylane_transforms,
+)
 from metaharness_ext.qcompute.policy import QComputeEvidencePolicy
 from metaharness_ext.qcompute.slots import (
     PROTECTED_SLOTS,
@@ -68,6 +75,7 @@ __all__ = [
     "CAP_QCOMPUTE_RESULT_VALIDATE",
     "CAP_QCOMPUTE_STUDY_RUN",
     "MockQuantumBackend",
+    "PennyLaneBackend",
     "QiskitAerBackend",
     "PROTECTED_SLOTS",
     "QCOMPUTE_CONFIG_COMPILER_SLOT",
@@ -108,4 +116,5 @@ __all__ = [
     "QComputeValidatorComponent",
     "build_evidence_bundle",
     "mitigate_result",
+    "mitigate_with_pennylane_transforms",
 ]

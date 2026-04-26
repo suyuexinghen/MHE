@@ -20,7 +20,7 @@ QComputeRunArtifactStatus = Literal[
 ]
 QComputeStudyStrategy = Literal["grid", "random", "bayesian", "agentic"]
 QComputeObjective = Literal["fidelity", "energy", "circuit_depth", "swap_count"]
-QComputePlatform = Literal["quafu", "qiskit_aer", "ibm_quantum"]
+QComputePlatform = Literal["quafu", "qiskit_aer", "ibm_quantum", "pennylane_aer"]
 QComputeAnsatz = Literal["vqe", "qaoa", "qpe", "custom"]
 QComputeEntanglement = Literal["linear", "full", "circular"]
 QComputeHamiltonianFormat = Literal["fcidump", "hdf5", "pauli_dict", "qiskit_op"]
