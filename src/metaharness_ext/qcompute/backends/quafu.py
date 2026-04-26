@@ -106,6 +106,9 @@ class QuafuBackendAdapter:
     property first or handle ``RuntimeError``.
     """
 
+    # Satisfies metaharness.sdk.execution.AsyncExecutorProtocol by structural subtyping
+    # (submit/poll/cancel/await_result methods match the protocol signature).
+
     def __init__(
         self,
         chip_id: str | None = None,

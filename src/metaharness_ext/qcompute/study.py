@@ -30,6 +30,22 @@ from metaharness_ext.qcompute.slots import QCOMPUTE_STUDY_SLOT
 from metaharness_ext.qcompute.validator import QComputeValidatorComponent
 
 
+def trial_to_domain_payload(trial: QComputeStudyTrial) -> dict[str, Any]:
+    """Convert a study trial to a domain_payload compatible dict for MutationProposal."""
+    bundle = trial.evidence_bundle
+    validation = bundle.validation_report
+    return {
+        "trial_id": trial.trial_id,
+        "parameters": trial.parameter_snapshot,
+        "trajectory_score": trial.trajectory_score,
+        "validation_status": validation.status.value,
+        "fidelity": validation.metrics.fidelity,
+        "energy_error": validation.metrics.energy_error,
+        "circuit_depth": validation.metrics.circuit_depth_executed,
+        "backend": bundle.run_artifact.backend_actual,
+    }
+
+
 class QComputeStudyComponent(HarnessComponent):
     async def activate(self, runtime: ComponentRuntime) -> None:
         self._runtime = runtime

@@ -214,6 +214,7 @@ class QComputeEnvironmentReport(BaseModel):
     calibration_data: QComputeCalibrationData | None = None
     prerequisite_errors: list[str] = Field(default_factory=list)
     blocks_promotion: bool = False
+    quota_snapshot: Any | None = None  # metaharness.sdk.execution.ResourceQuota when available
 
 
 class QComputeValidationMetrics(BaseModel):

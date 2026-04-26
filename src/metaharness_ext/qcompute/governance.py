@@ -10,7 +10,7 @@ from metaharness.core.models import (
     ValidationReport,
 )
 from metaharness.observability.events import SessionStore, make_session_event
-from metaharness.provenance import AuditLog, ProvGraph, RelationKind
+from metaharness.provenance import ArtifactSnapshotStore, AuditLog, ProvGraph, RelationKind
 from metaharness_ext.qcompute.contracts import (
     QComputeEvidenceBundle,
     QComputePolicyReport,
@@ -215,6 +215,78 @@ class QComputeGovernanceAdapter:
             "audit_refs": list(dict.fromkeys(audit_refs)),
             "provenance_refs": list(dict.fromkeys(provenance_refs)),
         }
+
+    def record_with_artifact_store(
+        self,
+        bundle: QComputeEvidenceBundle,
+        policy: QComputePolicyReport,
+        *,
+        session_store: SessionStore,
+        audit_log: AuditLog,
+        provenance_graph: ProvGraph,
+        artifact_store: ArtifactSnapshotStore | None = None,
+    ) -> dict[str, list[str]]:
+        """Emit runtime evidence AND optionally persist artifact snapshots via core recorder."""
+        # Step 1: Always emit via existing method
+        refs = self.emit_runtime_evidence(
+            bundle,
+            policy,
+            session_store=session_store,
+            audit_log=audit_log,
+            provenance_graph=provenance_graph,
+        )
+
+        # Step 2: If artifact_store provided, also record via core ExecutionEvidenceRecorder
+        if artifact_store is not None:
+            from metaharness.core.execution import ExecutionEvidenceRecorder
+
+            validation = bundle.validation_report
+            candidate_id = self._resolve_candidate_id(
+                bundle, GraphSnapshot(graph_version=self._resolve_graph_version(bundle))
+            )
+            graph_version = self._resolve_graph_version(bundle)
+
+            recorder = ExecutionEvidenceRecorder(
+                session_store=session_store,
+                artifact_store=artifact_store,
+                provenance_graph=provenance_graph,
+                audit_log=audit_log,
+                actor=f"{self.actor}_recorder",
+            )
+            record = recorder.record(
+                session_id=self.session_id or validation.task_id,
+                run_artifact=bundle.run_artifact,
+                validation_outcome=validation,
+                evidence_bundle=bundle,
+                candidate_id=candidate_id,
+                graph_version=graph_version,
+                policy_decision=policy.decision,
+                safety_payload={
+                    "reason": policy.reason,
+                    "gate_count": len(policy.gates),
+                    "backend": bundle.run_artifact.backend_actual,
+                    "fidelity": validation.metrics.fidelity,
+                },
+            )
+            # Merge recorder's refs with emit refs
+            refs["audit_refs"] = list(
+                dict.fromkeys(
+                    [
+                        *refs.get("audit_refs", []),
+                        *record.audit_refs,
+                    ]
+                )
+            )
+            refs["provenance_refs"] = list(
+                dict.fromkeys(
+                    [
+                        *refs.get("provenance_refs", []),
+                        *record.provenance_refs,
+                    ]
+                )
+            )
+
+        return refs
 
     def _policy_gate_issues(
         self,

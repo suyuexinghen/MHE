@@ -163,6 +163,7 @@ class DeepMDGatewayComponent(HarnessComponent):
             candidate_record,
             bundle=evidence_bundle,
             policy=policy_report,
+            component_runtime=getattr(executor, "_runtime", None),
         )
         return DeepMDBaselineReport(
             task=task,

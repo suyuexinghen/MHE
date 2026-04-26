@@ -90,6 +90,19 @@ class QComputeEnvironmentProbeComponent(HarnessComponent):
                 "Real-noise execution requires calibration-backed noise data, which Phase 1 does not provide"
             )
         blocks_promotion = not available or bool(prerequisite_errors)
+
+        # Build ResourceQuota if daily_quota is configured
+        quota_snapshot = None
+        if spec.execution_policy.daily_quota is not None:
+            from metaharness.sdk.execution import ResourceQuota
+
+            quota_snapshot = ResourceQuota(
+                resource_type="api_calls",
+                provider=spec.backend.platform,
+                limit=spec.execution_policy.daily_quota,
+                metadata={"chip_id": spec.backend.chip_id},
+            )
+
         return QComputeEnvironmentReport(
             task_id=spec.task_id,
             backend=spec.backend,
@@ -101,6 +114,7 @@ class QComputeEnvironmentProbeComponent(HarnessComponent):
             calibration_fresh=calibration_fresh,
             prerequisite_errors=prerequisite_errors,
             blocks_promotion=blocks_promotion,
+            quota_snapshot=quota_snapshot,
         )
 
     # ------------------------------------------------------------------

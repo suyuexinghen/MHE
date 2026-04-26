@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from metaharness.core.models import ValidationIssue, ValidationIssueCategory
 from metaharness.sdk.api import HarnessAPI
@@ -96,13 +97,37 @@ class QComputeGatewayComponent(HarnessComponent):
         bundle = self._validator.build_evidence_bundle(artifact, validation, env_report)
         return bundle
 
-    def run_baseline_full(self, spec: QComputeExperimentSpec) -> QComputeBaselineResult:
-        """Full five-stage pipeline with policy and governance."""
+    def run_baseline_full(
+        self,
+        spec: QComputeExperimentSpec,
+        *,
+        artifact_store: Any | None = None,  # ArtifactSnapshotStore | None
+    ) -> QComputeBaselineResult:
+        """Full five-stage pipeline with policy, governance, and optional artifact persistence."""
         bundle = self.run_baseline(spec)
 
         policy = QComputeEvidencePolicy().evaluate(bundle)
         governance = QComputeGovernanceAdapter()
         core_report = governance.build_core_validation_report(bundle.validation_report, policy)
+
+        # If artifact_store provided, use enhanced recording
+        if artifact_store is not None:
+            from metaharness.observability.events import InMemorySessionStore
+            from metaharness.provenance import AuditLog, ProvGraph
+
+            session_store = InMemorySessionStore()
+            audit_log = AuditLog()
+            provenance_graph = ProvGraph()
+
+            governance.record_with_artifact_store(
+                bundle,
+                policy,
+                session_store=session_store,
+                audit_log=audit_log,
+                provenance_graph=provenance_graph,
+                artifact_store=artifact_store,
+            )
+
         return QComputeBaselineResult(
             environment=bundle.environment_report,
             plan_id=bundle.validation_report.plan_ref,
