@@ -1,4 +1,5 @@
 from metaharness_ext.qcompute.backends import (
+    BackendAdapter,
     MockQuantumBackend,
     PennyLaneBackend,
     QiskitAerBackend,
@@ -81,6 +82,7 @@ __all__ = [
     "CAP_QCOMPUTE_POLICY_EVALUATE",
     "CAP_QCOMPUTE_RESULT_VALIDATE",
     "CAP_QCOMPUTE_STUDY_RUN",
+    "BackendAdapter",
     "MockQuantumBackend",
     "PennyLaneBackend",
     "QiskitAerBackend",

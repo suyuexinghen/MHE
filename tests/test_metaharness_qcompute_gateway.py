@@ -53,6 +53,7 @@ def _build_spec(
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_gateway_compile_experiment(tmp_path: Path) -> None:
     """compile_experiment() runs probe + build_plan."""
@@ -75,6 +76,7 @@ async def test_gateway_compile_experiment(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_gateway_run_baseline_bell_state(tmp_path: Path) -> None:
     """run_baseline() orchestrates all 5 stages for a Bell state."""
@@ -105,6 +107,7 @@ async def test_gateway_run_baseline_bell_state(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_gateway_run_baseline_pennylane(tmp_path: Path) -> None:
     """run_baseline() works with pennylane_aer backend."""
@@ -131,6 +134,7 @@ async def test_gateway_run_baseline_pennylane(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_gateway_run_baseline_environment_unavailable(tmp_path: Path) -> None:
     """run_baseline() returns bundle even when environment fails."""
@@ -159,6 +163,7 @@ async def test_gateway_run_baseline_environment_unavailable(tmp_path: Path) -> N
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_gateway_run_baseline_full(tmp_path: Path) -> None:
     """run_baseline_full() includes policy evaluation and governance."""
@@ -192,6 +197,7 @@ async def test_gateway_run_baseline_full(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_gateway_run_baseline_full_with_mitigation(tmp_path: Path) -> None:
     """Full pipeline with noise and ZNE mitigation."""

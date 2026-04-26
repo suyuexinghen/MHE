@@ -13,8 +13,10 @@ from metaharness_ext.qcompute.contracts import (
     QComputeStudySpec,
 )
 from metaharness_ext.qcompute.study import (
+    FunctionalBrainProvider,
     QComputeStudyComponent,
     _mutate_spec,
+    _schedule_trials,
 )
 
 
@@ -165,3 +167,74 @@ async def test_study_random_strategy(tmp_path: Path) -> None:
     for trial in report.trials:
         assert "shots" in trial.parameter_snapshot
         assert trial.parameter_snapshot["shots"] in [64, 128, 256]
+
+
+def test_study_agentic_strategy() -> None:
+    """Agentic strategy generates proposals via FunctionalBrainProvider."""
+    brain = FunctionalBrainProvider(seed=42)
+    axes = [QComputeStudyAxis(parameter_path="shots", values=[64, 128, 256])]
+
+    # First call: random initialization
+    proposals = brain.propose(axes, best_params=None, n_proposals=3)
+    assert len(proposals) == 3
+    for p in proposals:
+        assert "shots" in p
+        assert p["shots"] in [64, 128, 256]
+
+    # Second call: perturbation of best params
+    best = proposals[0]
+    refined = brain.propose(axes, best_params=best, n_proposals=2)
+    assert len(refined) == 2
+
+
+def test_study_agentic_respects_max_trials() -> None:
+    """Agentic strategy does not exceed max_trials."""
+    axes = [QComputeStudyAxis(parameter_path="shots", values=[64, 128, 256])]
+    spec = _build_study_spec(
+        axes=axes,
+        strategy="agentic",
+        max_trials=5,
+    )
+
+    from metaharness_ext.qcompute.study import _generate_agentic
+
+    grid = _generate_agentic(spec)
+    assert len(grid) == 5
+    for params in grid:
+        assert "shots" in params
+
+
+def test_study_quota_aware_scheduling_simulator_first() -> None:
+    """When mixing sim + real backends, simulator trials run first."""
+    axes = [
+        QComputeStudyAxis(
+            parameter_path="backend.platform",
+            values=["qiskit_aer", "quafu", "qiskit_aer", "quafu"],
+        ),
+    ]
+    spec = _build_study_spec(axes=axes, strategy="grid")
+
+    grid = [
+        {"backend.platform": "quafu"},
+        {"backend.platform": "qiskit_aer"},
+        {"backend.platform": "quafu"},
+        {"backend.platform": "qiskit_aer"},
+    ]
+    scheduled = _schedule_trials(grid, spec)
+
+    # All simulator trials should come first
+    platforms = [p["backend.platform"] for p in scheduled]
+    last_sim_idx = max(i for i, p in enumerate(platforms) if p == "qiskit_aer")
+    first_real_idx = min(i for i, p in enumerate(platforms) if p == "quafu")
+    assert last_sim_idx < first_real_idx
+
+
+def test_study_quota_aware_no_reorder_single_backend() -> None:
+    """When all trials use the same backend, order is preserved."""
+    axes = [QComputeStudyAxis(parameter_path="shots", values=[64, 128, 256])]
+    spec = _build_study_spec(axes=axes, strategy="grid")
+
+    grid = [{"shots": 64}, {"shots": 128}, {"shots": 256}]
+    scheduled = _schedule_trials(grid, spec)
+
+    assert scheduled == grid

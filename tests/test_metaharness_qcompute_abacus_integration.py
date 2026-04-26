@@ -76,6 +76,7 @@ def _build_environment_report(
 
 
 class TestHamiltonianFileThroughPipeline:
+    @pytest.mark.integration
     @pytest.mark.asyncio
     async def test_hamiltonian_file_through_pipeline(self, tmp_path: Path) -> None:
         hamiltonian_file = _write_h2_fcidump(tmp_path)
@@ -110,6 +111,7 @@ class TestHamiltonianFileThroughPipeline:
 
 
 class TestProvenanceRefsIncludeAbacus:
+    @pytest.mark.integration
     @pytest.mark.asyncio
     async def test_provenance_refs_include_abacus(self, tmp_path: Path) -> None:
         hamiltonian_file = _write_h2_fcidump(tmp_path)
@@ -125,6 +127,7 @@ class TestProvenanceRefsIncludeAbacus:
 
 
 class TestEnergyComparisonWithReference:
+    @pytest.mark.integration
     @pytest.mark.asyncio
     async def test_energy_comparison_with_reference(self, tmp_path: Path) -> None:
         hamiltonian_file = _write_h2_fcidump(tmp_path)
@@ -155,6 +158,7 @@ class TestEnergyComparisonWithReference:
         expected_error = abs(-1.130 - (-1.137))
         assert abs(validation.metrics.energy_error - expected_error) < 1e-10
 
+    @pytest.mark.integration
     @pytest.mark.asyncio
     async def test_no_energy_error_without_reference(self, tmp_path: Path) -> None:
         hamiltonian_file = _write_h2_fcidump(tmp_path)

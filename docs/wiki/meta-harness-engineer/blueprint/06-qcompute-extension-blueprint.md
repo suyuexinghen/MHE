@@ -1,6 +1,6 @@
 # 06. QCompute Extension Blueprint
 
-> 状态：Phase 0–4 implemented | Phase 5 pending | 以 `qcompute-engine-wiki` (01–08) 设计文档为准的实现蓝图
+> 状态：全部 Phase 0–5 + Gateway + Quafu 已实现 | 远期扩展待规划 | 以 `qcompute-engine-wiki` (01–08) 设计文档为准的实现蓝图
 
 ## 6.1 目标
 
@@ -8,7 +8,7 @@
 
 QCompute 不是通用量子计算框架，也不是量子编译器。它不自行实现：
 - 量子电路编译（委托 Qiskit Transpiler / QSteed）
-- 错误缓解算法（委托 Mitiq）
+- 错误缓解算法（委托自实现 ZNE/REM）
 - 量子硬件校准（读取 Quafu 平台数据）
 - Agent 推理与决策（委托 MHE BrainProvider）
 
@@ -43,7 +43,7 @@ QCompute 的运行模型与现有扩展的根本差异：
 3. **异步执行模型**：量子任务提交后不阻塞，采用 Fibonacci 轮询 + 配额感知调度
 4. **证据贡献者而非门控执行者**：QComputeValidator 产出领域验证结果进入 `PromotionContext`，真正的 promotion 决策由 MHE runtime 完成
 5. **两层级 Agent 分离**：框架级 `BrainProvider`（graph mutation）与领域级 QAgent（电路优化）分层，框架不感知领域 Agent 内部架构
-6. **委托而非自研**：编译用 Qiskit/QSteed，错误缓解用 Mitiq，不重复造轮子
+6. **委托而非自研**：编译用 Qiskit/QSteed，错误缓解用自实现 ZNE/REM（纯 NumPy），不重复造轮子
 
 ---
 
@@ -76,9 +76,9 @@ QComputeGateway
 - 产出 `QComputeRunPlan`
 
 ### Executor (`qcompute_executor.primary`)
-- 多后端调度：Quafu（pyQuafu SDK / MCP）、Qiskit Aer、IBM Quantum（预留）
+- 多后端调度：Quafu（quarkstudio SDK / MCP）、Qiskit Aer、IBM Quantum（预留）
 - 异步任务生命周期管理（Fibonacci 轮询，上限 600s）
-- 错误缓解集成（通过 Mitiq）
+- 错误缓解集成（自实现 ZNE/REM，纯 NumPy）
 - 产出 `QComputeRunArtifact`
 
 ### Validator (`qcompute_validator.primary`) — **protected**
@@ -155,11 +155,15 @@ MHE/src/metaharness_ext/qcompute/
 ├── policy.py                # QComputePolicyEngine
 ├── governance.py            # QComputeGovernanceAdapter
 ├── study.py                 # QComputeStudyComponent (增强阶段)
+├── mitigation.py            # ZNE/REM 错误缓解（纯 NumPy）
+├── fcidump.py               # FCIDUMP 解析器
+├── fermion_mapper.py        # Fermion→Qubit 映射
+├── mitigation_pennylane.py  # PennyLane 集成错误缓解
+├── pennylane_aer.py         # PennyLane Aer 后端适配器
 └── backends/
     ├── __init__.py
-    ├── base.py              # BackendAdapter protocol
     ├── qiskit_aer.py        # Qiskit Aer 适配器
-    ├── quafu.py             # pyQuafu 适配器
+    ├── quafu.py             # quarkstudio 适配器
     └── mock.py              # MockBackend（测试用）
 ```
 
@@ -194,8 +198,8 @@ MHE/tests/
 
 | SDK | 最低版本 | 用途 | 检测时机 |
 |-----|---------|------|---------|
-| `pyquafu` | ≥0.1.0 | Quafu 真机后端 | Environment.probe() |
-| `mitiq` | ≥0.30 | 错误缓解（ZNE/REM） | Executor 执行前 |
+| `quarkstudio` | ≥7.0 | Quafu 真机硬件（from quark import Task） | Environment.probe() |
+| `quarkcircuit` | — | 芯片可视化（可选） | Environment.probe() |
 | `qsteed` | ≥0.1.0 | 编译加速（VQPU） | ConfigCompiler |
 | `tensorcircuit` | ≥2.0 | 变分加速器 | Study 组件 |
 | `pyscf` | ≥2.0 | 活性空间选择 | ABACUS 联动 |
@@ -209,7 +213,7 @@ MHE/tests/
 
 | 变量 | 用途 | 必需 |
 |------|------|------|
-| `QUAFU_API_TOKEN` | Quafu 真机访问 | 真机执行时 |
+| `Qcompute_Token` | Quafu 云端访问令牌 | 真机执行时 |
 | `QISKIT_CACHE_DIR` | Qiskit 缓存目录 | 可选 |
 | `ALIBABA_API_KEY` | QuafuCloud MCP 通道 | 可选 |
 
@@ -338,7 +342,7 @@ QCompute 在 MHE 中被设计为一个 **SDK-driven, backend-abstracted, noise-a
 它的实现路径是渐进式的：
 1. 先在模拟器（Qiskit Aer）上打通完整闭环
 2. 再接入 Quafu 真机后端
-3. 再集成错误缓解（Mitiq）
+3. 再集成错误缓解（自实现 ZNE/REM）
 4. 再构建 Study 组件（C×L×K）
 5. 远期对接 ABACUS 的 HI-VQE 协同
 

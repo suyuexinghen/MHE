@@ -43,6 +43,7 @@ def _build_spec(**overrides: Any) -> QComputeExperimentSpec:
     return QComputeExperimentSpec(**data)
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_pennylane_backend_runs_bell_state(tmp_path: Path) -> None:
     compiler = QComputeConfigCompilerComponent()
@@ -63,6 +64,7 @@ async def test_pennylane_backend_runs_bell_state(tmp_path: Path) -> None:
     assert payload["shots_completed"] == 256
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_pennylane_backend_noise_execution(tmp_path: Path) -> None:
     compiler = QComputeConfigCompilerComponent()
@@ -110,6 +112,7 @@ async def test_pennylane_environment_missing() -> None:
     assert any("pennylane" in e for e in report.prerequisite_errors)
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_pennylane_mitigation_zne(tmp_path: Path) -> None:
     compiler = QComputeConfigCompilerComponent()
@@ -134,6 +137,7 @@ async def test_pennylane_mitigation_zne(tmp_path: Path) -> None:
     assert mitigation["overhead"]["total_executor_calls"] == 3
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_pennylane_executor_full_pipeline(tmp_path: Path) -> None:
     """Compile -> execute -> validate with pennylane_aer platform."""

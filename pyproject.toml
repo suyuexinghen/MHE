@@ -39,4 +39,5 @@ testpaths = ["tests"]
 addopts = "-m 'not nektar'"
 markers = [
     "nektar: requires local Nektar++ installation",
+    "integration: integration tests requiring external dependencies (qiskit-aer, pennylane)",
 ]

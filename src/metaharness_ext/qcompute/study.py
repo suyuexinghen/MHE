@@ -60,6 +60,10 @@ class QComputeStudyComponent(HarnessComponent):
             validator = QComputeValidatorComponent()
 
         grid = _generate_grid(spec)
+
+        # Quota-aware ordering: simulator trials first
+        grid = _schedule_trials(grid, spec)
+
         grid = grid[: spec.max_trials]
 
         policy_eval = QComputeEvidencePolicy()
@@ -105,6 +109,8 @@ def _generate_grid(spec: QComputeStudySpec) -> list[dict[str, Any]]:
         return _generate_grid_cartesian(spec.axes)
     if strategy == "random":
         return _generate_random(spec.axes, spec.max_trials)
+    if strategy == "agentic":
+        return _generate_agentic(spec)
     raise ValueError(f"Unsupported study strategy: {strategy}")
 
 
@@ -154,6 +160,107 @@ def _generate_random(
                 snapshot[axis.parameter_path] = random.uniform(lo, hi)
         snapshots.append(snapshot)
     return snapshots
+
+
+def _random_params(axes: list[QComputeStudyAxis], rng: random.Random) -> dict[str, Any]:
+    """Generate random parameters from axis specifications."""
+    params: dict[str, Any] = {}
+    for axis in axes:
+        if axis.values is not None:
+            params[axis.parameter_path] = rng.choice(axis.values)
+        elif axis.range is not None:
+            lo, hi = axis.range
+            params[axis.parameter_path] = rng.uniform(lo, hi)
+    return params
+
+
+class FunctionalBrainProvider:
+    """Simplified BrainProvider for agentic study strategy.
+
+    Proposes parameter mutations by adding Gaussian noise to the
+    best previous trial's parameters.
+    """
+
+    def __init__(self, *, noise_scale: float = 0.1, seed: int | None = None) -> None:
+        self._noise_scale = noise_scale
+        self._rng = random.Random(seed)
+
+    def propose(
+        self,
+        axes: list[QComputeStudyAxis],
+        best_params: dict[str, Any] | None,
+        n_proposals: int = 3,
+    ) -> list[dict[str, Any]]:
+        """Generate parameter proposals by perturbing best known params."""
+        if best_params is None:
+            # Random initialization
+            return [_random_params(axes, self._rng) for _ in range(n_proposals)]
+        proposals: list[dict[str, Any]] = []
+        for _ in range(n_proposals):
+            proposal = dict(best_params)
+            for key, value in proposal.items():
+                if isinstance(value, (int, float)):
+                    proposal[key] = value + self._rng.gauss(
+                        0,
+                        self._noise_scale * abs(value) if value != 0 else self._noise_scale,
+                    )
+            proposals.append(proposal)
+        return proposals
+
+
+def _generate_agentic(spec: QComputeStudySpec) -> list[dict[str, Any]]:
+    """Generate parameters using agentic exploration with FunctionalBrainProvider."""
+    brain = FunctionalBrainProvider()
+    proposals: list[dict[str, Any]] = []
+    best_params: dict[str, Any] | None = None
+
+    # Start with random exploration
+    initial = brain.propose(spec.axes, best_params, n_proposals=min(3, spec.max_trials))
+    proposals.extend(initial[: spec.max_trials])
+    best_params = initial[0] if initial else None
+
+    # Iterative refinement
+    while len(proposals) < spec.max_trials:
+        remaining = spec.max_trials - len(proposals)
+        new_proposals = brain.propose(spec.axes, best_params, n_proposals=min(3, remaining))
+        if not new_proposals:
+            break
+        proposals.extend(new_proposals)
+        best_params = new_proposals[0]
+
+    return proposals[: spec.max_trials]
+
+
+def _schedule_trials(grid: list[dict[str, Any]], spec: QComputeStudySpec) -> list[dict[str, Any]]:
+    """Reorder trials: simulator backends first, then real hardware.
+
+    Within each group, preserve original order.
+    """
+    template = spec.experiment_template
+    template_platform = template.backend.platform
+
+    # If all trials use the same backend, no reordering needed
+    sim_platforms = {"qiskit_aer", "pennylane_aer"}
+    if template_platform in sim_platforms:
+        # Check if any axis varies the backend platform
+        has_backend_axis = any(
+            "backend.platform" in (a.parameter_path or "") or "platform" in (a.parameter_path or "")
+            for a in spec.axes
+        )
+        if not has_backend_axis:
+            return grid
+
+    # Split into simulator and real hardware groups
+    sim_trials: list[dict[str, Any]] = []
+    real_trials: list[dict[str, Any]] = []
+    for params in grid:
+        platform = params.get("backend.platform", template_platform)
+        if platform in sim_platforms:
+            sim_trials.append(params)
+        else:
+            real_trials.append(params)
+
+    return sim_trials + real_trials
 
 
 def _mutate_spec(

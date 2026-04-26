@@ -1,6 +1,6 @@
 # 06. QCompute Implementation Plan
 
-> 状态：Phase 0–4 implemented | Phase 5 pending | 对 `06-qcompute-roadmap.md` Phase 0–5 的逐步实施计划
+> 状态：Phase 0–5 + Gateway + Quafu implemented | 全部 roadmap 阶段完成 | 对 `06-qcompute-roadmap.md` Phase 0–5 的逐步实施计划
 
 ## Technical Alignment Notes
 
@@ -20,7 +20,7 @@
 - `BrainProvider` protocol 签名：`propose(optimizer, observations) -> list[MutationProposal]`、`evaluate(optimizer, proposal, observations) -> ProposalEvaluation`
 - Nektar 和 ABACUS 的 contract 模式已包含治理元数据字段（`candidate_identity`、`promotion_metadata` 等），QCompute 应遵循相同模式
 - Qiskit ≥1.0 使用新式 API（`qiskit.transpiler.preset_passmanagers`、`QuantumCircuit` 无需 `QuantumRegister`）
-- pyQuafu 使用 `execute_task()` / `query_task()` 异步任务模型
+- quarkstudio 使用 `from quark import Task` 异步任务模型
 
 **Core Enhancement 路线图对齐**（参照 `MHE-core-enhancement-roadmap.md`）：
 - Core Phase 0：`MutationProposal.domain_payload`、`DependencySpec.optional_components`/`optional_capabilities`
@@ -287,19 +287,19 @@ Gateway manifest，参照 nektar 格式。注意：
 
 **文件**：`src/metaharness_ext/qcompute/backends/quafu.py`
 
-- `try: import pyquafu` 检测可用性
+- `try: from quark import Task` 检测可用性
 - QuafuBackendAdapter 实现 core `AsyncExecutorProtocol`（若 core Phase 1 已落地）：
-  - `submit(plan) -> JobHandle` → 提交电路到 Quafu
-  - `poll(job_id) -> ExecutionStatus` → 查询任务状态
-  - `cancel(job_id)` → 取消排队中的任务
-  - `await_result(job_id, timeout) -> dict[str, int]` → 等待结果
+  - `submit(plan) -> JobHandle` → `Task(token=...).run({'chip': 'Baihua', 'circuit': qasm, 'compile': True})`
+  - `poll(job_id) -> ExecutionStatus` → `tmgr.status(task_id)`
+  - `cancel(job_id)` → `tmgr.cancel(task_id)`
+  - `await_result(job_id, timeout) -> dict[str, int]` → `tmgr.result(task_id)['count']`
 - 使用 core `FibonacciPollingStrategy` 管理轮询延迟（若已落地）
 - **降级方案**：QCompute 内置 Fibonacci 轮询实现（不依赖 core）
 
 ### P2.2 Environment 增强
 
 在 `environment.py` 中增加：
-- `Quafu` 芯片状态查询（`pyquafu.get_backend_info()`）
+- `Quafu` 芯片状态查询（`quarkstudio`，如 Baihua 芯片）
 - 校准数据采集 → `QComputeCalibrationData`
 - Token 有效性验证
 - 配额余量查询 → 若 core `ResourceQuota` 已落地，通过该协议表达；否则通过 `QComputeExecutionPolicy.daily_quota` 记录
@@ -323,7 +323,7 @@ Gateway manifest，参照 nektar 格式。注意：
 - 校准时效性测试（fresh / stale / very_stale）
 - 异步轮询逻辑测试
 - 配额感知调度测试
-- `@pytest.mark.quafu` 真机冒烟测试
+- `@pytest.mark.quafu` 真机冒烟测试（需 quarkstudio SDK）
 
 ### P2 验收
 
@@ -334,22 +334,26 @@ Gateway manifest，参照 nektar 格式。注意：
 
 ---
 
-## Phase 3：Error Mitigation (Mitiq)
+## Phase 3：Error Mitigation (自实现 ZNE/REM)
 
-### P3.1 Mitiq 集成
+### P3.1 自实现 ZNE/REM
 
-在 `executor.py` 中增加 `_apply_error_mitigation()`：
+注意：`mitiq` 与 Python 3.13 不兼容，因此错误缓解采用纯 NumPy 自实现。
 
-```python
-async def _apply_error_mitigation(self, circuit, strategies, executor_func):
-    if "zne" in strategies:
-        result = zne.execute_with_zne(
-            circuit, executor_func,
-            factory=zne.inference.AdaExpFactory(scale_factor=2.0, steps=5),
-            scale_noise=fold_global,
-        )
-    return result
-```
+**文件**：`src/metaharness_ext/qcompute/mitigation.py`
+
+ZNE（Zero-Noise Extrapolation）：
+- Richardson 外推：在 scale factors [1, 3, 5] 处构建 Vandermonde 矩阵并求解零噪声极限
+- 幺正折叠（unitary folding）：通过重复电路层来放大噪声
+
+REM（Readout Error Mitigation）：
+- 逆混淆矩阵校正：构建校准矩阵并求逆，校正测量结果分布
+
+**文件**：`src/metaharness_ext/qcompute/mitigation_pennylane.py`
+
+- PennyLane 集成错误缓解
+
+在 `executor.py` 中增加 `_apply_error_mitigation()`，调用 `mitigation.py` 中的函数。
 
 当噪声影响评分高时，若 core tri-state policy（`PolicyDecision.DEFER`）已落地，
 policy engine 可产出 defer 决策——保留 candidate 不 commit 也不 reject，等待补充 evidence。
@@ -369,7 +373,7 @@ policy engine 可产出 defer 决策——保留 candidate 不 commit 也不 rej
 ### P3 验收
 
 - ZNE 在噪声下改善结果
-- 无 Mitiq 时不影响模拟器执行
+- 无 mitiq 依赖，自实现 ZNE/REM 不影响模拟器执行
 - Phase 0–2 测试零回归
 
 ---
@@ -461,10 +465,11 @@ Study 的 `agentic` 策略调用 `BrainProvider.propose()` / `evaluate()`。
 pip install qiskit>=1.0 qiskit-aer>=0.14
 
 # Phase 2：可选（真机）
-pip install pyquafu>=0.1.0
+pip install quarkstudio>=7.0
+# 可选：芯片可视化
+pip install quarkcircuit
 
-# Phase 3：可选（错误缓解）
-pip install mitiq>=0.30
+# Phase 3：无额外依赖（ZNE/REM 为纯 NumPy 实现）
 
 # Phase 4：无新依赖
 
@@ -495,7 +500,7 @@ pip install pyscf>=2.0
 | P2.3 | 2 | `executor.py` 增强 | P2.1 |
 | P2.4 | 2 | `config_compiler.py` 增强 | P1.2 |
 | P2.5 | 2 | Phase 2 测试 | P2.1–P2.4 |
-| P3.1 | 3 | `executor.py` 增强（Mitiq） | P1.3 |
+| P3.1 | 3 | `mitigation.py`, `mitigation_pennylane.py`, `executor.py` 增强 | P1.3 |
 | P3.2 | 3 | 噪声模型 | P1.2 |
 | P3.3 | 3 | Phase 3 测试 | P3.1 |
 | P4.1 | 4 | `study.py` | P1.6 |
