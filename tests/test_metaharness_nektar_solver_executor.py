@@ -103,7 +103,7 @@ async def test_solver_executor_runs_inline_session_and_collects_outputs(
 
     run_artifact = executor.execute_plan(plan)
 
-    session_path = tmp_path / "nektar_runs" / problem.task_id / plan.session_file_name
+    session_path = tmp_path / ".runs" / "nektar" / problem.task_id / plan.session_file_name
     assert session_path.exists()
     assert calls[0]["command"] == ["/usr/bin/ADRSolver", str(session_path)]
     assert calls[0]["cwd"] == session_path.parent
@@ -170,7 +170,7 @@ async def test_solver_executor_runs_external_mesh_overlay(
 
     run_artifact = executor.execute_plan(plan)
 
-    session_path = tmp_path / "nektar_runs" / problem.task_id / plan.session_file_name
+    session_path = tmp_path / ".runs" / "nektar" / problem.task_id / plan.session_file_name
     assert calls[0] == ["/usr/bin/IncNavierStokesSolver", str(mesh_path), str(session_path)]
     assert run_artifact.mesh_files == [str(mesh_path)]
     assert run_artifact.filter_output.checkpoint_files == [str(session_path.parent / "session.chk")]

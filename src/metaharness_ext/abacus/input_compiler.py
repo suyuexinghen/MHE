@@ -119,7 +119,7 @@ class AbacusInputCompilerComponent(HarnessComponent):
         required_runtime_paths: list[str],
     ) -> AbacusRunPlan:
         run_id = f"run-{spec.task_id}"
-        working_directory = spec.working_directory or f"./abacus_runs/{spec.task_id}/{run_id}"
+        working_directory = spec.working_directory or f"./.runs/abacus/{spec.task_id}/{run_id}"
         output_root = f"OUT.{spec.suffix}"
         control_files = AbacusControlFiles(
             input_content=self._render_input(spec),

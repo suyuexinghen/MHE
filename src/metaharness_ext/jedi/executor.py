@@ -227,7 +227,7 @@ class JediExecutorComponent(HarnessComponent):
         if runtime is None or runtime.storage_path is None:
             raise RuntimeError("JediExecutorComponent requires runtime.storage_path")
         self._validate_task_id(plan.task_id)
-        run_dir = runtime.storage_path / "jedi_runs" / plan.task_id / plan.run_id
+        run_dir = runtime.storage_path / ".runs" / "jedi" / plan.task_id / plan.run_id
         run_dir.mkdir(parents=True, exist_ok=True)
         return run_dir
 

@@ -470,7 +470,7 @@ spec -> env probe -> YAML -> preprocess -> mode-aware execution -> evidence-firs
 每次运行生成以下稳定目录布局：
 
 ```text
-runtime.storage_path / "jedi_runs" / <task_id> / <run_id>/
+runtime.storage_path / ".runs" / "jedi" / <task_id> / <run_id>/
   |- config.yaml
   |- stdout.log
   |- stderr.log

@@ -15,7 +15,7 @@
 
 ## 3.2 运行目录与安全边界
 
-执行器通过 `_resolve_run_dir()` 在 `runtime.storage_path / "nektar_runs" / plan.task_id` 下创建运行目录，见 `MHE/src/metaharness_ext/nektar/solver_executor.py:198`。
+执行器通过 `_resolve_run_dir()` 在 `runtime.storage_path / ".runs" / "nektar" / plan.task_id` 下创建运行目录，见 `MHE/src/metaharness_ext/nektar/solver_executor.py:198`。
 
 在此之前会执行 `_validate_task_id()`：
 

@@ -49,7 +49,7 @@ def incns_examples_available() -> None:
 
 
 def _copy_case(tmp_path: Path, task_id: str, source: Path) -> Path:
-    run_dir = tmp_path / "nektar_runs" / task_id
+    run_dir = tmp_path / ".runs" / "nektar" / task_id
     run_dir.mkdir(parents=True, exist_ok=True)
     session_path = run_dir / "session.xml"
     session_path.write_text(source.read_text())

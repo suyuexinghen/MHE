@@ -43,7 +43,7 @@ async def test_qcompute_executor_requires_runtime_storage_path() -> None:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_qcompute_executor_runs_aer_plan(tmp_path: Path) -> None:
+async def test_qcompute_executor_runs_aer_plan(test_runs_dir: Path) -> None:
     compiler = QComputeConfigCompilerComponent()
     plan = compiler.build_plan(_build_spec())
     executor = QComputeExecutorComponent()
@@ -63,7 +63,7 @@ async def test_qcompute_executor_runs_aer_plan(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_qcompute_executor_rejects_failed_environment(tmp_path: Path) -> None:
+async def test_qcompute_executor_rejects_failed_environment(test_runs_dir: Path) -> None:
     compiler = QComputeConfigCompilerComponent()
     plan = compiler.build_plan(_build_spec())
     executor = QComputeExecutorComponent()
@@ -85,7 +85,7 @@ async def test_qcompute_executor_rejects_failed_environment(tmp_path: Path) -> N
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_qcompute_executor_uses_gate_error_map_noise(tmp_path: Path) -> None:
+async def test_qcompute_executor_uses_gate_error_map_noise(test_runs_dir: Path) -> None:
     compiler = QComputeConfigCompilerComponent()
     plan = compiler.build_plan(
         _build_spec(
@@ -110,7 +110,7 @@ async def test_qcompute_executor_uses_gate_error_map_noise(tmp_path: Path) -> No
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_qcompute_executor_records_applied_zne(tmp_path: Path) -> None:
+async def test_qcompute_executor_records_applied_zne(test_runs_dir: Path) -> None:
     compiler = QComputeConfigCompilerComponent()
     plan = compiler.build_plan(
         _build_spec(
@@ -135,7 +135,7 @@ async def test_qcompute_executor_records_applied_zne(tmp_path: Path) -> None:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_qcompute_executor_rem_applied(tmp_path: Path) -> None:
+async def test_qcompute_executor_rem_applied(test_runs_dir: Path) -> None:
     compiler = QComputeConfigCompilerComponent()
     plan = compiler.build_plan(
         _build_spec(
@@ -157,7 +157,7 @@ async def test_qcompute_executor_rem_applied(tmp_path: Path) -> None:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_qcompute_executor_zne_and_rem_combined(tmp_path: Path) -> None:
+async def test_qcompute_executor_zne_and_rem_combined(test_runs_dir: Path) -> None:
     compiler = QComputeConfigCompilerComponent()
     plan = compiler.build_plan(
         _build_spec(
@@ -182,7 +182,7 @@ async def test_qcompute_executor_zne_and_rem_combined(tmp_path: Path) -> None:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_qcompute_executor_rem_fallback(tmp_path: Path) -> None:
+async def test_qcompute_executor_rem_fallback(test_runs_dir: Path) -> None:
     compiler = QComputeConfigCompilerComponent()
     plan = compiler.build_plan(
         _build_spec(
@@ -203,7 +203,7 @@ async def test_qcompute_executor_rem_fallback(tmp_path: Path) -> None:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_qcompute_executor_no_mitigation_no_metadata(tmp_path: Path) -> None:
+async def test_qcompute_executor_no_mitigation_no_metadata(test_runs_dir: Path) -> None:
     compiler = QComputeConfigCompilerComponent()
     plan = compiler.build_plan(_build_spec())
     executor = QComputeExecutorComponent()

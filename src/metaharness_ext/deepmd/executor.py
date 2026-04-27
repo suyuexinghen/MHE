@@ -139,7 +139,7 @@ class DeepMDExecutorComponent(HarnessComponent):
         if runtime is None or runtime.storage_path is None:
             raise RuntimeError("DeepMDExecutorComponent requires runtime.storage_path")
         self._validate_task_id(plan.task_id)
-        run_dir = runtime.storage_path / "deepmd_runs" / plan.task_id / plan.run_id
+        run_dir = runtime.storage_path / ".runs" / "deepmd" / plan.task_id / plan.run_id
         run_dir.mkdir(parents=True, exist_ok=True)
         return run_dir
 

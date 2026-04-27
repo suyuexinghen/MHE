@@ -168,7 +168,7 @@ class ConvergenceStudyComponent(HarnessComponent):
 结果落盘建议：
 
 ```text
-runtime.storage_path / "nektar_runs" / <task_id> / "studies" / <study_id>.json
+runtime.storage_path / ".runs" / "nektar" / <task_id> / "studies" / <study_id>.json
 ```
 
 study 子运行命名建议：

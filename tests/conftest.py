@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -15,6 +16,17 @@ if str(SRC) not in sys.path:
 EXAMPLES_DIR = ROOT / "examples"
 MANIFEST_DIR = EXAMPLES_DIR / "manifests" / "baseline"
 GRAPHS_DIR = EXAMPLES_DIR / "graphs"
+RUNS_DIR = ROOT / ".runs"
+
+
+@pytest.fixture
+def test_runs_dir(request: pytest.FixtureRequest) -> Path:
+    safe_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", request.node.nodeid)
+    path = RUNS_DIR / "pytest" / safe_name
+    if path.exists():
+        shutil.rmtree(path)
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 @pytest.fixture(scope="session")

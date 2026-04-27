@@ -53,9 +53,9 @@ def _build_spec(
     )
 
 
-async def _activated_gateway(tmp_path: Path) -> QComputeGatewayComponent:
+async def _activated_gateway(test_runs_dir: Path) -> QComputeGatewayComponent:
     gateway = QComputeGatewayComponent()
-    await gateway.activate(ComponentRuntime(storage_path=tmp_path))
+    await gateway.activate(ComponentRuntime(storage_path=test_runs_dir))
     return gateway
 
 
@@ -66,9 +66,9 @@ async def _activated_gateway(tmp_path: Path) -> QComputeGatewayComponent:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_functional_bell_state_qiskit_aer(tmp_path: Path) -> None:
+async def test_functional_bell_state_qiskit_aer(test_runs_dir: Path) -> None:
     """执行 Bell 态线路，验证量子纠缠输出。"""
-    gateway = await _activated_gateway(tmp_path)
+    gateway = await _activated_gateway(test_runs_dir)
     spec = _build_spec(task_id="func-s1")
     bundle = gateway.run_baseline(spec)
 
@@ -98,9 +98,9 @@ async def test_functional_bell_state_qiskit_aer(tmp_path: Path) -> None:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_functional_full_pipeline_with_policy(tmp_path: Path) -> None:
+async def test_functional_full_pipeline_with_policy(test_runs_dir: Path) -> None:
     """执行 Bell 态并通过策略评估和治理记录。"""
-    gateway = await _activated_gateway(tmp_path)
+    gateway = await _activated_gateway(test_runs_dir)
     spec = _build_spec(task_id="func-s2")
     result = gateway.run_baseline_full(spec)
 
@@ -122,9 +122,9 @@ async def test_functional_full_pipeline_with_policy(tmp_path: Path) -> None:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_functional_with_artifact_store(tmp_path: Path) -> None:
+async def test_functional_with_artifact_store(test_runs_dir: Path) -> None:
     """执行实验并通过 ArtifactSnapshotStore 持久化快照。"""
-    gateway = await _activated_gateway(tmp_path)
+    gateway = await _activated_gateway(test_runs_dir)
     spec = _build_spec(task_id="func-s3")
     artifact_store = ArtifactSnapshotStore()
     result = gateway.run_baseline_full(spec, artifact_store=artifact_store)
@@ -142,9 +142,9 @@ async def test_functional_with_artifact_store(tmp_path: Path) -> None:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_functional_bell_state_pennylane(tmp_path: Path) -> None:
+async def test_functional_bell_state_pennylane(test_runs_dir: Path) -> None:
     """使用 PennyLane 模拟器执行 Bell 态。"""
-    gateway = await _activated_gateway(tmp_path)
+    gateway = await _activated_gateway(test_runs_dir)
     spec = _build_spec(task_id="func-s4", platform="pennylane_aer")
     bundle = gateway.run_baseline(spec)
 
@@ -164,9 +164,9 @@ async def test_functional_bell_state_pennylane(tmp_path: Path) -> None:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_functional_noisy_zne_mitigation(tmp_path: Path) -> None:
+async def test_functional_noisy_zne_mitigation(test_runs_dir: Path) -> None:
     """在退极化噪声下执行线路，使用 ZNE 缓解。"""
-    gateway = await _activated_gateway(tmp_path)
+    gateway = await _activated_gateway(test_runs_dir)
     spec = _build_spec(
         task_id="func-s5",
         noise=QComputeNoiseSpec(
@@ -195,9 +195,9 @@ async def test_functional_noisy_zne_mitigation(tmp_path: Path) -> None:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_functional_zne_rem_combined(tmp_path: Path) -> None:
+async def test_functional_zne_rem_combined(test_runs_dir: Path) -> None:
     """同时使用 ZNE 和 REM 缓解策略。"""
-    gateway = await _activated_gateway(tmp_path)
+    gateway = await _activated_gateway(test_runs_dir)
     spec = _build_spec(
         task_id="func-s6",
         noise=QComputeNoiseSpec(
@@ -225,9 +225,9 @@ async def test_functional_zne_rem_combined(tmp_path: Path) -> None:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_functional_unsupported_platform_failure(tmp_path: Path) -> None:
+async def test_functional_unsupported_platform_failure(test_runs_dir: Path) -> None:
     """不支持的平台触发完整失败管线。"""
-    gateway = await _activated_gateway(tmp_path)
+    gateway = await _activated_gateway(test_runs_dir)
     spec = _build_spec(
         task_id="func-s7",
         platform="ibm_quantum",
@@ -249,7 +249,7 @@ async def test_functional_unsupported_platform_failure(tmp_path: Path) -> None:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_functional_study_grid(tmp_path: Path) -> None:
+async def test_functional_study_grid(test_runs_dir: Path) -> None:
     """对 shots 参数做网格搜索。"""
     base_spec = _build_spec(
         task_id="func-s8-template",
@@ -270,7 +270,7 @@ async def test_functional_study_grid(tmp_path: Path) -> None:
     )
 
     study = QComputeStudyComponent()
-    await study.activate(ComponentRuntime(storage_path=tmp_path))
+    await study.activate(ComponentRuntime(storage_path=test_runs_dir))
     report = study.run_study(study_spec)
 
     assert len(report.trials) <= 5
@@ -286,7 +286,7 @@ async def test_functional_study_grid(tmp_path: Path) -> None:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_functional_study_agentic(tmp_path: Path) -> None:
+async def test_functional_study_agentic(test_runs_dir: Path) -> None:
     """使用智能体策略探索参数空间。"""
     base_spec = _build_spec(
         task_id="func-s9-template",
@@ -308,7 +308,7 @@ async def test_functional_study_agentic(tmp_path: Path) -> None:
     )
 
     study = QComputeStudyComponent()
-    await study.activate(ComponentRuntime(storage_path=tmp_path))
+    await study.activate(ComponentRuntime(storage_path=test_runs_dir))
     report = study.run_study(study_spec)
 
     assert len(report.trials) <= 10
@@ -330,11 +330,11 @@ async def test_functional_study_agentic(tmp_path: Path) -> None:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_functional_governance_e2e(tmp_path: Path) -> None:
+async def test_functional_governance_e2e(test_runs_dir: Path) -> None:
     """验证治理管线产出完整的会话事件和审计日志。"""
     from metaharness_ext.qcompute.governance import QComputeGovernanceAdapter
 
-    gateway = await _activated_gateway(tmp_path)
+    gateway = await _activated_gateway(test_runs_dir)
     spec = _build_spec(task_id="func-s10")
     bundle = gateway.run_baseline(spec)
 

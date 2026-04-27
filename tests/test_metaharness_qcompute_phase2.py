@@ -35,7 +35,7 @@ def _build_inputs() -> tuple[QComputeRunArtifact, QComputeRunPlan, QComputeEnvir
         backend_actual="qiskit_aer",
         status="completed",
         counts={"0": 64, "1": 64},
-        raw_output_path="qcompute_runs/qcompute-exp-1/plan-1/result.json",
+        raw_output_path=".runs/qcompute/qcompute-exp-1/plan-1/result.json",
         shots_requested=128,
         shots_completed=128,
         candidate_identity=QComputeCandidateIdentity(candidate_id="cand-1", graph_version_id=7),

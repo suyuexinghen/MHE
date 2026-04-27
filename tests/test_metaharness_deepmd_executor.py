@@ -67,8 +67,8 @@ def _build_spec(
 
 
 @pytest.mark.asyncio
-async def test_deepmd_executor_requires_runtime_storage_path(tmp_path: Path) -> None:
-    spec = _build_spec(tmp_path)
+async def test_deepmd_executor_requires_runtime_storage_path(test_runs_dir: Path) -> None:
+    spec = _build_spec(test_runs_dir)
     plan = DeepMDTrainConfigCompilerComponent().build_plan(spec)
     executor = DeepMDExecutorComponent()
     await executor.activate(ComponentRuntime(storage_path=None))
@@ -158,7 +158,7 @@ async def test_deepmd_executor_writes_input_json_and_collects_train_outputs(
 
     artifact = executor.execute_plan(plan)
 
-    run_dir = tmp_path / "deepmd_runs" / spec.task_id / plan.run_id
+    run_dir = tmp_path / ".runs" / "deepmd" / spec.task_id / plan.run_id
     assert (run_dir / "input.json").exists()
     assert calls[0]["command"] == ["/usr/bin/dp", "train", "input.json"]
     assert calls[0]["cwd"] == run_dir
@@ -321,7 +321,7 @@ async def test_deepmd_executor_collects_compress_outputs(
     assert any(path.endswith("compressed_model.pb") for path in artifact.model_files)
     assert (
         artifact.summary.compressed_model_path
-        == str(tmp_path / "deepmd_runs" / spec.task_id / plan.run_id / "compressed_model.pb")
+        == str(tmp_path / ".runs" / "deepmd" / spec.task_id / plan.run_id / "compressed_model.pb")
         or artifact.summary.compressed_model_path == "compressed_model.pb"
     )
     assert report.passed is True

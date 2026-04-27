@@ -9,6 +9,7 @@ drafts
 sessions_export_extra
 sessions_export
 .claude
+.runs
 abacus_runs
 __pycache__
 iter.000000

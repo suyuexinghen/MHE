@@ -9,7 +9,7 @@ from metaharness_ext.ai4pde.case_parser import (
 )
 from metaharness_ext.ai4pde.types import ProblemType, RiskLevel, SolverFamily
 
-CASE_XML = Path(__file__).parent.parent / "docs" / "xml-pro" / "cylinder-flow-re100.xml"
+CASE_XML = Path(__file__).parent.parent / ".trash" / "xml-demo" / "cylinder-flow-re100.xml"
 
 
 def test_parse_ai4pde_case_xml_compiles_request_and_plan() -> None:
@@ -67,11 +67,13 @@ def test_parse_ai4pde_case_xml_compiles_request_and_plan() -> None:
     ]
 
 
-def test_parse_ai4pde_case_xml_rejects_missing_required_component() -> None:
+def test_parse_ai4pde_case_xml_rejects_missing_required_component(test_runs_dir: Path) -> None:
+    broken_case_dir = test_runs_dir / "ai4pde-case-parser"
+    broken_case_dir.mkdir(parents=True, exist_ok=True)
     broken_xml = CASE_XML.read_text().replace(
         "knowledge_adapter.primary",
         "missing_component.primary",
     )
 
     with pytest.raises(Ai4PdeCaseXmlError, match="missing_component.primary"):
-        parse_ai4pde_case_xml_text(broken_xml, base_dir=CASE_XML.parent)
+        parse_ai4pde_case_xml_text(broken_xml, base_dir=broken_case_dir)

@@ -18,12 +18,13 @@ from metaharness_ext.nektar.types import NektarSolverFamily
 
 
 class _FakeExecutor:
-    def __init__(self) -> None:
+    def __init__(self, output_root: Path) -> None:
         self.calls: list[int] = []
+        self.output_root = output_root
 
     def execute_plan(self, plan) -> NektarRunArtifact:
         self.calls.append(int(plan.parameters["NumModes"]))
-        run_dir = Path(plan.task_id)
+        run_dir = self.output_root / ".runs" / "nektar" / plan.task_id
         solver_log = run_dir / "solver.log"
         solver_log.parent.mkdir(parents=True, exist_ok=True)
         solver_log.write_text(
@@ -50,15 +51,16 @@ class _FakeExecutor:
 
 
 class _MetricExecutor:
-    def __init__(self, metrics: dict[int, float]) -> None:
+    def __init__(self, metrics: dict[int, float], output_root: Path) -> None:
         self.metrics = metrics
         self.calls: list[int] = []
+        self.output_root = output_root
 
     def execute_plan(self, plan) -> NektarRunArtifact:
         value = int(plan.parameters["NumModes"])
         metric = self.metrics[value]
         self.calls.append(value)
-        run_dir = Path(plan.task_id)
+        run_dir = self.output_root / ".runs" / "nektar" / plan.task_id
         solver_log = run_dir / "solver.log"
         solver_log.parent.mkdir(parents=True, exist_ok=True)
         solver_log.write_text(
@@ -85,7 +87,7 @@ class _MetricExecutor:
 
 class _FakePostprocessor:
     def run_postprocess(self, run: NektarRunArtifact) -> NektarRunArtifact:
-        derived = Path(run.task_id) / "solution.vtu"
+        derived = Path(run.field_files[0]).parent / "solution.vtu"
         derived.write_text("vtu")
         updated = run.model_copy(deep=True)
         updated.derived_files.append(str(derived))
@@ -145,7 +147,7 @@ async def test_convergence_study_absolute_rule_sweeps_nummodes_without_persistin
 ) -> None:
     component = ConvergenceStudyComponent()
     await component.activate(ComponentRuntime(storage_path=tmp_path))
-    executor = _FakeExecutor()
+    executor = _FakeExecutor(tmp_path)
     postprocessor = _FakePostprocessor()
     validator = _FakeValidator()
     spec = ConvergenceStudySpec(
@@ -171,7 +173,7 @@ async def test_convergence_study_absolute_rule_sweeps_nummodes_without_persistin
     assert report.converged is True
     assert report.recommended_reason is not None
     assert report.error_sequence == pytest.approx([0.5, 0.25, 0.125])
-    persisted = tmp_path / "nektar_runs" / "task-1" / "studies" / "study-1.json"
+    persisted = tmp_path / ".runs" / "nektar" / "task-1" / "studies" / "study-1.json"
     assert not persisted.exists()
 
 
@@ -192,7 +194,7 @@ async def test_convergence_study_absolute_rule_requires_target_tolerance(tmp_pat
     with pytest.raises(ValueError, match="target_tolerance"):
         component.run_study(
             spec,
-            executor=_FakeExecutor(),
+            executor=_FakeExecutor(tmp_path),
             postprocessor=_FakePostprocessor(),
             validator=_FakeValidator(),
         )
@@ -202,7 +204,7 @@ async def test_convergence_study_absolute_rule_requires_target_tolerance(tmp_pat
 async def test_convergence_study_relative_drop_stops_on_first_match(tmp_path: Path) -> None:
     component = ConvergenceStudyComponent()
     await component.activate(ComponentRuntime(storage_path=tmp_path))
-    executor = _MetricExecutor({2: 1.0, 4: 0.6, 8: 0.15})
+    executor = _MetricExecutor({2: 1.0, 4: 0.6, 8: 0.15}, tmp_path)
     spec = ConvergenceStudySpec(
         study_id="study-relative",
         task_id="task-relative",
@@ -235,7 +237,7 @@ async def test_convergence_study_relative_drop_falls_back_when_threshold_not_met
 ) -> None:
     component = ConvergenceStudyComponent()
     await component.activate(ComponentRuntime(storage_path=tmp_path))
-    executor = _MetricExecutor({2: 1.0, 4: 0.8, 8: 0.7})
+    executor = _MetricExecutor({2: 1.0, 4: 0.8, 8: 0.7}, tmp_path)
     spec = ConvergenceStudySpec(
         study_id="study-relative-fallback",
         task_id="task-relative-fallback",
@@ -266,7 +268,7 @@ async def test_convergence_study_relative_drop_falls_back_when_threshold_not_met
 async def test_convergence_study_plateau_detects_stable_drop_ratio(tmp_path: Path) -> None:
     component = ConvergenceStudyComponent()
     await component.activate(ComponentRuntime(storage_path=tmp_path))
-    executor = _MetricExecutor({2: 1.0, 4: 0.4, 8: 0.168})
+    executor = _MetricExecutor({2: 1.0, 4: 0.4, 8: 0.168}, tmp_path)
     spec = ConvergenceStudySpec(
         study_id="study-plateau",
         task_id="task-plateau",
@@ -296,7 +298,7 @@ async def test_convergence_study_plateau_detects_stable_drop_ratio(tmp_path: Pat
 async def test_convergence_study_plateau_rejects_nonmonotone_series(tmp_path: Path) -> None:
     component = ConvergenceStudyComponent()
     await component.activate(ComponentRuntime(storage_path=tmp_path))
-    executor = _MetricExecutor({2: 1.0, 4: 0.6, 8: 0.8})
+    executor = _MetricExecutor({2: 1.0, 4: 0.6, 8: 0.8}, tmp_path)
     spec = ConvergenceStudySpec(
         study_id="study-plateau-fallback",
         task_id="task-plateau-fallback",
@@ -341,7 +343,7 @@ async def test_convergence_trial_includes_analyzer_outputs_and_observed_order(
 
     report = component.run_study(
         spec,
-        executor=_FakeExecutor(),
+        executor=_FakeExecutor(tmp_path),
         postprocessor=_FakePostprocessor(),
         validator=_FakeValidator(),
     )
@@ -396,7 +398,7 @@ async def test_convergence_study_applies_postprocess_override(tmp_path: Path) ->
 
     class _CaptureExecutor(_FakeExecutor):
         def __init__(self) -> None:
-            super().__init__()
+            super().__init__(tmp_path)
             self.postprocess_plans: list[list[dict[str, object]]] = []
 
         def execute_plan(self, plan) -> NektarRunArtifact:
@@ -430,7 +432,7 @@ async def test_convergence_absolute_rule_does_not_recommend_failed_trial(tmp_pat
     """A trial whose metric meets tolerance but validator says failed must NOT be recommended as converged."""
     component = ConvergenceStudyComponent()
     await component.activate(ComponentRuntime(storage_path=tmp_path))
-    executor = _FakeExecutor()
+    executor = _FakeExecutor(tmp_path)
     spec = ConvergenceStudySpec(
         study_id="study-adversarial",
         task_id="task-adversarial",
@@ -457,7 +459,7 @@ async def test_convergence_absolute_rule_does_not_recommend_failed_trial(tmp_pat
 async def test_convergence_relative_drop_does_not_recommend_failed_trial(tmp_path: Path) -> None:
     component = ConvergenceStudyComponent()
     await component.activate(ComponentRuntime(storage_path=tmp_path))
-    executor = _MetricExecutor({2: 1.0, 4: 0.15, 8: 0.05})
+    executor = _MetricExecutor({2: 1.0, 4: 0.15, 8: 0.05}, tmp_path)
     spec = ConvergenceStudySpec(
         study_id="study-adversarial-drop",
         task_id="task-adversarial-drop",
@@ -485,7 +487,7 @@ async def test_convergence_relative_drop_does_not_recommend_failed_trial(tmp_pat
 async def test_convergence_plateau_does_not_recommend_failed_trial(tmp_path: Path) -> None:
     component = ConvergenceStudyComponent()
     await component.activate(ComponentRuntime(storage_path=tmp_path))
-    executor = _MetricExecutor({2: 1.0, 4: 0.4, 8: 0.168})
+    executor = _MetricExecutor({2: 1.0, 4: 0.4, 8: 0.168}, tmp_path)
     spec = ConvergenceStudySpec(
         study_id="study-adversarial-plateau",
         task_id="task-adversarial-plateau",

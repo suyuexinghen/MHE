@@ -65,7 +65,7 @@ async def test_dpgen_executor_prepares_workspace_and_collects_iterations(
 
     artifact = executor.execute_plan(plan)
     report = DeepMDValidatorComponent().validate_run(artifact)
-    run_dir = tmp_path / "deepmd_runs" / spec.task_id / plan.run_id
+    run_dir = tmp_path / ".runs" / "deepmd" / spec.task_id / plan.run_id
 
     assert artifact.command == ["/usr/bin/dpgen", "run", "param.json", "machine.json"]
     assert (run_dir / "param.json").exists()

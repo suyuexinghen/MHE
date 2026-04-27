@@ -218,7 +218,7 @@ class AbacusExecutorComponent(HarnessComponent):
     def _resolve_run_dir(self, plan: AbacusRunPlan) -> Path:
         runtime = getattr(self, "_runtime", None)
         if runtime is not None and runtime.storage_path is not None:
-            run_dir = runtime.storage_path / "abacus_runs" / plan.task_id / plan.run_id
+            run_dir = runtime.storage_path / ".runs" / "abacus" / plan.task_id / plan.run_id
         else:
             run_dir = Path(plan.working_directory).expanduser()
         return run_dir

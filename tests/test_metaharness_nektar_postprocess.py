@@ -22,7 +22,7 @@ def _make_solver_artifact(
     postprocess_plan: list[dict[str, object]] | None = None,
     result_summary: dict[str, object] | None = None,
 ) -> NektarRunArtifact:
-    run_dir = tmp_path / "nektar_runs" / "task-pp"
+    run_dir = tmp_path / ".runs" / "nektar" / "task-pp"
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "session.xml").write_text("<NEKTAR />")
     fld_files = field_files or []
@@ -81,7 +81,7 @@ def test_postprocess_runs_fieldconvert_for_field_file(
     step = pp["steps"][0]
     assert step["command"][0] == "/usr/bin/FieldConvert"
     assert step["exit_code"] == 0
-    vtu_path = str(tmp_path / "nektar_runs" / "task-pp" / "solution.vtu")
+    vtu_path = str(tmp_path / ".runs" / "nektar" / "task-pp" / "solution.vtu")
     assert vtu_path in result.derived_files
     assert vtu_path in result.filter_output.fieldconvert_intermediates
 
@@ -182,7 +182,7 @@ def test_postprocess_marks_nonzero_exit_failed(
     step = result.result_summary["postprocess"]["steps"][0]
     assert step["status"] == "failed"
     assert step["exit_code"] == 3
-    run_dir = tmp_path / "nektar_runs" / "task-pp"
+    run_dir = tmp_path / ".runs" / "nektar" / "task-pp"
     assert "convert error" in (run_dir / "fieldconvert.log").read_text()
 
 

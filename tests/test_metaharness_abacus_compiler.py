@@ -302,10 +302,10 @@ def test_abacus_compiler_uses_default_working_directory_when_missing() -> None:
 
     plan = AbacusInputCompilerComponent().compile(spec)
 
-    assert plan.working_directory == "./abacus_runs/task-default-workdir/run-task-default-workdir"
+    assert plan.working_directory == "./.runs/abacus/task-default-workdir/run-task-default-workdir"
     assert (
         plan.workspace_layout.working_directory
-        == "./abacus_runs/task-default-workdir/run-task-default-workdir"
+        == "./.runs/abacus/task-default-workdir/run-task-default-workdir"
     )
 
 

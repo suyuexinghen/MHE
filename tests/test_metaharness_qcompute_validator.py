@@ -42,7 +42,7 @@ def _build_artifact(**overrides) -> QComputeRunArtifact:
         "status": "completed",
         "counts": {"0": 64, "1": 64},
         "probabilities": {"0": 0.5, "1": 0.5},
-        "raw_output_path": "qcompute_runs/qcompute-exp-1/plan-1/result.json",
+        "raw_output_path": ".runs/qcompute/qcompute-exp-1/plan-1/result.json",
         "shots_requested": 128,
         "shots_completed": 128,
     }

@@ -170,7 +170,7 @@ class QComputeExecutorComponent(HarnessComponent):
             raise RuntimeError("QComputeExecutorComponent requires runtime.storage_path")
         self._validate_id(plan.experiment_ref)
         self._validate_id(plan.plan_id)
-        run_dir = runtime.storage_path / "qcompute_runs" / plan.experiment_ref / plan.plan_id
+        run_dir = runtime.storage_path / ".runs" / "qcompute" / plan.experiment_ref / plan.plan_id
         run_dir.mkdir(parents=True, exist_ok=True)
         return run_dir
 
