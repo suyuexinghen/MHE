@@ -1,7 +1,7 @@
-# 02. Step 2 — 与 AI-Native 科学计算平台的对齐方案
+# 07. v2 对齐方案 — 通往 AI-Native 科学工作流
 
 > 状态：proposal | 依赖：Phase 0–5 Octave worker 完成
-> 参考：`docs/.trash/plan/Octave-Ext.md`、`blueprint/07-octave-extension-blueprint.md`、`01-design.md`
+> 参考：`docs/.trash/plan/Octave-Ext.md`、`blueprint/07-octave-extension-blueprint.md`、本 wiki 01–06 章
 
 ## 1. 定位
 
@@ -428,40 +428,39 @@ class OctaveArtifactDetector:
 ## 6. V2 子阶段路线图
 
 ```text
-Phase 5a: Study Component (v2 核心)
-  ├─ 实现 OctaveStudyComponent with OctaveStudySpec / OctaveStudyReport
-  ├─ 实现 _mutate_task() 和 _recommend_trial()
+Phase 5a: Study Component (v2 核心) — implemented
+  ├─ OctaveStudyComponent with OctaveStudySpec / OctaveStudyReport
+  ├─ _mutate_task() 和 _recommend_trial()
   ├─ Grid strategy + metric extraction
   └─ Study tests (mocked)
 
-Phase 5b: Governance Adapter + Evidence Pipeline
-  ├─ 实现 OctaveGovernanceAdapter (follow DeepMD pattern)
-  ├─ 实现 build_core_validation_report, build_candidate_record, emit_runtime_evidence
-  ├─ 对接 ExecutionEvidenceRecorder 和 ArtifactSnapshotStore
+Phase 5b: Governance Adapter + Evidence Pipeline — prototype implemented
+  ├─ OctaveGovernanceAdapter
+  ├─ build_core_validation_report, build_candidate_record, build_session_events
+  ├─ emit_runtime_evidence / record_with_artifact_store no-op safely without runtime services
   └─ Governance tests
 
-Phase 5c: Scientific Context Adapter （可与 5a 并行）
-  ├─ 实现 OctaveScientificContextAdapter
-  ├─ Pre-compile: unit consistency, physical constants injection, method hints validation
+Phase 5c: Scientific Context Adapter — implemented
+  ├─ OctaveScientificContextAdapter
+  ├─ Pre-compile: unit consistency, method hints validation
   ├─ Post-validate: error propagation notes, platform difference explanation, invariants checking
-  ├─ Activate v2 contract fields: unit, uncertainty, method_hints, invariants
-  └─ Context adapter tests (mock SCE + 真实 pint/uncertainties 集成测试)
+  ├─ Active v2 contract fields: unit, uncertainty, method_hints, invariants
+  └─ Context adapter tests
 
-Phase 5d: Execution Lifecycle + Security
-  ├─ 实现 OctaveAsyncExecutor (AsyncExecutorProtocol)
-  ├─ 对接 ExecutionLifecycleService.run() / .cancel()
-  ├─ Session event recording: submitted/running/completed/failed/cancelled
-  ├─ 实现 OctaveSecurityScanner (static script analysis)
-  ├─ 实现 OctaveMATFileParser / OctaveArtifactDetector
-  ├─ HPC scheduler adapter + SlurmBackend / K8sBackend + workspace_sync
-  └─ Long-running + security + scheduler tests (mock SLURM/K8s; 真实集群 gated)
+Phase 5d: Execution Lifecycle + Security — prototype implemented
+  ├─ OctaveAsyncExecutor (AsyncExecutorProtocol-compatible local wrapper)
+  ├─ ExecutionLifecycleService-compatible submit/poll/cancel/await_result seam
+  ├─ OctaveSecurityScanner integrated into compiler
+  ├─ OctaveMATFileParser / OctaveArtifactDetector
+  ├─ Dry-run HPC scheduler adapter + SlurmBackend / K8sBackend + workspace_sync
+  └─ Execution, security, artifact, scheduler tests
 
-Phase 5e: Optimizer Bridge
-  ├─ 实现 OctaveDomainBrainProvider
-  ├─ 对接 OptimizerComponent.observe() / .propose() / .evaluate()
-  ├─ Study-integrated parameter exploration (grid → bayesian → LLM-guided)
-  ├─ Convergence via TripleConvergence
-  └─ Optimizer bridge tests (mock LLM + 已知优化问题收敛性测试)
+Phase 5e: Optimizer Bridge — prototype implemented
+  ├─ OctaveDomainBrainProvider
+  ├─ Study observations → typed whitelist MutationProposal
+  ├─ Deterministic untried-parameter proposal strategy
+  ├─ Proposal scoring against validation evidence
+  └─ Optimizer bridge tests
 ```
 
 **依赖关系：** 5a 和 5c 可并行启动。5b 依赖 5a（governance 消费 study trial evidence）。5d 依赖 Phase 4 executor 稳定，可与 5a/5c 并行。5e 依赖 5a + 5c（BrainProvider 使用 SCE 提供物理约束）。
@@ -507,14 +506,15 @@ Phase 5e: Optimizer Bridge
 
 - `OctaveStudyComponent` 可运行 grid parameter sweep
 - Scientific context adapter 对 unit/tolerance/invariants 产出 evidence
-- `ExecutionLifecycleService` 记录 Octave task session events
-- Governance adapter 可 build candidate record + emit provenance
-- Security scanner 可检测 `system()`/`unix()`/`!cmd`
+- `OctaveAsyncExecutor` 提供 `ExecutionLifecycleService` 可消费的 async executor seam
+- Governance adapter 可 build candidate record、session events、runtime evidence refs
+- Security scanner 可检测 `system()`/`unix()`/`!cmd` 等危险模式，并在 compiler 阶段阻断
+- MAT/artifact detector、dry-run scheduler adapter、optimizer bridge 均有默认测试覆盖
 
 ### Production readiness
 
-- 长任务可恢复或安全失败
-- Scheduler/HPC adapter 有明确 backend contract
+- 长任务可取消或以失败状态安全结束；真实恢复语义仍由上层 runtime/session recovery 接管
+- Scheduler/HPC adapter 目前是 dry-run backend contract；真实 SLURM/K8s submit/poll/collect 仍需 gated 环境实现
 - BrainProvider/mutation proposal 只修改 typed whitelist fields
 - 所有默认测试不依赖真实 Octave；真实 smoke gated
 

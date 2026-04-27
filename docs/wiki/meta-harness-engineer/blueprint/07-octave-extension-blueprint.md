@@ -472,7 +472,7 @@ ruff format --check src/metaharness_ext/octave tests/test_metaharness_octave_*.p
 
 ### Phase 5：Scientific workflow expansion（v2 alignment）
 
-Phase 5 进入 v2：在稳定 Octave worker 之上叠加 scientific workflow substrate。完整设计见 `docs/wiki/meta-harness-engineer/octave-engine-wiki/02-v2-alignment.md`。
+Phase 5 进入 v2：在稳定 Octave worker 之上叠加 scientific workflow substrate。当前已完成默认测试覆盖的 v2 prototype；真实 SLURM/K8s 后端仍保持 gated/dry-run。完整设计见 `docs/wiki/meta-harness-engineer/octave-engine-wiki/02-v2-alignment.md`。
 
 #### Phase 5a：Study Component
 
@@ -483,7 +483,7 @@ Phase 5 进入 v2：在稳定 Octave worker 之上叠加 scientific workflow sub
 #### Phase 5b：Governance Adapter + Evidence Pipeline
 
 - 增加 `OctaveGovernanceAdapter`，按 DeepMD/QCompute pattern 构建 core validation report、candidate record 和 session events；
-- 对接 `ExecutionEvidenceRecorder`、`ArtifactSnapshotStore`、audit log 与 provenance graph；
+- 通过可选 runtime services 对接 artifact store、audit log 与 provenance graph；
 - 将 study trial evidence 纳入 graph promotion 可读结构。
 
 #### Phase 5c：Scientific Context Adapter
@@ -494,15 +494,15 @@ Phase 5 进入 v2：在稳定 Octave worker 之上叠加 scientific workflow sub
 
 #### Phase 5d：Execution Lifecycle + Security
 
-- 实现 `OctaveAsyncExecutor` 并对接 `ExecutionLifecycleService.run()` / `.cancel()`；
-- 为 long-running 本地任务和后续 SLURM/K8s adapter 保留 backend seam；
+- 实现 `OctaveAsyncExecutor`，暴露 `ExecutionLifecycleService.run()` / `.cancel()` 可消费的 executor seam；
+- 为 long-running 本地任务和后续真实 SLURM/K8s adapter 保留 dry-run backend contract；
 - 增加 static script scanner、MAT file parser 和 artifact detector。
 
 #### Phase 5e：Optimizer Bridge
 
 - 实现 `OctaveDomainBrainProvider`，只对 typed whitelist fields 生成 `MutationProposal`；
-- 对接 `OptimizerComponent` 和 `TripleConvergence`；
-- 支持 study 粗扫描后进入 Bayesian / LLM-guided 参数探索。
+- 通过 study observations 评估 proposal 与 validation evidence；
+- 默认采用 deterministic untried-parameter strategy，Bayesian / LLM-guided 策略保留为后续增强。
 
 ---
 
@@ -515,16 +515,14 @@ Phase 5 进入 v2：在稳定 Octave worker 之上叠加 scientific workflow sub
 | package 生态差异 | 中 | package probe + required/optional spec + missing prerequisite report |
 | 输出格式不稳定 | 中 | 首版优先 JSON/CSV/status file，`.mat` 作为增强 |
 | 图像/plot backend 环境差异 | 中 | figure 输出通过 `OctaveOutputSpec` 支持，真实 smoke gated |
-| 长时间任务阻塞 | 中 | 后续接入 ExecutionLifecycleService 和 scheduler adapter |
+| 长时间任务阻塞 | 中 | `OctaveAsyncExecutor` + dry-run scheduler seam；真实集群执行 gated |
 | 数值结果平台差异 | 中 | 容差、BLAS/LAPACK facts、seed、environment evidence |
 
 开放问题：
 
-- 首版是否需要支持 `.mat` 解析，还是只要求 wrapper 产出 JSON/CSV 摘要？
-- 静态脚本扫描（`system()`/`unix()`/`!cmd`）作为 future hardening：当前安全依赖 SandboxTier OS 级隔离，后续可增加编译期脚本扫描作为 defense-in-depth；
 - Live Workspace 是否应作为 Octave extension 内部能力，还是作为更上层 MHE scientific workspace service？
-- HPC/SLURM 执行是否属于 Octave executor mode，还是单独 scheduler adapter？
-- Scientific Context Engine 的量纲/误差传播应在 compiler 前还是 validator 后接入？
+- 真实 HPC/SLURM 执行如何在本地 dry-run scheduler contract 基础上进行 gated submit/poll/collect？
+- Scientific Context Engine 是否需要引入真实 pint/uncertainties 依赖，还是继续保持轻量内置检查？
 
 ---
 
