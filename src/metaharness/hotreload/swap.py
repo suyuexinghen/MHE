@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from metaharness.core.drain import DrainEpoch
 from metaharness.core.models import SessionEventType
 from metaharness.hotreload.checkpoint import Checkpoint, CheckpointManager
 from metaharness.hotreload.migration import MigrationAdapterRegistry
@@ -81,6 +82,7 @@ class HotSwapOrchestrator:
         graph_version: int | None = None,
         rollback_target: int | None = None,
         allow_protected: bool = False,
+        drain_epoch: DrainEpoch | None = None,
     ) -> HotSwapReport:
         """Swap ``outgoing`` for ``incoming``, migrating its state.
 
@@ -129,7 +131,8 @@ class HotSwapOrchestrator:
         runtime_registry = self._runtime_migration_registry(outgoing, incoming)
 
         async def capture() -> Checkpoint:
-            await outgoing.suspend()
+            if drain_epoch is None or component_id not in drain_epoch.suspended_components:
+                await outgoing.suspend()
             ckpt = await self.checkpoints.capture(
                 outgoing,
                 component_id=component_id,
@@ -379,6 +382,7 @@ class HotSwapOrchestrator:
         graph_version: int | None = None,
         rollback_target: int | None = None,
         allow_protected: bool = False,
+        drain_epoch: DrainEpoch | None = None,
     ) -> HotSwapReport:
         return asyncio.run(
             self.swap(
@@ -395,5 +399,6 @@ class HotSwapOrchestrator:
                 graph_version=graph_version,
                 rollback_target=rollback_target,
                 allow_protected=allow_protected,
+                drain_epoch=drain_epoch,
             )
         )

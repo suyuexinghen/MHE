@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import Mapping
 from typing import Any
 
+from metaharness.core.drain import DrainEpoch
 from metaharness.core.models import SessionEventType
 from metaharness.hotreload import (
     CheckpointManager,
@@ -156,6 +157,33 @@ def test_hot_swap_preserves_state_through_migration() -> None:
     assert outgoing.suspended == 1
     assert outgoing.deactivated == 1
     assert incoming.resumed == 1
+
+
+def test_hot_swap_reuses_existing_drain_epoch_suspension() -> None:
+    outgoing = _StatefulComponent(initial={"counter": 7})
+    incoming = _StatefulComponent()
+    epoch = DrainEpoch(
+        epoch_id="drain-swap-1",
+        candidate_id="swap-candidate",
+        graph_version=1,
+        affected_components=["runtime.primary"],
+        suspended_components=["runtime.primary"],
+    )
+    orchestrator = HotSwapOrchestrator()
+
+    report = orchestrator.swap_sync(
+        component_id="runtime.primary",
+        outgoing=outgoing,
+        incoming=incoming,
+        delta={"added": True},
+        drain_epoch=epoch,
+    )
+
+    assert report.success is True
+    assert outgoing.suspended == 0
+    assert outgoing.deactivated == 1
+    assert incoming.resumed == 1
+    assert incoming.state == {"counter": 7, "added": True}
 
 
 def test_hot_swap_uses_registered_exact_adapter() -> None:

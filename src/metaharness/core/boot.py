@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from metaharness.core.connection_engine import ConnectionEngine
+from metaharness.core.drain import DrainCoordinator
 from metaharness.core.event_bus import (
     AFTER_COMMIT_GRAPH,
     BEFORE_COMMIT_GRAPH,
@@ -29,10 +30,12 @@ from metaharness.core.graph_versions import (
 )
 from metaharness.core.lifecycle_tracker import LifecycleTracker
 from metaharness.core.models import (
+    GraphSnapshot,
     PendingConnectionSet,
     PromotionContext,
     SessionEvent,
     SessionEventType,
+    ValidationReport,
 )
 from metaharness.core.mutation import MutationSubmitter
 from metaharness.core.port_index import PortIndex, RouteTable
@@ -40,7 +43,13 @@ from metaharness.hotreload.migration import MigrationAdapterRegistry
 from metaharness.identity import InMemoryIdentityBoundary
 from metaharness.observability.events import InMemorySessionStore, SessionStore, make_session_event
 from metaharness.provenance import ArtifactSnapshotStore, AuditLog, ProvGraph, RelationKind
-from metaharness.safety import SafetyPipeline, parse_sandbox_tier
+from metaharness.safety import (
+    ABShadowTester,
+    AutoRollback,
+    SafetyPipeline,
+    SandboxValidator,
+    parse_sandbox_tier,
+)
 from metaharness.sdk.base import HarnessComponent
 from metaharness.sdk.dependency import resolve_boot_order
 from metaharness.sdk.discovery import ComponentDiscovery, DiscoveryResult
@@ -110,9 +119,17 @@ class HarnessRuntime:
         self.event_bus = event_bus or EventBus()
         self.lifecycle = LifecycleTracker()
         self.submitter = MutationSubmitter(engine=self.engine)
-        self.safety_pipeline = SafetyPipeline()
+        self.shadow_tester = ABShadowTester()
+        self.auto_rollback = AutoRollback(self.engine)
+        self.safety_pipeline = SafetyPipeline([SandboxValidator(self.registry), self.shadow_tester])
         self.migration_adapters = MigrationAdapterRegistry()
         self.components: dict[str, HarnessComponent] = {}
+        self.drain_coordinator = DrainCoordinator(
+            engine=self.engine,
+            event_bus=self.event_bus,
+            components=self.components,
+            lifecycle=self.lifecycle,
+        )
         self._default_identity_boundary = InMemoryIdentityBoundary()
         self._runtime_factory = runtime_factory
         self._enabled_overrides = enabled_overrides or {}
@@ -352,6 +369,7 @@ class HarnessRuntime:
                 graph_reader=runtime.graph_reader,
                 mutation_submitter=runtime.mutation_submitter or self.submitter,
                 resource_quota=runtime.resource_quota or self.resource_quota,
+                drain_coordinator=runtime.drain_coordinator or self.drain_coordinator,
             )
             runtime.services = services
             if runtime.event_bus is None:
@@ -372,6 +390,8 @@ class HarnessRuntime:
                 runtime.mutation_submitter = services.mutation_submitter
             if runtime.resource_quota is None:
                 runtime.resource_quota = services.resource_quota
+            if runtime.drain_coordinator is None:
+                runtime.drain_coordinator = services.drain_coordinator
             if runtime.migration_adapters is None:
                 runtime.migration_adapters = self.migration_adapters
             component, api = declare_component(component_id, manifest, runtime=runtime)
@@ -434,6 +454,25 @@ class HarnessRuntime:
         if hasattr(policy_component, "review_graph_promotion"):
             return policy_component.review_graph_promotion
         return None
+
+    def register_shadow_runners(
+        self,
+        *,
+        baseline_runner: Callable[[PromotionContext, dict[str, Any]], Any],
+        candidate_runner: Callable[[PromotionContext, dict[str, Any]], Any],
+        comparator: Callable[[Any, Any], tuple[bool, str]] | None = None,
+    ) -> None:
+        self.shadow_tester.baseline_runner = baseline_runner
+        self.shadow_tester.candidate_runner = candidate_runner
+        if comparator is not None:
+            self.shadow_tester.comparator = comparator
+
+    def register_health_probe(
+        self,
+        name: str,
+        probe: Callable[[dict[str, Any]], tuple[bool, str]],
+    ) -> None:
+        self.auto_rollback.register_probe(name, probe)
 
     def deferred_candidates(self) -> list[CandidateRecord]:
         """Return candidates still awaiting deferred review."""
@@ -610,10 +649,17 @@ class HarnessRuntime:
             )
             return reviewed_candidate
 
-        self.version_manager.cutover(candidate.snapshot)
-        self.engine.load_graph(candidate.snapshot)
-        version = candidate.snapshot.graph_version
-        self.registry.record_graph_version(version)
+        version = self._cutover_graph_with_drain(
+            candidate_id=candidate.candidate_id,
+            snapshot=candidate.snapshot,
+            promotion=promotion,
+        )
+        if (
+            promotion.rollback_target is not None
+            and self.version_manager.rollback_target != promotion.rollback_target
+        ):
+            raise RuntimeError("rollback target invariant violated")
+        self._run_post_commit_health_checks(promotion, version)
         commit_report = (
             candidate.report
             if candidate.report.valid
@@ -637,6 +683,92 @@ class HarnessRuntime:
         )
         self.event_bus.publish(AFTER_COMMIT_GRAPH, promotion)
         return reviewed_candidate
+
+    def _run_post_commit_health_checks(
+        self,
+        promotion: PromotionContext,
+        graph_version: int,
+    ) -> None:
+        result = self.auto_rollback.check(
+            {
+                "promotion": promotion,
+                "graph_version": graph_version,
+                "rollback_target": promotion.rollback_target,
+            }
+        )
+        if result.allowed:
+            return
+        self.registry.record_graph_version(self.version_manager.active_version or graph_version)
+        self._append_runtime_evidence(
+            SessionEventType.GRAPH_ROLLED_BACK,
+            promotion,
+            graph_version=self.version_manager.active_version,
+            payload={
+                "reason": result.reason,
+                "rolled_back_from": result.evidence.get("rolled_back_from"),
+                "rolled_back_to": result.evidence.get("rolled_back_to"),
+                "probe": result.evidence.get("probe"),
+            },
+        )
+        raise RuntimeError(f"post-commit health check failed: {result.reason}")
+
+    def _cutover_graph_with_drain(
+        self,
+        *,
+        candidate_id: str,
+        snapshot: GraphSnapshot,
+        promotion: PromotionContext,
+        report: ValidationReport | None = None,
+    ) -> int:
+        affected_components = [node.component_id for node in snapshot.nodes]
+        epoch = self.drain_coordinator.begin(
+            candidate_id=candidate_id,
+            graph_version=snapshot.graph_version,
+            affected_components=affected_components,
+        )
+        self._append_runtime_evidence(
+            SessionEventType.DRAIN_STARTED,
+            promotion,
+            graph_version=snapshot.graph_version,
+            payload={
+                "drain_epoch": epoch.epoch_id,
+                "affected_components": epoch.affected_components,
+                "rollback_target": promotion.rollback_target,
+            },
+        )
+        try:
+            if report is None:
+                self.version_manager.cutover(snapshot)
+                self.engine.load_graph(snapshot)
+                version = snapshot.graph_version
+            else:
+                version = self.engine.commit(candidate_id, snapshot, report)
+            self.registry.record_graph_version(version)
+            drain_report = self.drain_coordinator.complete(epoch)
+            self._append_runtime_evidence(
+                SessionEventType.DRAIN_COMPLETED,
+                promotion,
+                graph_version=version,
+                payload={
+                    "drain_epoch": drain_report.epoch.epoch_id,
+                    "suspended_components": drain_report.epoch.suspended_components,
+                    "buffered_routes": drain_report.epoch.buffered_routes,
+                    "buffered_events": drain_report.epoch.buffered_events,
+                },
+            )
+            return version
+        except Exception as exc:
+            drain_report = self.drain_coordinator.abort(epoch, error=str(exc))
+            self._append_runtime_evidence(
+                SessionEventType.DRAIN_FAILED,
+                promotion,
+                graph_version=snapshot.graph_version,
+                payload={
+                    "drain_epoch": drain_report.epoch.epoch_id,
+                    "error": str(exc),
+                },
+            )
+            raise
 
     def commit_graph(
         self, pending: PendingConnectionSet, *, candidate_id: str = "boot-graph"
@@ -741,8 +873,14 @@ class HarnessRuntime:
         self.event_bus.publish(BEFORE_COMMIT_GRAPH, promotion)
 
         commit_report = report if report.valid else report.model_copy(update={"valid": True})
-        version = self.engine.commit(candidate_id, candidate, commit_report)
-        self.registry.record_graph_version(version)
+        version = self._cutover_graph_with_drain(
+            candidate_id=candidate_id,
+            snapshot=candidate,
+            promotion=promotion,
+            report=commit_report,
+        )
+        if rollback_target is not None and self.version_manager.rollback_target != rollback_target:
+            raise RuntimeError("rollback target invariant violated")
         for node in candidate.nodes:
             phase = self.lifecycle.phase(node.component_id)
             if phase == ComponentPhase.COMMITTED:
@@ -750,6 +888,7 @@ class HarnessRuntime:
             self.lifecycle.record(node.component_id, ComponentPhase.VALIDATED_DYNAMIC)
             self.lifecycle.record(node.component_id, ComponentPhase.ACTIVATED)
             self.lifecycle.record(node.component_id, ComponentPhase.COMMITTED)
+        self._run_post_commit_health_checks(promotion, version)
         self._append_runtime_evidence(
             SessionEventType.GRAPH_COMMITTED,
             promotion,

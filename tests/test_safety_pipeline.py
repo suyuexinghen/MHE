@@ -118,12 +118,13 @@ def test_level_2_ab_shadow_rejects_divergence() -> None:
     assert result.decision == GateDecision.REJECT
 
 
-def test_level_2_ab_shadow_defers_without_runners() -> None:
+def test_level_2_ab_shadow_allows_without_runners() -> None:
     gate = ABShadowTester()
     result = gate.evaluate(
         MutationProposal(proposal_id="p", description="", pending=PendingConnectionSet())
     )
-    assert result.decision == GateDecision.DEFER
+    assert result.decision == GateDecision.ALLOW
+    assert result.evidence["configured"] is False
 
 
 def test_level_3_policy_veto_delegates_to_reviewer(manifest_dir: Path, graphs_dir: Path) -> None:

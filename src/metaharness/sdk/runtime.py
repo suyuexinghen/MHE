@@ -29,6 +29,7 @@ class RuntimeServices:
     graph_reader: Any | None = None
     mutation_submitter: Any | None = None
     resource_quota: "ResourceQuotaProtocol | Any | None" = None
+    drain_coordinator: Any | None = None
 
 
 @dataclass(slots=True)
@@ -60,6 +61,7 @@ class ComponentRuntime:
     tool_execute: Any | None = None
     identity_boundary: Any | None = None
     resource_quota: "ResourceQuotaProtocol | Any | None" = None
+    drain_coordinator: Any | None = None
     migration_adapters: "MigrationAdapterRegistry | None" = None
 
     def resolved_brain_provider(self) -> BrainProvider | Any | None:
@@ -93,6 +95,9 @@ class ComponentRuntime:
 
     def resolved_resource_quota(self) -> ResourceQuotaProtocol | Any | None:
         return self.services.resource_quota if self.services else self.resource_quota
+
+    def resolved_drain_coordinator(self) -> Any | None:
+        return self.services.drain_coordinator if self.services else self.drain_coordinator
 
     def require_credentials(
         self,

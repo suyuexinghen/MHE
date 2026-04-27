@@ -318,10 +318,14 @@ def test_commit_graph_records_session_events_and_graph_links(
         SessionEventType.CANDIDATE_CREATED,
         SessionEventType.CANDIDATE_VALIDATED,
         SessionEventType.SAFETY_GATE_EVALUATED,
+        SessionEventType.DRAIN_STARTED,
+        SessionEventType.DRAIN_COMPLETED,
         SessionEventType.GRAPH_COMMITTED,
     ]
     assert all(event.candidate_id == "evidence-commit" for event in events)
     assert all(event.graph_version == 1 for event in events)
+    assert events[-3].payload["drain_epoch"] == "drain-evidence-commit-1"
+    assert events[-2].payload["drain_epoch"] == "drain-evidence-commit-1"
     assert events[-1].payload["committed_graph_version"] == 1
 
     provenance = runtime.provenance_graph.to_dict()
@@ -395,6 +399,84 @@ def test_commit_graph_rejection_records_session_evidence_with_candidate_linkage(
         for relation in provenance["relations"]
     )
     assert len(runtime.audit_log.by_kind("session.candidate_rejected")) == 1
+
+
+def test_runtime_uses_default_safety_pipeline(manifest_dir: Path, graphs_dir: Path) -> None:
+    runtime = HarnessRuntime(ComponentDiscovery(bundled=manifest_dir))
+    runtime.boot()
+    snapshot = parse_graph_xml(graphs_dir / "default-topology.xml")
+
+    runtime.commit_graph(
+        PendingConnectionSet(nodes=snapshot.nodes, edges=snapshot.edges),
+        candidate_id="default-safety",
+    )
+
+    safety_event = runtime.session_events(event_type=SessionEventType.SAFETY_GATE_EVALUATED)[-1]
+    assert [result["gate"] for result in safety_event.payload["results"]] == [
+        "policy_review",
+        "level_1_sandbox_validator",
+        "level_2_ab_shadow",
+    ]
+    assert safety_event.payload["results"][2]["evidence"]["configured"] is False
+
+
+def test_commit_graph_rejects_shadow_divergence(manifest_dir: Path, graphs_dir: Path) -> None:
+    runtime = HarnessRuntime(ComponentDiscovery(bundled=manifest_dir))
+    runtime.boot()
+    snapshot = parse_graph_xml(graphs_dir / "default-topology.xml")
+    runtime.register_shadow_runners(
+        baseline_runner=lambda _promotion, _trial: "baseline",
+        candidate_runner=lambda _promotion, _trial: "candidate",
+    )
+
+    with pytest.raises(ValueError, match="shadow mismatch"):
+        runtime.commit_graph(
+            PendingConnectionSet(nodes=snapshot.nodes, edges=snapshot.edges),
+            candidate_id="shadow-reject",
+        )
+
+    assert runtime.version_manager.active_version is None
+    rejected = runtime.session_events()[-1]
+    assert rejected.event_type == SessionEventType.CANDIDATE_REJECTED
+    assert rejected.payload["safety"]["rejected_by"] == "level_2_ab_shadow"
+
+
+def test_commit_graph_auto_rolls_back_after_health_probe_failure(
+    manifest_dir: Path, graphs_dir: Path
+) -> None:
+    runtime = HarnessRuntime(ComponentDiscovery(bundled=manifest_dir))
+    runtime.boot()
+    snapshot = parse_graph_xml(graphs_dir / "default-topology.xml")
+    pending = PendingConnectionSet(nodes=snapshot.nodes, edges=snapshot.edges)
+
+    runtime.commit_graph(pending, candidate_id="healthy-baseline")
+    runtime.register_health_probe("latency", lambda _ctx: (False, "latency spike"))
+
+    with pytest.raises(RuntimeError, match="post-commit health check failed"):
+        runtime.commit_graph(pending, candidate_id="unhealthy-candidate")
+
+    assert runtime.version_manager.active_version == 1
+    events = runtime.session_events()
+    assert events[-1].event_type == SessionEventType.GRAPH_ROLLED_BACK
+    assert events[-1].payload["rolled_back_from"] == 2
+    assert events[-1].payload["rolled_back_to"] == 1
+
+
+def test_commit_graph_preserves_rollback_target_invariant(
+    manifest_dir: Path, graphs_dir: Path
+) -> None:
+    runtime = HarnessRuntime(ComponentDiscovery(bundled=manifest_dir))
+    runtime.boot()
+    snapshot = parse_graph_xml(graphs_dir / "default-topology.xml")
+    pending = PendingConnectionSet(nodes=snapshot.nodes, edges=snapshot.edges)
+
+    runtime.commit_graph(pending, candidate_id="rollback-v1")
+    runtime.commit_graph(pending, candidate_id="rollback-v2")
+
+    assert runtime.version_manager.active_version == 2
+    assert runtime.version_manager.rollback_target == 1
+    committed = runtime.session_events(event_type=SessionEventType.GRAPH_COMMITTED)[-1]
+    assert committed.payload["rollback_target"] == 1
 
 
 def test_commit_graph_rejects_when_policy_vetoes(manifest_dir: Path, graphs_dir: Path) -> None:
@@ -490,8 +572,12 @@ def test_review_deferred_candidate_can_promote_after_policy_allows(
     assert runtime.version_manager.active_version == 1
     assert runtime.build_route_table() is not None
     events = session_store.get_events(runtime.session_id)
-    assert events[-2].event_type == SessionEventType.SAFETY_GATE_EVALUATED
-    assert events[-1].event_type == SessionEventType.GRAPH_COMMITTED
+    assert [event.event_type for event in events[-4:]] == [
+        SessionEventType.SAFETY_GATE_EVALUATED,
+        SessionEventType.DRAIN_STARTED,
+        SessionEventType.DRAIN_COMPLETED,
+        SessionEventType.GRAPH_COMMITTED,
+    ]
 
 
 def test_review_deferred_candidate_can_reject_after_policy_vetoes(

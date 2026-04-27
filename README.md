@@ -1,234 +1,60 @@
 # Meta-Harness Engineering
 
-Meta-Harness Engineering (`MHE`) is a Python reference runtime for the Meta-Harness model. It combines a typed component SDK, manifest-driven discovery, candidate-first graph assembly, semantic validation, versioned routing, hot-swap state migration, safety gating, provenance, and optimizer scaffolding in one codebase.
+Meta-Harness Engineering (`MHE`) is a Python reference runtime for the Meta-Harness model. It provides a typed component SDK, manifest-driven discovery, candidate-first graph assembly, semantic validation, versioned routing, hot-swap state migration, safety gating, provenance, and optimizer scaffolding.
 
-The project is best understood as a **research and engineering runtime** rather than a production orchestrator. Its strongest current surfaces are:
+MHE is best understood as a **research and engineering runtime**, not a production orchestrator. The runtime treats the **internal graph model** as the source of authority. XML files are import/configuration inputs, not the in-memory runtime truth.
 
-- the typed SDK under `src/metaharness/sdk/`
-- the graph/runtime core under `src/metaharness/core/`
-- the XML import and validation flow under `src/metaharness/config/`
-- the boot orchestrator `HarnessRuntime`
-- the demo harness and CLI
-- the hot-reload, identity-boundary, safety, and provenance subsystems
-
-MHE treats the **internal graph model** as runtime authority. XML is an import/config format, not the in-memory source of truth.
-
-## What Ships Today
+## Current Scope
 
 The current tree includes:
 
-- typed SDK models for ports, events, slots, capabilities, manifests, and runtime injection
+- a typed SDK for ports, events, slots, capabilities, manifests, and runtime injection
 - manifest loading, multi-source discovery, static validation, and dependency ordering
-- a registry that tracks declarations, slot bindings, capability indexes, and graph versions
-- internal graph models for nodes, edges, pending mutations, snapshots, and validation reports
-- a `ConnectionEngine` that stages, validates, commits, routes, and rolls back graph snapshots
-- structural XML validation and semantic graph validation
-- a boot orchestrator (`HarnessRuntime`) that wires discovery, activation, handler registration, identity boundary injection, and migration adapter collection
-- nine bundled core-component implementations plus an optimizer component
-- hot-reload support with checkpoints, migration adapter registry, saga compensation, and observation-window evaluation
-- a minimal protected identity boundary for credential separation
-- safety modules for sandbox validation, A/B shadow checks, policy veto, and auto-rollback
-- in-memory observability, provenance, and Merkle-anchored audit logging primitives
-- optimizer search, trigger, convergence, template, and code-generation scaffolding
-- bundled example manifests and example graphs
-- a runnable demo harness and a small CLI
-- an extensive pytest suite covering the main subsystems
+- registry and graph models for component declarations, slot bindings, candidate graphs, snapshots, and validation reports
+- a `ConnectionEngine` for staging, validating, committing, routing, and rolling back graph snapshots
+- structural XML validation plus semantic graph validation
+- a boot orchestrator, `HarnessRuntime`, for discovery, activation, handler registration, identity-boundary injection, and migration-adapter collection
+- hot-reload support with checkpoints, migration adapters, saga compensation, and observation-window evaluation
+- safety modules for sandbox validation, policy gates, shadow checks, and rollback hooks
+- provenance primitives for evidence, audit logging, Merkle anchoring, and artifact snapshots
+- optimizer scaffolding for proposal generation, search, convergence tracking, and mutation templates
+- domain extension packages under `src/metaharness_ext/`
+- examples, manifests, and a pytest suite for the runtime and extensions
 
-## Current Maturity
+## Maturity
 
-MHE is intentionally **modular, testable, and explicit**, but many subsystems are still reference-grade:
+MHE is intentionally modular, explicit, and testable. Several subsystems are still reference-grade:
 
-- most storage and stateful services are in-memory
-- the bundled demo components are intentionally simple and mostly echo-style
-- the CLI is small and focused on demo, validation, and version reporting
-- the hot-swap path is implemented, but its observation inputs are caller-supplied rather than fully wired to a live metrics backend
-- the optimizer package is broad, but the core authority boundary remains strict: proposals only, no direct active-graph write path
+- most runtime stores are local or in-memory by default
+- bundled core components are demonstration components rather than production service integrations
+- the CLI focuses on demo, validation, and version reporting
+- hot-swap observation depends on supplied metrics/events rather than a fully integrated live metrics backend
+- optimizer outputs are proposals; they do not directly mutate the active graph
 
-That makes MHE well suited for:
-
-- architecture experiments
-- contract and manifest evolution
-- routing and graph-validation work
-- hot-reload protocol development
-- safety-chain testing
-- optimizer and provenance research
-- extension prototyping
-
-It is not yet a production control plane.
+MHE is suitable for architecture experiments, contract evolution, graph-validation work, hot-reload protocol development, safety-chain testing, provenance research, optimizer research, and extension prototyping.
 
 ## Extension Packages
 
-MHE ships with domain-specific extension packages under `src/metaharness_ext/`:
+Domain extensions live under `src/metaharness_ext/`. Their maturity varies by package; use each extension's wiki, tests, and user guides as the source of truth.
 
-### `metaharness_ext.nektar` — Nektar++ Solver Extension
+| Package | Purpose | Current Notes |
+|---|---|---|
+| `metaharness_ext.ai4pde` | PDE-oriented scientific-agent workflows | Provides typed PDE task, planning, solving, validation, and evidence surfaces. |
+| `metaharness_ext.nektar` | Nektar++ solver workflows | Wraps session compilation, solver execution, postprocess, validation, and convergence studies. |
+| `metaharness_ext.deepmd` | DeePMD-kit / DP-GEN workflows | Provides environment probing, config compilation, execution, validation, evidence, policy, and study support. |
+| `metaharness_ext.jedi` | JEDI workflow control surfaces | Supports schema/validate/real-run style execution boundaries for JEDI-family workflows. |
+| `metaharness_ext.abacus` | ABACUS materials-simulation workflows | In active development; design and typed boundaries are present, with remaining implementation work tracked in blueprint docs. |
+| `metaharness_ext.qcompute` | Quantum-computing workflows | Provides Qiskit Aer, PennyLane, gated Quafu, noise mitigation, studies, VQE, evidence, and governance paths. |
 
-A solver-specific extension that wraps Nektar++ workflows into the HarnessComponent / manifest / slot system.
+Primary extension docs:
 
-Current execution chain:
-
-```text
-NektarGateway -> SessionCompiler -> XMLRenderer -> SolverExecutor -> Postprocess -> Validator
-```
-
-Key components:
-- `NektarGatewayComponent` — emits `NektarProblemSpec` tasks
-- `SessionCompilerComponent` — compiles problem specs into `NektarSessionPlan`
-- `SolverExecutorComponent` — runs `ADRSolver` / `IncNavierStokesSolver` via subprocess
-- `PostprocessComponent` — runs `FieldConvert` for format conversion and error extraction
-- `NektarValidatorComponent` — validates results against exit codes, file existence, and error tolerances
-- `ConvergenceStudyComponent` — performs structured convergence studies (e.g., `NUMMODES` sweeps)
-
-Key contracts: `NektarProblemSpec`, `NektarSessionPlan`, `NektarRunArtifact`, `ConvergenceStudySpec`, `ConvergenceStudyReport`
-
-Supported solver families: `ADR` (advection-diffusion-reaction) and `IncNS` (incompressible Navier-Stokes)
-
-For details, see:
-- `MHE/docs/AI4PDE_NEKTAR_COMPARISON_MANUAL.md` for the current same-problem AI4PDE vs Nektar comparison workflow and interpretation limits
-- `MHE/docs/wiki/meta-harness-engineer/nektar-engine-wiki/`
-- `MHE/src/metaharness_ext/nektar/`
-
-### `metaharness_ext.deepmd` — DeepMD / DP-GEN Extension
-
-A workflow-oriented extension that wraps DeePMD-kit and DP-GEN control surfaces into typed specs, controlled JSON compilers, mode-aware execution, evidence packaging, and runtime handoff.
-
-Current execution chain:
-
-```text
-DeepMDGateway -> EnvironmentProbe -> Compiler -> Executor -> Validator -> Evidence -> Policy
-```
-
-Key components:
-- `DeepMDGatewayComponent` — emits `DeepMDTrainSpec` plus helper constructors for `DPGenRunSpec`, `DPGenSimplifySpec`, and `DPGenAutotestSpec`
-- `DeepMDEnvironmentProbeComponent` — checks family-aware prerequisites before execution
-- `DeepMDTrainConfigCompilerComponent` — builds `input.json`, `param.json`, and `machine.json` plans
-- `DeepMDExecutorComponent` — runs DeePMD / DP-GEN commands and collects artifacts
-- `DeepMDValidatorComponent` — emits mode-aware `DeepMDValidationReport` with `scored_evidence`
-- `DeepMDStudyComponent` — runs typed parameter sweeps and records trial-level governance artifacts
-
-Key contracts: `DeepMDTrainSpec`, `DPGenRunSpec`, `DPGenSimplifySpec`, `DPGenAutotestSpec`, `DeepMDRunArtifact`, `DeepMDValidationReport`, `DeepMDEvidenceBundle`, `DeepMDStudyReport`
-
-Supported application families: `deepmd_train`, `dpgen_run`, `dpgen_simplify`, `dpgen_autotest`
-
-For details, see:
-- `MHE/docs/TEST_GUIDE.md` for test tiers and optional installed-binary smoke checks
-- `MHE/docs/wiki/meta-harness-engineer/deepmd-engine-wiki/`
-- `MHE/src/metaharness_ext/deepmd/`
-
-### `metaharness_ext.ai4pde` — AI4PDE Agent Extension
-
-A scientific-agent extension for PDE-solving workflows combining team runtime, meta-harness governance, and multi-method solver capabilities.
-
-Architecture layers:
-
-```text
-Meta Layer (AI4PDE Meta-Harness)
-  -> Coordination Layer (AI4PDE Team Runtime)
-    -> Runtime Layer (PDE Capability Fabric)
-```
-
-Key components:
-- `PDEGatewayComponent` — issues `PDETaskRequest` with physics/geometry/data specs
-- `ProblemFormulatorComponent` — formalizes PDE problems
-- `MethodRouterComponent` — routes to appropriate solver families
-- `SolverExecutorComponent` — executes PINN strong-form and classical hybrid solvers
-- `PhysicsValidatorComponent` — validates residual, boundary conditions, and conservation
-- `EvidenceManagerComponent` — bundles scientific evidence for audit
-
-Key contracts: `PDETaskRequest`, `PDEPlan`, `PDERunArtifact`, `ValidationBundle`, `ScientificEvidenceBundle`
-
-Supported solver families: `pinn_strong`, `dem_energy`, `operator_learning`, `pino`, `classical_hybrid`
-
-For details, see:
-- `MHE/docs/AI4PDE_NEKTAR_COMPARISON_MANUAL.md` for the current same-problem AI4PDE vs Nektar comparison workflow and interpretation limits
-- `MHE/docs/wiki/meta-harness-engineer/ai4pde-agent-wiki/`
-- `MHE/src/metaharness_ext/ai4pde/`
-
----
-
-## Architecture At A Glance
-
-### 1. Components are declared, not inferred
-
-Each component is defined by:
-
-- a JSON manifest (`ComponentManifest`)
-- a Python implementation (`HarnessComponent`)
-- declarations collected through `HarnessAPI`
-
-Manifests declare:
-
-- `entry` import path
-- contracts: inputs, outputs, events, capabilities, slots
-- safety metadata
-- state schema version
-- dependency requirements
-- runtime version, binary, and environment constraints
-
-### 2. Discovery and boot are explicit
-
-`HarnessRuntime` performs the main boot flow:
-
-1. resolve manifests from discovery roots
-2. apply enable/disable overrides
-3. run static manifest validation
-4. dependency-sort boot order
-5. instantiate components and collect declarations
-6. register declarations into the registry
-7. inject runtime services such as identity boundary and migration adapter registry
-8. activate components
-9. attach declared connection handlers
-
-Graph commit is separate from boot.
-
-### 3. Graphs are staged before promotion
-
-A graph enters runtime through a `PendingConnectionSet`, then moves through:
-
-1. candidate snapshot creation
-2. semantic validation
-3. candidate recording
-4. commit on success
-5. rollback to previous committed state if needed
-
-### 4. Routing is versioned
-
-`ConnectionEngine` compiles committed edges into route bindings and dispatches payloads by source port. Routing modes currently include:
-
-- `sync`
-- `async`
-- `event`
-- `shadow`
-
-### 5. Hot swap is state-aware
-
-Hot swap is not just component replacement. The runtime includes:
-
-- checkpoint capture
-- migration adapter lookup
-- `transform_state()` fallback
-- resume into the incoming component
-- optional observation-window rejection
-- saga compensation on failure
-
-### 6. Identity is a boundary, not a primary slot
-
-The current implementation does **not** model identity as a standalone core component. Instead, it injects an `InMemoryIdentityBoundary` that:
-
-- issues attestations
-- keeps protected credentials off normal payload paths
-- exposes only public identity material to ordinary component flow
-
-### 7. Safety and provenance are layered
-
-The repository includes separate modules for:
-
-- sandbox validation
-- A/B shadow evaluation
-- policy veto
-- post-commit auto-rollback
-- traces and metrics
-- append-only audit logging with Merkle anchoring
-- PROV-style evidence structures
+- `docs/qcompute-user-manual.md` — user-facing QCompute usage and testing guide
+- `docs/wiki/meta-harness-engineer/qcompute-engine-wiki/` — QCompute design and tested support matrix
+- `docs/wiki/meta-harness-engineer/ai4pde-agent-wiki/` — AI4PDE design wiki
+- `docs/wiki/meta-harness-engineer/nektar-engine-wiki/` — Nektar design wiki
+- `docs/wiki/meta-harness-engineer/deepmd-engine-wiki/` — DeepMD design wiki
+- `docs/wiki/meta-harness-engineer/jedi-engine-wiki/` — JEDI design wiki
+- `docs/wiki/meta-harness-engineer/abacus-engine-wiki/` — ABACUS design wiki
 
 ## Repository Layout
 
@@ -237,103 +63,82 @@ MHE/
 ├── README.md
 ├── pyproject.toml
 ├── docs/
+│   ├── README.md
 │   ├── USER_GUIDE.md
-│   ├── TECHNICAL_MANUAL.md
-│   ├── ROADMAP_STATUS.md
-│   ├── API_STABILITY.md
-│   ├── EXTENSION_GUIDE.md
-│   ├── OPTIMIZER_EXTENSIONS.md
-│   ├── PROTECTED_COMPONENTS.md
-│   └── adr/
+│   ├── TEST_GUIDE.md
+│   ├── qcompute-user-manual.md
+│   └── wiki/
 ├── examples/
 │   ├── graphs/
-│   └── manifests/baseline/
-├── src/metaharness/
-│   ├── cli.py
-│   ├── demo.py
-│   ├── components/
-│   ├── config/
-│   ├── core/
-│   ├── hotreload/
-│   ├── identity/
-│   ├── observability/
-│   ├── optimizer/
-│   ├── provenance/
-│   ├── safety/
-│   └── sdk/
-├── src/metaharness_ext/
-│   ├── ai4pde/
-│   └── nektar/
+│   ├── manifests/
+│   └── qcompute/
+├── src/
+│   ├── metaharness/
+│   └── metaharness_ext/
+│       ├── abacus/
+│       ├── ai4pde/
+│       ├── deepmd/
+│       ├── jedi/
+│       ├── nektar/
+│       └── qcompute/
 └── tests/
 ```
 
-Key notes:
-
-- `src/metaharness/`: core Meta-Harness runtime, SDK, safety, optimizer, provenance, and hot-reload implementation.
-- `src/metaharness/components/`: built-in component implementations such as gateway, planner, runtime, policy, and evaluation.
-- `src/metaharness/config/`: XML parsing, XSD schema, and configuration validation utilities.
-- `src/metaharness/core/`: graph model, lifecycle tracking, validators, event bus, and connection engine internals.
-- `src/metaharness/hotreload/`: checkpoint, migration, observation window, and swap orchestration logic.
-- `src/metaharness/identity/`: identity boundary and attestation-related abstractions.
-- `src/metaharness/observability/`: metrics, traces, and trajectory capture for runtime inspection.
-- `src/metaharness/optimizer/`: action space, convergence, fitness, search strategies, and template-based optimization.
-- `src/metaharness/provenance/`: audit logging, evidence, Merkle anchoring, and provenance query support.
-- `src/metaharness/safety/`: sandbox validation, gates, rollback hooks, policy veto, and safety pipeline logic.
-- `src/metaharness/sdk/`: component SDK, manifest loading, discovery, registry, and runtime injection infrastructure.
-- `src/metaharness_ext/ai4pde/`: AI4PDE domain extension for PDE-oriented agent workflows and policies.
-- `src/metaharness_ext/nektar/`: Nektar++ integration for session compilation, solver execution, postprocess, and validation.
-- `docs/`: primary documentation tree, including guides, ADRs, blueprints, and wiki material.
-- `examples/`: reference graphs and manifests for demos, tests, and baseline setups.
-- `tests/`: pytest suite covering the core runtime and both extension packages.
-
 ## Requirements
 
-Package metadata currently declares:
+Package metadata declares:
 
 - Python `>=3.11`
 - `pydantic>=2.12,<3`
 
-Repository development rules currently assume:
+Development tooling uses:
 
+- `pytest>=9,<10`
 - `ruff==0.15.6`
 - Ruff target version `py313`
-- pytest-based test execution
 
-If you are working on the codebase itself, using Python 3.13 is the safest match for the current repo configuration.
+Python 3.13 is the safest match for the current development configuration.
 
-## Install And Run
+Some extensions require optional external tools or libraries. For example, QCompute simulator paths require `qiskit` / `qiskit-aer`, and Quafu hardware use requires explicit environment gating plus a token. See the relevant extension guide before running optional external integrations.
 
-### Run directly from source
+## Install
 
-From the repository root:
-
-```bash
-PYTHONPATH=MHE/src python -m metaharness.cli version
-```
-
-### Editable install
+From this `MHE/` directory:
 
 ```bash
-pip install -e ./MHE
+pip install -e .
 ```
 
-This provides the console scripts:
+For development tools:
+
+```bash
+pip install -e '.[dev]'
+```
+
+Editable installation provides these console scripts:
 
 ```bash
 metaharness version
 metaharness demo
 metaharness-demo
+ai4pde-demo
+```
+
+You can also run from source without installation:
+
+```bash
+PYTHONPATH=src python -m metaharness.cli version
 ```
 
 ## Quick Start
 
-### 1. Run the minimal demo
+Run the minimal demo:
 
 ```bash
-PYTHONPATH=MHE/src python -m metaharness.demo
+PYTHONPATH=src python -m metaharness.demo
 ```
 
-Expected shape of output:
+Expected output shape:
 
 ```text
 topology=minimal
@@ -345,79 +150,57 @@ executor_status=executed
 score=1.0
 ```
 
-### 2. Run the expanded demo
+Run the expanded demo:
 
 ```bash
-PYTHONPATH=MHE/src python -m metaharness.cli demo --topology expanded --async-mode
+PYTHONPATH=src python -m metaharness.cli demo --topology expanded --async-mode
 ```
 
-The CLI emits structured JSON containing values such as:
-
-- `gateway_payload`
-- `runtime_payload`
-- `plan_payload`
-- `executor_payload`
-- `evaluation_payload`
-- `memory_record`
-- `policy_record`
-- `audit_event`
-- `lifecycle`
-
-### 3. Validate a graph
-
-Structural validation only:
+Validate an XML graph structurally:
 
 ```bash
-PYTHONPATH=MHE/src python -m metaharness.cli validate \
-  MHE/examples/graphs/minimal-happy-path.xml
+PYTHONPATH=src python -m metaharness.cli validate examples/graphs/minimal-happy-path.xml
 ```
 
-Structural and semantic validation:
+Validate with manifests and semantic checks:
 
 ```bash
-PYTHONPATH=MHE/src python -m metaharness.cli validate \
-  MHE/examples/graphs/minimal-expanded.xml \
-  --manifests MHE/examples/manifests/baseline
+PYTHONPATH=src python -m metaharness.cli validate \
+  examples/graphs/minimal-expanded.xml \
+  --manifests examples/manifests/baseline
 ```
 
-Exit codes:
+Validation exit codes:
 
 - `0` success
 - `2` structural validation failure
 - `3` semantic validation failure
 
-## Demo Topologies
+## Demo Graphs
 
-### Minimal
-
-The minimal graph currently routes:
+The minimal graph routes:
 
 ```text
 Gateway -> Runtime -> Executor -> Evaluation
 ```
 
-Shipped artifact:
-
-- `examples/graphs/minimal-happy-path.xml`
-
-### Expanded
-
-The expanded graph currently routes:
+The expanded graph routes:
 
 ```text
 Gateway -> Runtime -> Planner -> Executor -> Evaluation
                                       └-> Memory
 ```
 
-Shipped artifact:
+Example graph files include:
 
+- `examples/graphs/minimal-happy-path.xml`
 - `examples/graphs/minimal-expanded.xml`
-
-In the demo harness, `Policy` and `Observability` are present as control-plane helpers rather than main graph nodes in the example XML.
+- `examples/graphs/default-topology.xml`
+- extension-specific graph examples such as `ai4pde-minimal.xml`, `deepmd-minimal.xml`, `jedi-minimal.xml`, and `abacus-minimal.xml`
 
 ## Programmatic Boot Example
 
-The demo harness is the easiest way to see the runtime in action, but the actual boot orchestrator is `HarnessRuntime`.
+The demo harness is the easiest way to see MHE in action, but the main boot orchestrator is `HarnessRuntime`.
 
 ```python
 from pathlib import Path
@@ -427,8 +210,8 @@ from metaharness.core.boot import HarnessRuntime
 from metaharness.core.models import PendingConnectionSet
 from metaharness.sdk.discovery import ComponentDiscovery
 
-manifest_dir = Path("MHE/examples/manifests/baseline")
-graph_path = Path("MHE/examples/graphs/minimal-happy-path.xml")
+manifest_dir = Path("examples/manifests/baseline")
+graph_path = Path("examples/graphs/minimal-happy-path.xml")
 
 runtime = HarnessRuntime(ComponentDiscovery(bundled=manifest_dir))
 report = runtime.boot()
@@ -449,7 +232,7 @@ During boot, the runtime currently injects:
 - a shared in-memory identity boundary
 - a shared migration adapter registry
 
-If a component declares migration adapters through `HarnessAPI`, they are automatically collected into the runtime-owned hot-swap registry during boot.
+If a component declares migration adapters through `HarnessAPI`, they are collected into the runtime-owned hot-swap registry during boot.
 
 ## Core Concepts
 
@@ -459,24 +242,11 @@ A component is described by a manifest plus a Python implementation. The impleme
 
 ### Candidate-first graph model
 
-The runtime never directly mutates the active graph. It stages a candidate, validates it, and only promotes it on success.
+The runtime stages a graph candidate, validates it, records the candidate, and only promotes it to the active graph on success.
 
-### Lifecycle tracking
+### Versioned routing
 
-MHE tracks components across the current lifecycle phases:
-
-- `discovered`
-- `validated_static`
-- `assembled`
-- `validated_dynamic`
-- `activated`
-- `committed`
-- `failed`
-- `suspended`
-
-### Protected components
-
-Protected behavior is expressed through safety metadata and enforced during validation and governance checks. The current validator rejects protected-slot override conflicts.
+`ConnectionEngine` compiles committed edges into route bindings and dispatches payloads by source port. Routing modes currently include `sync`, `async`, `event`, and `shadow`.
 
 ### Identity boundary
 
@@ -484,92 +254,55 @@ Credential-like data is intentionally kept out of ordinary payloads. Components 
 
 ### Hot swap and migration
 
-The hot-swap subsystem uses:
+Hot swap combines checkpoint capture, migration-adapter lookup, `transform_state()` fallback, resume hooks, optional observation-window rejection, and saga compensation on failure.
 
-- `CheckpointManager`
-- `MigrationAdapterRegistry`
-- `HotSwapOrchestrator`
-- `ObservationWindowEvaluator`
-- `SagaRollback`
+### Safety and provenance
 
-For already-booted components, `HotSwapOrchestrator` now prefers `runtime.migration_adapters` automatically, so callers do not need to pass the registry explicitly when swapping runtime-owned components.
-
-## Validation Model
-
-### Structural validation
-
-`config/xsd_validator.py` checks XML structure and allowed values.
-
-Examples of checks:
-
-- expected root shape
-- required attributes
-- route mode values
-- connection policy values
-
-### Semantic validation
-
-`core/validators.py` validates a candidate graph against the registry.
-
-Current checks include:
-
-- duplicate connection IDs
-- unknown components
-- unknown source and target ports
-- payload mismatches
-- missing required inputs
-- protected slot overrides
-- cycles
-- orphaned components
+Safety, audit, rollback, trace, and evidence modules are separate layers. They can be composed by runtime flows and extensions without making any single layer the whole control plane.
 
 ## Development Workflow
 
-### Run the test suite
+Run the default test suite:
 
 ```bash
-PYTHONPATH=MHE/src pytest MHE/tests
+pytest
 ```
 
-### Run a focused test module
+The default pytest configuration excludes tests marked `nektar` and `quafu` because they require local external binaries or real hardware credentials.
+
+Run focused tests:
 
 ```bash
-PYTHONPATH=MHE/src pytest MHE/tests/test_boot.py
-PYTHONPATH=MHE/src pytest MHE/tests/test_hot_reload.py
+pytest tests/test_boot.py
+pytest tests/test_hot_reload.py
+python -m pytest tests/test_metaharness_qcompute_*.py --tb=short -q
 ```
 
-### Run lint checks
+Run lint and format:
 
 ```bash
-ruff check MHE
-```
-
-### Run format checks
-
-```bash
-ruff format --check MHE
+ruff check --fix .
+ruff format .
 ```
 
 ## Documentation Map
 
-- `docs/USER_GUIDE.md` — operating guide, examples, workflows, and troubleshooting
-- `docs/TECHNICAL_MANUAL.md` — internal architecture and implementation manual
-- `docs/EXTENSION_GUIDE.md` — extension-oriented guidance
-- `docs/OPTIMIZER_EXTENSIONS.md` — optimizer extension points
-- `docs/PROTECTED_COMPONENTS.md` — protected component rules
-- `docs/API_STABILITY.md` — stability expectations
-- `docs/ROADMAP_STATUS.md` — tracked status against the roadmap
-- `docs/adr/` — architecture decisions
+- `docs/README.md` — documentation index
+- `docs/USER_GUIDE.md` — user-oriented runtime guide
+- `docs/TEST_GUIDE.md` — test tiers and validation guidance
+- `docs/qcompute-user-manual.md` — QCompute usage, examples, hardware gate, and testing guide
+- `docs/wiki/README.md` — full wiki entry point
+- `docs/wiki/meta-harness-engineer/meta-harness-wiki/` — canonical MHE engineering wiki
+- `docs/wiki/meta-harness-engineer/blueprint/` — implementation plans, roadmaps, handoffs, and status material
 
 ## Known Limitations
 
-The current implementation is intentionally conservative and explicit:
-
-- most runtime stores are in-memory
-- the bundled components are simple demonstration components rather than production service integrations
-- the CLI focuses on demo/validate/version, not runtime administration
-- the identity boundary is minimal and local-only
-- hot-reload observation depends on supplied metrics/events rather than a fully integrated metrics backend
-- safety and optimizer modules are real code, but still reference-grade in overall operational maturity
+- Most runtime stores are local or in-memory by default.
+- Core demo components are intentionally simple.
+- Optional extension paths may require external scientific software, quantum SDKs, or hardware credentials.
+- Hardware-backed tests are gated and should not be treated as default CI coverage.
+- Hot-reload observation is implemented, but live production metrics integration is outside the current reference runtime.
+- Optimizer and governance modules are real code, but remain reference-grade in operational maturity.
 
 ## Recommended Reading Order
 
@@ -577,20 +310,15 @@ If you are new to MHE, read in this order:
 
 1. `README.md`
 2. `docs/USER_GUIDE.md`
-3. `docs/TECHNICAL_MANUAL.md`
-4. `src/metaharness/cli.py`
-5. `src/metaharness/demo.py`
-6. `src/metaharness/core/boot.py`
-7. `src/metaharness/core/connection_engine.py`
-8. `src/metaharness/core/validators.py`
-9. `tests/`
+3. `docs/TEST_GUIDE.md`
+4. `docs/TECHNICAL_MANUAL.md`
+5. `src/metaharness/cli.py`
+6. `src/metaharness/demo.py`
+7. `src/metaharness/core/boot.py`
+8. `src/metaharness/core/connection_engine.py`
+9. `src/metaharness/core/validators.py`
+10. `tests/`
 
 ## Summary
 
-MHE is a contract-first, graph-based runtime that makes routing, validation, lifecycle, state migration, and safety boundaries explicit. It is a strong foundation for Meta-Harness experimentation and engineering work, with clear separation between:
-
-- declaration and activation
-- candidate and active graph state
-- data-plane routing and control-plane governance
-- public payloads and protected identity material
-- hot-swap orchestration and rollback
+MHE is a contract-first, graph-based reference runtime that makes routing, validation, lifecycle, migration, safety, and provenance boundaries explicit. It is designed for Meta-Harness research and extension engineering, with clear separation between declarations and activation, candidate and active graph state, data-plane routing and control-plane governance, public payloads and protected identity material, and hot-swap orchestration and rollback.

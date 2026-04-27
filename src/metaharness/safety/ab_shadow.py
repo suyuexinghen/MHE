@@ -12,10 +12,11 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from metaharness.core.models import PromotionContext
 from metaharness.core.mutation import MutationProposal
 from metaharness.safety.gates import GateDecision, GateResult
 
-Runner = Callable[[MutationProposal, dict[str, Any]], Any]
+Runner = Callable[[MutationProposal | PromotionContext, dict[str, Any]], Any]
 Comparator = Callable[[Any, Any], tuple[bool, str]]
 
 
@@ -55,19 +56,31 @@ class ABShadowTester:
     def evaluate(
         self, proposal: MutationProposal, context: dict[str, Any] | None = None
     ) -> GateResult:
+        return self._evaluate_subject(proposal, context)
+
+    def evaluate_promotion(
+        self, promotion: PromotionContext, context: dict[str, Any] | None = None
+    ) -> GateResult:
+        return self._evaluate_subject(promotion, context)
+
+    def _evaluate_subject(
+        self,
+        subject: MutationProposal | PromotionContext,
+        context: dict[str, Any] | None = None,
+    ) -> GateResult:
         if self.baseline_runner is None or self.candidate_runner is None:
-            # When no runners are configured, defer (gate is not applicable).
             return GateResult(
                 gate=self.name,
-                decision=GateDecision.DEFER,
+                decision=GateDecision.ALLOW,
                 reason="no shadow runners configured",
+                evidence={"configured": False},
             )
         ctx = context or {}
         trials = list(ctx.get("trials") or [ctx])
         mismatches: list[ShadowTestResult] = []
         for trial in trials:
-            baseline = self.baseline_runner(proposal, trial)
-            candidate = self.candidate_runner(proposal, trial)
+            baseline = self.baseline_runner(subject, trial)
+            candidate = self.candidate_runner(subject, trial)
             match, detail = self.comparator(baseline, candidate)
             result = ShadowTestResult(
                 match=match, baseline=baseline, candidate=candidate, detail=detail
@@ -79,11 +92,11 @@ class ABShadowTester:
             return GateResult(
                 gate=self.name,
                 decision=GateDecision.ALLOW,
-                evidence={"trials": len(trials)},
+                evidence={"configured": True, "trials": len(trials)},
             )
         return GateResult(
             gate=self.name,
             decision=GateDecision.REJECT,
             reason=f"{len(mismatches)}/{len(trials)} shadow mismatch(es)",
-            evidence={"first_detail": mismatches[0].detail},
+            evidence={"configured": True, "first_detail": mismatches[0].detail},
         )

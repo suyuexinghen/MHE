@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import threading
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -33,6 +34,15 @@ class RouteBinding:
     policy: ConnectionPolicy
 
 
+@dataclass(slots=True)
+class BufferedRoute:
+    """Route emission held while a drain epoch cuts over the graph."""
+
+    source: str
+    payload: Any
+    async_mode: bool
+
+
 class ConnectionEngine:
     """Stages, validates, commits, and routes graph connections."""
 
@@ -41,6 +51,11 @@ class ConnectionEngine:
         self._version_store = version_store
         self._route_table: dict[str, list[RouteBinding]] = {}
         self._handlers: dict[str, Handler] = {}
+        self._drain_epoch_id: str | None = None
+        self._drain_buffer: list[BufferedRoute] = []
+        self._drain_max_buffered = 0
+        self._inflight = 0
+        self._inflight_condition = threading.Condition()
 
     @property
     def registry(self) -> ComponentRegistry:
@@ -145,6 +160,39 @@ class ConnectionEngine:
 
         return list(self._route_table.get(source, []))
 
+    @property
+    def drain_active(self) -> bool:
+        return self._drain_epoch_id is not None
+
+    @property
+    def buffered_route_count(self) -> int:
+        return len(self._drain_buffer)
+
+    def begin_drain(self, epoch_id: str, *, max_buffered: int) -> None:
+        if self._drain_epoch_id is not None:
+            raise RuntimeError(f"route drain '{self._drain_epoch_id}' is already active")
+        self._drain_epoch_id = epoch_id
+        self._drain_max_buffered = max_buffered
+        self._drain_buffer = []
+
+    def end_drain(self, *, replay: bool) -> int:
+        buffered = list(self._drain_buffer)
+        self._drain_epoch_id = None
+        self._drain_buffer = []
+        self._drain_max_buffered = 0
+        if replay:
+            for route in buffered:
+                if route.async_mode:
+                    self._dispatch_awaitable_sync(self.emit_async(route.source, route.payload))
+                else:
+                    self.emit(route.source, route.payload)
+        return len(buffered)
+
+    def wait_for_inflight(self, *, timeout: float | None = None) -> None:
+        with self._inflight_condition:
+            if not self._inflight_condition.wait_for(lambda: self._inflight == 0, timeout):
+                raise TimeoutError("timed out waiting for in-flight route emissions to drain")
+
     def emit(self, source: str, payload: Any) -> list[Any]:
         """Synchronously route a payload from a source port.
 
@@ -155,55 +203,88 @@ class ConnectionEngine:
         excluded from the return value and any exception is swallowed.
         """
 
-        results: list[Any] = []
-        for binding in self._route_table.get(source, []):
-            handler = self._handlers.get(binding.target)
-            if handler is None:
-                continue
-            try:
-                value = self._dispatch_sync(handler, payload)
-            except Exception:
-                if binding.mode == RouteMode.SHADOW:
+        if self._buffer_route_if_draining(source, payload, async_mode=False):
+            return []
+        self._enter_inflight()
+        try:
+            results: list[Any] = []
+            for binding in self._route_table.get(source, []):
+                handler = self._handlers.get(binding.target)
+                if handler is None:
                     continue
-                raise
-            if binding.mode != RouteMode.SHADOW:
-                results.append(value)
-        return results
+                try:
+                    value = self._dispatch_sync(handler, payload)
+                except Exception:
+                    if binding.mode == RouteMode.SHADOW:
+                        continue
+                    raise
+                if binding.mode != RouteMode.SHADOW:
+                    results.append(value)
+            return results
+        finally:
+            self._exit_inflight()
 
     async def emit_async(self, source: str, payload: Any) -> list[Any]:
         """Asynchronously route a payload from a source port."""
 
-        results: list[Any] = []
-        for binding in self._route_table.get(source, []):
-            handler = self._handlers.get(binding.target)
-            if handler is None:
-                continue
-            try:
-                value = await self._dispatch_async(handler, payload)
-            except Exception:
-                if binding.mode == RouteMode.SHADOW:
+        if self._buffer_route_if_draining(source, payload, async_mode=True):
+            return []
+        self._enter_inflight()
+        try:
+            results: list[Any] = []
+            for binding in self._route_table.get(source, []):
+                handler = self._handlers.get(binding.target)
+                if handler is None:
                     continue
-                raise
-            if binding.mode != RouteMode.SHADOW:
-                results.append(value)
-        return results
+                try:
+                    value = await self._dispatch_async(handler, payload)
+                except Exception:
+                    if binding.mode == RouteMode.SHADOW:
+                        continue
+                    raise
+                if binding.mode != RouteMode.SHADOW:
+                    results.append(value)
+            return results
+        finally:
+            self._exit_inflight()
 
     # ---------------------------------------------------------------- internal
 
-    @staticmethod
-    def _dispatch_sync(handler: Handler, payload: Any) -> Any:
+    def _buffer_route_if_draining(self, source: str, payload: Any, *, async_mode: bool) -> bool:
+        if self._drain_epoch_id is None:
+            return False
+        if len(self._drain_buffer) >= self._drain_max_buffered:
+            raise RuntimeError(f"route drain '{self._drain_epoch_id}' buffer is full")
+        self._drain_buffer.append(
+            BufferedRoute(source=source, payload=payload, async_mode=async_mode)
+        )
+        return True
+
+    def _enter_inflight(self) -> None:
+        with self._inflight_condition:
+            self._inflight += 1
+
+    def _exit_inflight(self) -> None:
+        with self._inflight_condition:
+            self._inflight -= 1
+            self._inflight_condition.notify_all()
+
+    @classmethod
+    def _dispatch_sync(cls, handler: Handler, payload: Any) -> Any:
         result = handler(payload)
         if inspect.isawaitable(result):
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    # Defer: can't block inside a running loop; return the
-                    # awaitable for the caller to await if they choose.
-                    return result
-                return loop.run_until_complete(result)
-            except RuntimeError:
-                return asyncio.run(result)
+            return cls._dispatch_awaitable_sync(result)
         return result
+
+    @staticmethod
+    def _dispatch_awaitable_sync(awaitable: Awaitable[Any]) -> Any:
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                return awaitable
+            return loop.run_until_complete(awaitable)
+        except RuntimeError:
+            return asyncio.run(awaitable)
 
     @staticmethod
     async def _dispatch_async(handler: Handler, payload: Any) -> Any:

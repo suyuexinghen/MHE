@@ -11,7 +11,7 @@ It focuses on the practical surfaces that work today:
 - interpreting lifecycle, routing, identity, and hot-reload behavior
 - troubleshooting common setup and validation issues
 
-For internal architecture details, read `MHE/docs/wiki/meta-harness-engineer/meta-harness-wiki/11-current-technical-manual.md` after this guide.
+For internal architecture details, read `MHE/docs/TECHNICAL_MANUAL.md` after this guide.
 
 For a cross-extension workflow that runs `AI4PDE` and `Nektar` against the same PDE problem definition and compares their outputs honestly, read `MHE/docs/wiki/meta-harness-engineer/ai4pde-agent-wiki/06-ai4pde-nektar-comparison.md`.
 
@@ -858,7 +858,7 @@ No. The demo parses and commits the graph at startup for that run, then continue
 
 After this guide, read:
 
-- `MHE/docs/wiki/meta-harness-engineer/meta-harness-wiki/11-current-technical-manual.md` for internals
+- `MHE/docs/TECHNICAL_MANUAL.md` for internals
 - `MHE/docs/wiki/meta-harness-engineer/meta-harness-wiki/10-extension-guide.md` for extension work
 - `MHE/docs/wiki/meta-harness-engineer/meta-harness-wiki/02-component-sdk.md` before depending on internal APIs
 - `MHE/tests/` for executable examples of intended behavior
