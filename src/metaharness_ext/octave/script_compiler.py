@@ -15,6 +15,7 @@ from metaharness_ext.octave.contracts import (
     OctaveOutputSpec,
     OctaveRunPlan,
 )
+from metaharness_ext.octave.security import OctaveSecurityScanner
 from metaharness_ext.octave.slots import OCTAVE_SCRIPT_COMPILER_SLOT
 
 
@@ -44,6 +45,7 @@ class OctaveScriptCompilerComponent(HarnessComponent):
         spec: OctaveExperimentSpec,
         environment: OctaveEnvironmentReport | None = None,
     ) -> OctaveRunPlan:
+        OctaveSecurityScanner().require_safe(spec)
         if environment is not None and not environment.available:
             raise ValueError(f"Octave environment unavailable: {environment.status}")
         for package in spec.packages:

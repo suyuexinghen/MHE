@@ -36,9 +36,10 @@ ignore = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-m 'not nektar and not quafu'"
+addopts = "-m 'not nektar and not quafu and not octave'"
 markers = [
     "nektar: requires local Nektar++ installation",
     "quafu: requires Qcompute_Token and quarkstudio for real Quafu hardware",
     "integration: integration tests requiring external dependencies (qiskit-aer, pennylane)",
+    "octave: requires octave-cli for real smoke tests",
 ]

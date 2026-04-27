@@ -9,7 +9,7 @@
       {
         "name": "experiment_spec",
         "type": "OctaveExperimentSpec",
-        "required": true,
+        "required": false,
         "description": "Accept a controlled Octave task specification for issue and dispatch.",
         "cardinality": "one"
       }

@@ -2,8 +2,13 @@ import json
 from importlib import import_module
 from pathlib import Path
 
-from metaharness.sdk.loader import declare_component
+from metaharness.config.xml_parser import parse_graph_xml
+from metaharness.core.connection_engine import ConnectionEngine
+from metaharness.core.graph_versions import GraphVersionStore
+from metaharness.core.models import PendingConnectionSet
+from metaharness.sdk.loader import declare_component, load_manifest
 from metaharness.sdk.manifest import ComponentManifest
+from metaharness.sdk.registry import ComponentRegistry
 from metaharness_ext.octave.capabilities import (
     CAP_OCTAVE_ENV_PROBE,
     CAP_OCTAVE_EXECUTE_RUN,
@@ -24,6 +29,7 @@ from metaharness_ext.octave.slots import (
 ROOT = Path(__file__).resolve().parent.parent
 MANIFEST_DIR = ROOT / "src" / "metaharness_ext" / "octave"
 EXAMPLE_MANIFEST_DIR = ROOT / "examples" / "manifests" / "octave"
+EXAMPLE_GRAPH = ROOT / "examples" / "graphs" / "octave-minimal.xml"
 EXPECTED_MANIFESTS = {
     "manifest.json": {
         "name": "octave",
@@ -164,3 +170,25 @@ def test_metaharness_octave_example_manifests_match_current_schema() -> None:
         assert manifest.policy.credentials.requires_subject is False
         assert manifest.policy.credentials.allow_inline_credentials is False
         assert manifest.policy.credentials.required_claims == []
+
+
+def test_metaharness_octave_minimal_graph_validates_semantically() -> None:
+    registry = ComponentRegistry()
+    for path in EXAMPLE_MANIFEST_DIR.glob("*.json"):
+        manifest = load_manifest(path)
+        component_id = f"{manifest.name.removeprefix('octave_')}.primary"
+        if manifest.name == "octave_gateway":
+            component_id = "octave_gateway.primary"
+        elif manifest.name == "octave_script_compiler":
+            component_id = "octave_script_compiler.primary"
+        elif manifest.name.startswith("octave_"):
+            component_id = f"{manifest.name}.primary"
+        _, api = declare_component(component_id, manifest)
+        registry.register(component_id, manifest, api.snapshot())
+
+    snapshot = parse_graph_xml(EXAMPLE_GRAPH)
+    _, report = ConnectionEngine(registry, GraphVersionStore()).stage(
+        PendingConnectionSet(nodes=snapshot.nodes, edges=snapshot.edges)
+    )
+
+    assert report.valid, [issue.model_dump() for issue in report.issues]

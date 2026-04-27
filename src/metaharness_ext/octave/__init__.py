@@ -34,6 +34,7 @@ from metaharness_ext.octave.contracts import (
     OctaveWarning,
     OctaveWorkspaceSpec,
 )
+from metaharness_ext.octave.security import OctaveSecurityScanError, OctaveSecurityScanner
 from metaharness_ext.octave.slots import (
     OCTAVE_ENVIRONMENT_SLOT,
     OCTAVE_EXECUTOR_SLOT,
@@ -93,6 +94,8 @@ __all__ = [
     "OctaveRunPlan",
     "OctaveScriptMode",
     "OctaveScriptSpec",
+    "OctaveSecurityScanError",
+    "OctaveSecurityScanner",
     "OctaveStudyAxis",
     "OctaveStudyReport",
     "OctaveStudySpec",

@@ -46,9 +46,14 @@ def graphs_dir() -> Path:
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     required_bins = ("ADRSolver", "FieldConvert")
-    if all(shutil.which(name) for name in required_bins):
-        return
-    skip_nektar = pytest.mark.skip(reason="Nektar++ not available")
-    for item in items:
-        if "nektar" in item.keywords:
-            item.add_marker(skip_nektar)
+    if not all(shutil.which(name) for name in required_bins):
+        skip_nektar = pytest.mark.skip(reason="Nektar++ not available")
+        for item in items:
+            if "nektar" in item.keywords:
+                item.add_marker(skip_nektar)
+
+    if shutil.which("octave-cli") is None:
+        skip_octave = pytest.mark.skip(reason="octave-cli not available")
+        for item in items:
+            if "octave" in item.keywords:
+                item.add_marker(skip_octave)

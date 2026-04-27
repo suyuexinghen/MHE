@@ -14,6 +14,7 @@ from metaharness_ext.octave.contracts import (
     OctaveWorkspaceSpec,
 )
 from metaharness_ext.octave.script_compiler import OctaveScriptCompilerComponent
+from metaharness_ext.octave.security import OctaveSecurityScanError, OctaveSecurityScanner
 from metaharness_ext.octave.workspace import OctaveWorkspaceManager
 
 
@@ -72,6 +73,30 @@ def test_octave_compiler_rejects_missing_required_package(tmp_path: Path) -> Non
 
     with pytest.raises(ValueError, match="statistics"):
         compiler.compile(spec, environment)
+
+
+def test_octave_security_scanner_reports_blocking_issues(tmp_path: Path) -> None:
+    spec = _spec(tmp_path).model_copy(
+        update={"script": OctaveScriptSpec(mode="inline", inline_source="system('rm -rf x');")}
+    )
+
+    issues = OctaveSecurityScanner().scan(spec)
+
+    assert [issue.code for issue in issues] == ["octave_security_system_call"]
+    assert issues[0].blocks_promotion is True
+
+
+def test_octave_compiler_rejects_dangerous_inline_script(tmp_path: Path) -> None:
+    spec = _spec(tmp_path).model_copy(
+        update={
+            "script": OctaveScriptSpec(
+                mode="inline", inline_source="urlread('https://example.invalid');"
+            )
+        }
+    )
+
+    with pytest.raises(OctaveSecurityScanError, match="octave_security_urlread"):
+        OctaveScriptCompilerComponent().compile(spec)
 
 
 def test_octave_workspace_materializes_wrapper_and_inputs(tmp_path: Path) -> None:

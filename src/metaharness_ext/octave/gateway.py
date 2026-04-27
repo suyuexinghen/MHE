@@ -25,7 +25,7 @@ class OctaveGatewayComponent(HarnessComponent):
 
     def declare_interface(self, api: HarnessAPI) -> None:
         api.bind_slot(OCTAVE_GATEWAY_SLOT)
-        api.declare_input("experiment_spec", "OctaveExperimentSpec")
+        api.declare_input("experiment_spec", "OctaveExperimentSpec", required=False)
         api.declare_output("task", "OctaveExperimentSpec", mode="sync")
         api.provide_capability(CAP_OCTAVE_TASK_ISSUE)
 
