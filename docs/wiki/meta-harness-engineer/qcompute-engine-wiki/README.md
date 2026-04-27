@@ -25,16 +25,17 @@
 | [06-packaging-and-registration.md](06-packaging-and-registration.md) | 封装与注册：manifest、slot、capability 声明 | 开发者 |
 | [07-scope-and-boundaries.md](07-scope-and-boundaries.md) | 范围与分工：QCompute 的职责边界与 MHE 核心的集成面 | 架构师、评审者 |
 | [08-testing-and-review.md](08-testing-and-review.md) | 测试与评审：模拟器测试、mock backend、promotion-readiness 覆盖 | 开发者、QA |
+| [qcompute-tested-support-matrix.md](qcompute-tested-support-matrix.md) | 已验证能力矩阵：tested / experimental / gated 状态与测试锚点 | 开发者、QA、评审者 |
 
 ## 当前状态
 
-QCompute 扩展处于 **设计阶段**。本文档描述的是目标架构和设计决策，而非已实现功能。
-核心设计围绕以下主线展开：
+QCompute 扩展已有可运行实现与测试证据。本文档仍保留架构设计语境，但应优先按当前代码、示例和支持矩阵理解能力边界：
 
-- **量子-经典混合 Agent 编排**：Agent 作为控制中枢，调度经典预处理 → 量子执行 → 经典后处理的闭环
-- **评估驱动的电路编译优化**：基于 SimpleTES 的 C×L×K 范式，实现"生成-编译-评估-再生成"动态优化
-- **多后端抽象**：统一 Quafu 真机、Qiskit Aer 模拟器及其他量子云平台的访问接口
-- **与 ABACUS/DeepMD 的协同**：经典 DFT + 量子 NISQ 混合工作流的编排能力
+- **量子-经典混合 Agent 编排**：Gateway 编排 Environment → ConfigCompiler → Executor → Validator → Evidence / Policy
+- **多后端执行**：默认使用 Qiskit Aer；PennyLane 走模拟器路径；Quafu/Baihua 真机路径通过环境变量和 token 显式启用
+- **参数 Study 与优化桥接**：支持 grid / random / bayesian / agentic 策略，并可将 trial 转为 MHE `domain_payload`
+- **治理与证据链**：运行产物、验证报告、ArtifactStore 快照、AuditLog 与 ProvGraph 可形成可审计证据
+- **VQE / 分子模拟**：FCIDUMP → Hamiltonian → VQE plan → energy / energy_error 的端到端链路已有模拟器证据
 
 ## 阅读路径
 

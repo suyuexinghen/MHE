@@ -2,6 +2,8 @@
 
 ## 8.1 测试策略总览
 
+当前用户向使用入口见 `docs/qcompute-user-manual.md`；能力真实性以本目录的 `qcompute-tested-support-matrix.md` 为准。日常验收优先运行 `examples/qcompute/*.py`，再按支持矩阵选择 focused pytest 或 Quafu gated smoke。
+
 量子计算的测试面临独特的挑战：
 
 1. **真机不可控**：硬件噪声、排队延迟、校准漂移无法在测试中稳定复现
@@ -345,7 +347,20 @@ class TestQComputePromotionReadiness:
 | 轨迹级评分 | ✅ | — | — |
 | 配额超限处理 | ✅ | — | — |
 
-## 8.7 评审检查清单
+## 8.7 示例运行后的反思清单
+
+每次运行 `examples/qcompute/*.py` 或 Quafu gated smoke 后，把终端输出、`Raw output` 和 ArtifactStore JSONL 一起复盘：
+
+- `Backend` / `Mode` 是否符合预期；如果真机检查仍显示 `qiskit_aer` / `simulate`，先确认 `QCOMPUTE_ENABLE_HARDWARE=1`、`Qcompute_Token`、`QCOMPUTE_QUAFU_CHIP` 与配额。
+- `Run status`、`Validation`、`Policy decision` 是否同时通过；若为 `defer` / `reject`，先看环境探测、配额快照、保真度阈值与噪声配置。
+- Bell counts 是否主要集中在 `00` / `11`；噪声示例是否输出 ZNE / REM details，且 corrected probabilities 合理。
+- Study 的 `Best trial payload` 是否只包含可复现实验参数，尤其确认 `shots` 等整数参数未被 agentic 扰动成 float。
+- VQE 的 `Energy error` 是否可解释；误差偏大时优先检查 ansatz、active space、mapping、迭代次数和 reference energy。
+- Quafu 若被 gated、排队、维护或缺校准，应归类为硬件能力门控，而不是模拟器失败。
+
+这些结论应回写到 backlog：API 诚信、结果质量、硬件可靠性、Study 可用性或文档/示例缺口。
+
+## 8.8 评审检查清单
 
 QCompute 实现的评审应覆盖以下项目：
 
