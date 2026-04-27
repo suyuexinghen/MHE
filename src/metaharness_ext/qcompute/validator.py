@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import math
+from collections.abc import Mapping
+
 from metaharness.core.models import (
     BudgetState,
     ConvergenceState,
@@ -50,7 +53,7 @@ class QComputeValidatorComponent(HarnessComponent):
         issues: list[ValidationIssue] = []
         evidence_refs = self._build_evidence_refs(artifact, plan, environment)
         metrics = QComputeValidationMetrics(
-            fidelity=plan.estimated_fidelity,
+            fidelity=self._compute_fidelity(plan, artifact),
             circuit_depth_executed=plan.estimated_depth,
             swap_count_executed=plan.estimated_swap_count,
             noise_impact_score=self._adjusted_noise_impact_score(plan, artifact),
@@ -287,6 +290,63 @@ class QComputeValidatorComponent(HarnessComponent):
         if artifact.raw_output_path is not None:
             refs.append(f"qcompute://raw-output/{artifact.artifact_id}")
         return refs
+
+    def _compute_fidelity(
+        self,
+        plan: QComputeRunPlan,
+        artifact: QComputeRunArtifact,
+    ) -> float | None:
+        ideal_distribution = self._ideal_distribution(plan)
+        measured_distribution = self._measured_distribution(artifact)
+        if ideal_distribution and measured_distribution:
+            return self._classical_fidelity(ideal_distribution, measured_distribution)
+        return plan.estimated_fidelity
+
+    def _ideal_distribution(self, plan: QComputeRunPlan) -> dict[str, float] | None:
+        raw_distribution = plan.compilation_metadata.get("ideal_distribution")
+        if not isinstance(raw_distribution, Mapping):
+            return None
+        distribution = self._normalize_distribution(raw_distribution)
+        return distribution or None
+
+    def _measured_distribution(self, artifact: QComputeRunArtifact) -> dict[str, float] | None:
+        if artifact.probabilities:
+            distribution = self._normalize_distribution(artifact.probabilities)
+            if distribution:
+                return distribution
+        if not artifact.counts:
+            return None
+        total = sum(artifact.counts.values())
+        if total <= 0:
+            return None
+        return {str(bitstring): count / total for bitstring, count in artifact.counts.items()}
+
+    def _normalize_distribution(self, distribution: Mapping[object, object]) -> dict[str, float]:
+        normalized: dict[str, float] = {}
+        for bitstring, probability in distribution.items():
+            if not isinstance(probability, int | float):
+                continue
+            value = float(probability)
+            if value > 0.0:
+                normalized[str(bitstring)] = value
+        total = sum(normalized.values())
+        if total <= 0.0:
+            return {}
+        return {bitstring: probability / total for bitstring, probability in normalized.items()}
+
+    def _classical_fidelity(
+        self,
+        ideal_distribution: dict[str, float],
+        measured_distribution: dict[str, float],
+    ) -> float:
+        support = set(ideal_distribution) | set(measured_distribution)
+        overlap = sum(
+            math.sqrt(
+                ideal_distribution.get(bitstring, 0.0) * measured_distribution.get(bitstring, 0.0)
+            )
+            for bitstring in support
+        )
+        return max(0.0, min(1.0, overlap**2))
 
     def _noise_impact_score(self, plan: QComputeRunPlan) -> float:
         if plan.noise is None or plan.noise.model == "none":

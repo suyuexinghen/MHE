@@ -31,7 +31,8 @@ class QComputeExecutorComponent(HarnessComponent):
         api.declare_output("run", "QComputeRunArtifact", mode="sync")
         api.provide_capability(CAP_QCOMPUTE_CIRCUIT_RUN)
 
-    def _select_backend(self, platform: str) -> Any:
+    def _select_backend(self, plan: QComputeRunPlan) -> Any:
+        platform = plan.target_backend.platform
         if platform == "qiskit_aer":
             from metaharness_ext.qcompute.backends.qiskit_aer import QiskitAerBackend
 
@@ -43,7 +44,15 @@ class QComputeExecutorComponent(HarnessComponent):
         if platform == "quafu":
             from metaharness_ext.qcompute.backends.quafu import QuafuBackendAdapter
 
-            return QuafuBackendAdapter()
+            api_token_env = (
+                plan.target_backend.api_token_env
+                or plan.execution_policy.api_token_env
+                or "Qcompute_Token"
+            )
+            return QuafuBackendAdapter(
+                chip_id=plan.target_backend.chip_id,
+                api_token_env=api_token_env,
+            )
         return None
 
     def execute_plan(
@@ -62,7 +71,7 @@ class QComputeExecutorComponent(HarnessComponent):
                 terminal_error_type="environment_unavailable",
             )
 
-        backend = self._select_backend(plan.target_backend.platform)
+        backend = self._select_backend(plan)
         if backend is None:
             return self._failed_artifact(
                 plan,

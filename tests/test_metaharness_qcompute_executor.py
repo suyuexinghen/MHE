@@ -47,7 +47,7 @@ async def test_qcompute_executor_runs_aer_plan(tmp_path: Path) -> None:
     compiler = QComputeConfigCompilerComponent()
     plan = compiler.build_plan(_build_spec())
     executor = QComputeExecutorComponent()
-    await executor.activate(ComponentRuntime(storage_path=tmp_path))
+    await executor.activate(ComponentRuntime(storage_path=test_runs_dir))
 
     artifact = executor.execute_plan(plan)
 
@@ -67,7 +67,7 @@ async def test_qcompute_executor_rejects_failed_environment(tmp_path: Path) -> N
     compiler = QComputeConfigCompilerComponent()
     plan = compiler.build_plan(_build_spec())
     executor = QComputeExecutorComponent()
-    await executor.activate(ComponentRuntime(storage_path=tmp_path))
+    await executor.activate(ComponentRuntime(storage_path=test_runs_dir))
     environment_report = QComputeEnvironmentReport(
         task_id=plan.experiment_ref,
         backend=plan.target_backend,
@@ -97,7 +97,7 @@ async def test_qcompute_executor_uses_gate_error_map_noise(tmp_path: Path) -> No
         )
     )
     executor = QComputeExecutorComponent()
-    await executor.activate(ComponentRuntime(storage_path=tmp_path))
+    await executor.activate(ComponentRuntime(storage_path=test_runs_dir))
 
     artifact = executor.execute_plan(plan)
 
@@ -119,7 +119,7 @@ async def test_qcompute_executor_records_applied_zne(tmp_path: Path) -> None:
         )
     )
     executor = QComputeExecutorComponent()
-    await executor.activate(ComponentRuntime(storage_path=tmp_path))
+    await executor.activate(ComponentRuntime(storage_path=test_runs_dir))
 
     artifact = executor.execute_plan(plan)
 
@@ -144,7 +144,7 @@ async def test_qcompute_executor_rem_applied(tmp_path: Path) -> None:
         )
     )
     executor = QComputeExecutorComponent()
-    await executor.activate(ComponentRuntime(storage_path=tmp_path))
+    await executor.activate(ComponentRuntime(storage_path=test_runs_dir))
 
     artifact = executor.execute_plan(plan)
 
@@ -168,7 +168,7 @@ async def test_qcompute_executor_zne_and_rem_combined(tmp_path: Path) -> None:
         )
     )
     executor = QComputeExecutorComponent()
-    await executor.activate(ComponentRuntime(storage_path=tmp_path))
+    await executor.activate(ComponentRuntime(storage_path=test_runs_dir))
 
     artifact = executor.execute_plan(plan)
 
@@ -191,7 +191,7 @@ async def test_qcompute_executor_rem_fallback(tmp_path: Path) -> None:
         )
     )
     executor = QComputeExecutorComponent()
-    await executor.activate(ComponentRuntime(storage_path=tmp_path))
+    await executor.activate(ComponentRuntime(storage_path=test_runs_dir))
 
     artifact = executor.execute_plan(plan)
 
@@ -207,7 +207,7 @@ async def test_qcompute_executor_no_mitigation_no_metadata(tmp_path: Path) -> No
     compiler = QComputeConfigCompilerComponent()
     plan = compiler.build_plan(_build_spec())
     executor = QComputeExecutorComponent()
-    await executor.activate(ComponentRuntime(storage_path=tmp_path))
+    await executor.activate(ComponentRuntime(storage_path=test_runs_dir))
 
     artifact = executor.execute_plan(plan)
 

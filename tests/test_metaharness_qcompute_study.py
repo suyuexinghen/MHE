@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -9,15 +11,23 @@ from metaharness_ext.qcompute.contracts import (
     QComputeBackendSpec,
     QComputeCircuitSpec,
     QComputeExperimentSpec,
+    QComputeRunArtifact,
+    QComputeRunPlan,
     QComputeStudyAxis,
     QComputeStudySpec,
+    QComputeValidationMetrics,
+    QComputeValidationReport,
 )
 from metaharness_ext.qcompute.study import (
     FunctionalBrainProvider,
     QComputeStudyComponent,
+    _generate_agentic,
+    _generate_bayesian,
+    _generate_grid,
     _mutate_spec,
     _schedule_trials,
 )
+from metaharness_ext.qcompute.types import QComputeValidationStatus
 
 
 def _build_spec(**overrides) -> QComputeExperimentSpec:
@@ -55,6 +65,49 @@ async def _activated_study(tmp_path: Path) -> QComputeStudyComponent:
     study = QComputeStudyComponent()
     await study.activate(ComponentRuntime(storage_path=tmp_path))
     return study
+
+
+class _SleepyExecutor:
+    def __init__(self) -> None:
+        self._active = 0
+        self.max_active = 0
+        self._lock = threading.Lock()
+
+    def execute_plan(self, plan: QComputeRunPlan) -> QComputeRunArtifact:
+        with self._lock:
+            self._active += 1
+            self.max_active = max(self.max_active, self._active)
+        try:
+            time.sleep(0.02)
+            return QComputeRunArtifact(
+                artifact_id=f"{plan.plan_id}-artifact",
+                plan_ref=plan.plan_id,
+                backend_actual=plan.target_backend.platform,
+                status="completed",
+                raw_output_path=f"/tmp/{plan.plan_id}.json",
+                shots_requested=plan.execution_params.shots,
+                shots_completed=plan.execution_params.shots,
+            )
+        finally:
+            with self._lock:
+                self._active -= 1
+
+
+class _ShotValidator:
+    def validate_run(self, artifact, plan, environment_report) -> QComputeValidationReport:
+        fidelity = plan.execution_params.shots / 1000
+        return QComputeValidationReport(
+            task_id=environment_report.task_id,
+            plan_ref=plan.plan_id,
+            artifact_ref=artifact.artifact_id,
+            passed=True,
+            status=QComputeValidationStatus.VALIDATED,
+            metrics=QComputeValidationMetrics(
+                fidelity=fidelity,
+                circuit_depth_executed=1000 - plan.execution_params.shots,
+            ),
+            promotion_ready=True,
+        )
 
 
 @pytest.mark.asyncio
@@ -169,6 +222,63 @@ async def test_study_random_strategy(tmp_path: Path) -> None:
         assert trial.parameter_snapshot["shots"] in [64, 128, 256]
 
 
+@pytest.mark.asyncio
+async def test_study_parallel_workers_preserves_trial_order_and_best(tmp_path: Path) -> None:
+    study = await _activated_study(tmp_path)
+    spec = _build_study_spec(
+        axes=[QComputeStudyAxis(parameter_path="shots", values=[64, 128, 256, 512])],
+        parallel_workers=4,
+    )
+    executor = _SleepyExecutor()
+
+    report = study.run_study(spec, executor=executor, validator=_ShotValidator())
+
+    assert executor.max_active > 1
+    assert [trial.parameter_snapshot["shots"] for trial in report.trials] == [64, 128, 256, 512]
+    best = next(trial for trial in report.trials if trial.trial_id == report.best_trial_id)
+    assert best.parameter_snapshot["shots"] == 512
+
+
+@pytest.mark.asyncio
+async def test_study_parallel_workers_one_remains_sequential(tmp_path: Path) -> None:
+    study = await _activated_study(tmp_path)
+    spec = _build_study_spec(
+        axes=[QComputeStudyAxis(parameter_path="shots", values=[64, 128, 256])],
+        parallel_workers=1,
+    )
+    executor = _SleepyExecutor()
+
+    report = study.run_study(spec, executor=executor, validator=_ShotValidator())
+
+    assert executor.max_active == 1
+    assert [trial.parameter_snapshot["shots"] for trial in report.trials] == [64, 128, 256]
+
+
+def test_study_bayesian_strategy_generates_trials() -> None:
+    spec = _build_study_spec(
+        axes=[QComputeStudyAxis(parameter_path="shots", values=[64, 128, 256])],
+        strategy="bayesian",
+    )
+
+    grid = _generate_grid(spec)
+
+    assert len(grid) == 3
+    assert grid == [{"shots": 128}, {"shots": 256}, {"shots": 64}]
+
+
+def test_study_bayesian_respects_max_trials() -> None:
+    spec = _build_study_spec(
+        axes=[QComputeStudyAxis(parameter_path="shots", values=[64, 128, 256, 512])],
+        strategy="bayesian",
+        max_trials=2,
+    )
+
+    grid = _generate_bayesian(spec)
+
+    assert len(grid) == 2
+    assert grid == [{"shots": 256}, {"shots": 512}]
+
+
 def test_study_agentic_strategy() -> None:
     """Agentic strategy generates proposals via FunctionalBrainProvider."""
     brain = FunctionalBrainProvider(seed=42)
@@ -185,6 +295,39 @@ def test_study_agentic_strategy() -> None:
     best = proposals[0]
     refined = brain.propose(axes, best_params=best, n_proposals=2)
     assert len(refined) == 2
+    for params in refined:
+        assert isinstance(params["shots"], int)
+
+
+def test_study_agentic_generates_integer_shots() -> None:
+    spec = _build_study_spec(
+        axes=[QComputeStudyAxis(parameter_path="shots", values=[64, 128, 256])],
+        strategy="agentic",
+        max_trials=5,
+    )
+
+    grid = _generate_agentic(spec)
+
+    assert len(grid) == 5
+    for params in grid:
+        assert isinstance(params["shots"], int)
+        _mutate_spec(spec.experiment_template, params)
+
+
+@pytest.mark.asyncio
+async def test_study_agentic_runs_integer_shots(tmp_path: Path) -> None:
+    study = await _activated_study(tmp_path)
+    spec = _build_study_spec(
+        axes=[QComputeStudyAxis(parameter_path="shots", values=[64, 128, 256])],
+        strategy="agentic",
+        max_trials=5,
+    )
+
+    report = study.run_study(spec, validator=_ShotValidator())
+
+    assert len(report.trials) == 5
+    for trial in report.trials:
+        assert isinstance(trial.parameter_snapshot["shots"], int)
 
 
 def test_study_agentic_respects_max_trials() -> None:
@@ -195,8 +338,6 @@ def test_study_agentic_respects_max_trials() -> None:
         strategy="agentic",
         max_trials=5,
     )
-
-    from metaharness_ext.qcompute.study import _generate_agentic
 
     grid = _generate_agentic(spec)
     assert len(grid) == 5

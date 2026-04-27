@@ -1,3 +1,5 @@
+import pytest
+
 from metaharness.core.models import ValidationIssueCategory
 from metaharness_ext.qcompute.contracts import (
     QComputeBackendSpec,
@@ -21,6 +23,7 @@ def _build_plan(**overrides) -> QComputeRunPlan:
         "compilation_metadata": {
             "operation_counts": {"h": 1, "measure": 1},
             "fidelity_threshold": 0.9,
+            "ideal_distribution": {"0": 0.5, "1": 0.5},
         },
         "estimated_depth": 2,
         "estimated_swap_count": 0,
@@ -68,11 +71,31 @@ def test_qcompute_validator_accepts_complete_run() -> None:
     assert report.passed is True
     assert report.promotion_ready is True
     assert report.status is QComputeValidationStatus.VALIDATED
-    assert report.metrics.fidelity == 0.99
+    assert report.metrics.fidelity == 1.0
     assert report.metrics.circuit_depth_executed == 2
     assert report.issues == []
     assert report.scored_evidence is not None
     assert report.scored_evidence.safety_score == 1.0
+
+
+def test_qcompute_validator_uses_counts_for_fidelity() -> None:
+    report = QComputeValidatorComponent().validate_run(
+        _build_artifact(counts={"0": 128}, probabilities=None),
+        _build_plan(estimated_fidelity=0.99),
+        _build_environment(),
+    )
+
+    assert report.metrics.fidelity == pytest.approx(0.5)
+
+
+def test_qcompute_validator_falls_back_to_estimated_fidelity() -> None:
+    report = QComputeValidatorComponent().validate_run(
+        _build_artifact(counts={"0": 128}, probabilities=None),
+        _build_plan(compilation_metadata={"operation_counts": {"h": 1}, "fidelity_threshold": 0.4}),
+        _build_environment(),
+    )
+
+    assert report.metrics.fidelity == 0.99
 
 
 def test_qcompute_validator_blocks_unavailable_environment() -> None:

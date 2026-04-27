@@ -40,6 +40,7 @@ def test_qcompute_compiler_builds_plan_from_openqasm() -> None:
     assert plan.noise is not None
     assert plan.compilation_metadata["source_kind"] == "openqasm"
     assert plan.compilation_metadata["operation_counts"]["measure"] == 2
+    assert plan.compilation_metadata["ideal_distribution"] == pytest.approx({"00": 0.5, "11": 0.5})
     assert "measure q[0]" in plan.circuit_openqasm
     assert plan.estimated_depth is not None
     assert plan.estimated_fidelity is not None

@@ -157,6 +157,19 @@ print("Core validation:", result.core_validation.valid)
 
 默认情况下这些脚本只使用模拟器；只有在显式设置 `QCOMPUTE_ENABLE_HARDWARE=1` 且配置 `Qcompute_Token` 时，`examples/qcompute/bell.py` 才会切换到 Quafu 真机路径。
 
+### 3.4 示例运行后的反思清单
+
+运行示例或 Quafu 真机检查后，建议把终端输出和 `Raw output` / `Artifact snapshots` 文件一起交给 AI 或人工复盘，并按以下问题判断下一步：
+
+- `Backend` / `Mode` 是否符合预期？如果真机检查仍显示 `qiskit_aer` 或 `simulate`，优先确认 `QCOMPUTE_ENABLE_HARDWARE=1`、`Qcompute_Token`、`QCOMPUTE_QUAFU_CHIP` 与配额设置。
+- `Run status`、`Validation`、`Policy decision` 是否同时通过？如果策略为 `defer` / `reject` 或验证失败，先查看环境探测错误、配额快照、保真度阈值与噪声配置。
+- `Counts` 是否符合场景预期？Bell 态应主要集中在 `00` / `11`；噪声缓解示例应对比 mitigation details，确认 ZNE/REM 是否真正启用并改善分布。
+- Study 示例的 `Best trial payload` 是否只推荐了可复现实验参数？若 agentic strategy 产生非整数 `shots` 或不可验证参数，应记录为 Study 参数类型/约束缺口。
+- VQE 示例的 `Energy error` 是否在可接受范围内？若误差偏大，下一步优先检查 ansatz、active space、mapping、迭代次数与参考能量。
+- Quafu 真机路径若被 gated、排队、维护或校准信息缺失，应把它归类为能力门控而非模拟器失败，并在改进计划中标注所需 token、芯片状态、校准采集或重试策略。
+
+这些检查项可直接映射到改进 backlog：API 诚信（暴露但缺失的策略）、结果质量（真实 fidelity / energy error）、硬件可靠性（校准、重试、配额）和 Study 可用性（参数类型、并行 trial）。
+
 ---
 
 ## 4. Experiment Specification

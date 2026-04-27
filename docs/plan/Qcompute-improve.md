@@ -86,8 +86,10 @@
   ---
   我的建议优先级：
 
-  1. 先修 #6（agentic 类型问题）— 阻塞性 bug，一行改动即可修复
-  2. 再做 #3（异常重试）— 提升真机可靠性，工作量小
-  3. 然后 #1（Bayesian 策略）— 补全路线图承诺的功能
-  4. 接着 #5（真实保真度计算）— 提升验证质量
-  5. 最后选 #8 或 #10 作为架构改进方向
+  当前团队已覆盖 Quafu smoke / reliability、VQE 链路、ArtifactStore 持久化验收、demo 示例与 tested support matrix。下一批应优先处理仍会影响 API 诚信、结果质量和 Study 可用性的任务。每次运行 `examples/qcompute/*.py` 或 Quafu gated smoke 后，先按 user manual 的“示例运行后的反思清单”复盘 `Backend` / `Mode`、`Run status`、`Validation`、`Policy decision`、`Counts`、`Raw output`、`Artifact snapshots` 与 Study/VQE 指标，再把发现归入下面的 backlog：
+
+  1. 先修 #6（agentic 类型问题）— 真实风险且收益高，避免 int 参数（如 shots）被扰动成 float 后触发 Pydantic 验证失败
+  2. 再做 #1（Bayesian 策略）— contracts.py 已暴露 "bayesian"，实现缺失属于 API 诚信问题
+  3. 接着 #5（真实保真度计算）— 从 counts/probabilities 计算实际分布保真度，提升验证质量
+  4. 然后 #2（Quafu 校准数据采集）— 接续 Quafu reliability，把 placeholder 替换为 gated SDK 采集路径
+  5. 最后做 #7（Study 并行执行）— 使用 parallel_workers 并行 trial，提升参数搜索可用性

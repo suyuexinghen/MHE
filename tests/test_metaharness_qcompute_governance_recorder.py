@@ -116,14 +116,14 @@ class TestGovernanceRecordWithArtifactStore:
         assert "provenance_refs" in refs
         assert len(refs["provenance_refs"]) > 0
 
-    def test_record_with_file_backed_stores_recovers_after_reload(self, tmp_path: Path) -> None:
+    def test_record_with_file_backed_stores_recovers_after_reload(self, test_runs_dir: Path) -> None:
         bundle, policy = _make_bundle()
         governance = QComputeGovernanceAdapter(session_id="sess-reload")
 
         session_store = InMemorySessionStore()
-        audit_path = tmp_path / "audit.jsonl"
-        artifact_path = tmp_path / "artifacts.jsonl"
-        provenance_path = tmp_path / "provenance.json"
+        audit_path = test_runs_dir / "audit.jsonl"
+        artifact_path = test_runs_dir / "artifacts.jsonl"
+        provenance_path = test_runs_dir / "provenance.json"
         audit_log = AuditLog(path=audit_path)
         provenance_graph = ProvGraph()
         artifact_store = ArtifactSnapshotStore(path=artifact_path)

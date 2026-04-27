@@ -51,6 +51,7 @@ class QComputeConfigCompilerComponent(HarnessComponent):
             raise ValueError("Circuit exceeds declared backend qubit_count")
 
         circuit, source_kind = self._load_source_circuit(spec)
+        ideal_distribution = self._ideal_distribution(circuit)
         circuit = self._ensure_measurements(circuit)
         compiled_circuit = self._compile_circuit(circuit, spec)
         qasm_text = self._dump_openqasm(compiled_circuit)
@@ -66,6 +67,8 @@ class QComputeConfigCompilerComponent(HarnessComponent):
             "operation_counts": operation_counts,
             "fidelity_threshold": spec.fidelity_threshold,
         }
+        if ideal_distribution:
+            compilation_metadata["ideal_distribution"] = ideal_distribution
         if environment_report is not None:
             compilation_metadata["environment_status"] = environment_report.status
 
@@ -95,7 +98,7 @@ class QComputeConfigCompilerComponent(HarnessComponent):
         )
 
     def _load_source_circuit(self, spec: QComputeExperimentSpec) -> tuple[Any, str]:
-        quantum_circuit_cls, qpy, _, _ = self._qiskit_modules()
+        quantum_circuit_cls, qpy, _, _, _ = self._qiskit_modules()
         circuit_spec = spec.circuit
         if circuit_spec.openqasm:
             return quantum_circuit_cls.from_qasm_str(circuit_spec.openqasm), "openqasm"
@@ -106,7 +109,7 @@ class QComputeConfigCompilerComponent(HarnessComponent):
         return self._build_template_circuit(spec), circuit_spec.ansatz
 
     def _build_template_circuit(self, spec: QComputeExperimentSpec) -> Any:
-        quantum_circuit_cls, _, _, _ = self._qiskit_modules()
+        quantum_circuit_cls, _, _, _, _ = self._qiskit_modules()
         circuit_spec = spec.circuit
         circuit = quantum_circuit_cls(circuit_spec.num_qubits)
         theta = circuit_spec.parameters.get("theta", 0.5)
@@ -169,8 +172,19 @@ class QComputeConfigCompilerComponent(HarnessComponent):
             measured_circuit.measure_all()
         return measured_circuit
 
+    def _ideal_distribution(self, circuit: Any) -> dict[str, float]:
+        _, _, _, _, statevector_cls = self._qiskit_modules()
+        pure_circuit = circuit.remove_final_measurements(inplace=False)
+        statevector = statevector_cls.from_instruction(pure_circuit)
+        probabilities = statevector.probabilities_dict()
+        return {
+            str(bitstring): float(probability)
+            for bitstring, probability in probabilities.items()
+            if probability > 1e-12
+        }
+
     def _compile_circuit(self, circuit: Any, spec: QComputeExperimentSpec) -> Any:
-        _, _, _, generate_preset_pass_manager = self._qiskit_modules()
+        _, _, _, generate_preset_pass_manager, _ = self._qiskit_modules()
         backend = None
         optimization_level = spec.circuit.transpiler_level
         if spec.backend.platform == "qiskit_aer":
@@ -188,7 +202,7 @@ class QComputeConfigCompilerComponent(HarnessComponent):
         return pass_manager.run(circuit)
 
     def _dump_openqasm(self, circuit: Any) -> str:
-        _, _, qasm2, _ = self._qiskit_modules()
+        _, _, qasm2, _, _ = self._qiskit_modules()
         return qasm2.dumps(circuit)
 
     def _compilation_strategy(self, spec: QComputeExperimentSpec) -> str:
@@ -327,9 +341,10 @@ class QComputeConfigCompilerComponent(HarnessComponent):
 
         return plan
 
-    def _qiskit_modules(self) -> tuple[Any, Any, Any, Any]:
+    def _qiskit_modules(self) -> tuple[Any, Any, Any, Any, Any]:
         import qiskit.qasm2 as qasm2
         from qiskit import QuantumCircuit, qpy
+        from qiskit.quantum_info import Statevector
         from qiskit.transpiler import generate_preset_pass_manager
 
-        return QuantumCircuit, qpy, qasm2, generate_preset_pass_manager
+        return QuantumCircuit, qpy, qasm2, generate_preset_pass_manager, Statevector

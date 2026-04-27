@@ -587,6 +587,74 @@ class TestEnvironmentQuafu:
         assert report.available is True
         assert report.status == "online"
 
+    def test_quafu_collects_sdk_calibration_and_queue_depth(self):
+        from metaharness_ext.qcompute.environment import (
+            QComputeEnvironmentProbeComponent,
+        )
+
+        mock_task_cls = MagicMock()
+        mock_instance = MagicMock()
+        mock_task_cls.return_value = mock_instance
+        now = datetime.now(timezone.utc)
+        mock_instance.status.return_value = {
+            "Baihua": {"status": "online", "qubit_count": 57, "queue_depth": 4}
+        }
+        mock_instance.get_backend_info.return_value = {
+            "calibration": {
+                "timestamp": now.isoformat(),
+                "t1_us_avg": 22.5,
+                "t2_us_avg": 18.0,
+                "single_qubit_gate_fidelity_avg": 0.997,
+                "two_qubit_gate_fidelity_avg": 0.963,
+                "readout_fidelity_avg": 0.94,
+                "coupling_map": [[0, 1], [1, 2]],
+            }
+        }
+
+        with patch(
+            "metaharness_ext.qcompute.backends.quafu._detect_quark",
+            return_value=mock_task_cls,
+        ):
+            with patch("os.getenv", return_value="fake-quafu-token"):
+                report = QComputeEnvironmentProbeComponent().probe(_build_quafu_spec())
+
+        assert report.available is True
+        assert report.status == "online"
+        assert report.qubit_count_available == 57
+        assert report.queue_depth == 4
+        assert report.calibration_data is not None
+        assert report.calibration_data.t1_us_avg == 22.5
+        assert report.calibration_data.qubit_connectivity == [(0, 1), (1, 2)]
+        mock_instance.get_backend_info.assert_any_call("Baihua")
+
+    def test_quafu_real_noise_allowed_with_fresh_sdk_calibration(self):
+        from metaharness_ext.qcompute.contracts import QComputeNoiseSpec
+        from metaharness_ext.qcompute.environment import (
+            QComputeEnvironmentProbeComponent,
+        )
+
+        mock_task_cls = MagicMock()
+        mock_instance = MagicMock()
+        mock_task_cls.return_value = mock_instance
+        mock_instance.status.return_value = {"Baihua": 57}
+        mock_instance.get_backend_info.return_value = {
+            "calibration_timestamp": datetime.now(timezone.utc).isoformat()
+        }
+
+        with patch(
+            "metaharness_ext.qcompute.backends.quafu._detect_quark",
+            return_value=mock_task_cls,
+        ):
+            with patch("os.getenv", return_value="fake-quafu-token"):
+                report = QComputeEnvironmentProbeComponent().probe(
+                    _build_quafu_spec(noise=QComputeNoiseSpec(model="real"))
+                )
+
+        assert report.available is True
+        assert report.status == "online"
+        assert report.calibration_fresh is True
+        assert report.calibration_data is not None
+
     def test_quafu_chip_in_maintenance(self):
         from metaharness_ext.qcompute.environment import (
             QComputeEnvironmentProbeComponent,
@@ -717,12 +785,34 @@ class TestCalibrationBlockingPromotion:
 class TestExecutorQuafuBackend:
     def test_select_backend_returns_quafu_adapter(self):
         from metaharness_ext.qcompute.backends.quafu import QuafuBackendAdapter
+        from metaharness_ext.qcompute.contracts import (
+            QComputeBackendSpec,
+            QComputeExecutionParams,
+            QComputeExecutionPolicy,
+            QComputeRunPlan,
+        )
         from metaharness_ext.qcompute.executor import QComputeExecutorComponent
 
+        plan = QComputeRunPlan(
+            plan_id="plan-1",
+            experiment_ref="experiment-1",
+            circuit_openqasm="OPENQASM 2.0;",
+            target_backend=QComputeBackendSpec(
+                platform="quafu",
+                simulator=False,
+                chip_id="Yudu",
+                api_token_env="QUAFU_TOKEN",
+            ),
+            compilation_strategy="sabre",
+            execution_params=QComputeExecutionParams(),
+            execution_policy=QComputeExecutionPolicy(api_token_env="POLICY_TOKEN"),
+        )
         executor = QComputeExecutorComponent()
-        backend = executor._select_backend("quafu")
+        backend = executor._select_backend(plan)
 
         assert isinstance(backend, QuafuBackendAdapter)
+        assert backend._chip_id == "Yudu"
+        assert backend._api_token_env == "QUAFU_TOKEN"
 
 
 # ===========================================================================

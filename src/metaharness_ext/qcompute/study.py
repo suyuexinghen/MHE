@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import random
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from itertools import product
 from typing import Any
 
@@ -84,28 +85,37 @@ class QComputeStudyComponent(HarnessComponent):
 
         policy_eval = QComputeEvidencePolicy()
         governance = QComputeGovernanceAdapter()
-        trials: list[QComputeStudyTrial] = []
+        worker_count = max(1, min(spec.parallel_workers, len(grid))) if grid else 1
 
-        for params in grid:
-            experiment = _mutate_spec(spec.experiment_template, params)
-            plan = compiler.build_plan(experiment)
-            artifact = executor.execute_plan(plan)
-
-            environment_report = _build_environment_report(experiment, plan)
-            validation = validator.validate_run(artifact, plan, environment_report)
-            evidence_bundle = build_evidence_bundle(artifact, validation, environment_report)
-            policy_report = policy_eval.evaluate(evidence_bundle)
-            governance.build_core_validation_report(validation, policy_report)
-
-            objective_value = _extract_objective(validation, spec.objective)
-            trials.append(
-                QComputeStudyTrial(
-                    trial_id=f"{spec.study_id}-{uuid.uuid4().hex[:8]}",
-                    parameter_snapshot=dict(params),
-                    evidence_bundle=evidence_bundle,
-                    trajectory_score=objective_value,
+        if worker_count == 1:
+            trials = [
+                _run_trial(
+                    params,
+                    spec=spec,
+                    compiler=compiler,
+                    executor=executor,
+                    validator=validator,
+                    policy_eval=policy_eval,
+                    governance=governance,
                 )
-            )
+                for params in grid
+            ]
+        else:
+            with ThreadPoolExecutor(max_workers=worker_count) as pool:
+                trials = list(
+                    pool.map(
+                        lambda params: _run_trial(
+                            params,
+                            spec=spec,
+                            compiler=compiler,
+                            executor=executor,
+                            validator=validator,
+                            policy_eval=policy_eval,
+                            governance=governance,
+                        ),
+                        grid,
+                    )
+                )
 
         best_trial_id = _select_best_trial(trials, spec.objective)
         pareto_front = _compute_pareto_front(trials)
@@ -119,12 +129,43 @@ class QComputeStudyComponent(HarnessComponent):
         )
 
 
+def _run_trial(
+    params: dict[str, Any],
+    *,
+    spec: QComputeStudySpec,
+    compiler: QComputeConfigCompilerComponent,
+    executor: QComputeExecutorComponent,
+    validator: QComputeValidatorComponent,
+    policy_eval: QComputeEvidencePolicy,
+    governance: QComputeGovernanceAdapter,
+) -> QComputeStudyTrial:
+    experiment = _mutate_spec(spec.experiment_template, params)
+    plan = compiler.build_plan(experiment)
+    artifact = executor.execute_plan(plan)
+
+    environment_report = _build_environment_report(experiment, plan)
+    validation = validator.validate_run(artifact, plan, environment_report)
+    evidence_bundle = build_evidence_bundle(artifact, validation, environment_report)
+    policy_report = policy_eval.evaluate(evidence_bundle)
+    governance.build_core_validation_report(validation, policy_report)
+
+    objective_value = _extract_objective(validation, spec.objective)
+    return QComputeStudyTrial(
+        trial_id=f"{spec.study_id}-{uuid.uuid4().hex[:8]}",
+        parameter_snapshot=dict(params),
+        evidence_bundle=evidence_bundle,
+        trajectory_score=objective_value,
+    )
+
+
 def _generate_grid(spec: QComputeStudySpec) -> list[dict[str, Any]]:
     strategy: QComputeStudyStrategy = spec.strategy
     if strategy == "grid":
         return _generate_grid_cartesian(spec.axes)
     if strategy == "random":
         return _generate_random(spec.axes, spec.max_trials)
+    if strategy == "bayesian":
+        return _generate_bayesian(spec)
     if strategy == "agentic":
         return _generate_agentic(spec)
     raise ValueError(f"Unsupported study strategy: {strategy}")
@@ -190,6 +231,60 @@ def _random_params(axes: list[QComputeStudyAxis], rng: random.Random) -> dict[st
     return params
 
 
+def _generate_bayesian(spec: QComputeStudySpec) -> list[dict[str, Any]]:
+    candidates = _generate_grid_cartesian(spec.axes)
+    if not candidates:
+        return []
+
+    selected: list[dict[str, Any]] = []
+    selected_keys: set[tuple[tuple[str, str], ...]] = set()
+    while len(selected) < spec.max_trials:
+        candidate = candidates[_bayesian_candidate_index(candidates, selected)]
+        candidate_key = _params_key(candidate)
+        if candidate_key in selected_keys:
+            break
+        selected.append(candidate)
+        selected_keys.add(candidate_key)
+        if len(selected_keys) == len(candidates):
+            break
+    return selected
+
+
+def _bayesian_candidate_index(
+    candidates: list[dict[str, Any]],
+    selected: list[dict[str, Any]],
+) -> int:
+    if not selected:
+        return len(candidates) // 2
+
+    selected_keys = {_params_key(params) for params in selected}
+    best_index = 0
+    best_distance = -1.0
+    for index, candidate in enumerate(candidates):
+        if _params_key(candidate) in selected_keys:
+            continue
+        distance = min(_surrogate_distance(candidate, params) for params in selected)
+        if distance > best_distance:
+            best_index = index
+            best_distance = distance
+    return best_index
+
+
+def _surrogate_distance(left: dict[str, Any], right: dict[str, Any]) -> float:
+    distance = 0.0
+    for key, left_value in left.items():
+        right_value = right.get(key)
+        if isinstance(left_value, (int, float)) and isinstance(right_value, (int, float)):
+            distance += float(left_value - right_value) ** 2
+        elif left_value != right_value:
+            distance += 1.0
+    return distance
+
+
+def _params_key(params: dict[str, Any]) -> tuple[tuple[str, str], ...]:
+    return tuple(sorted((key, repr(value)) for key, value in params.items()))
+
+
 class FunctionalBrainProvider:
     """Simplified BrainProvider for agentic study strategy.
 
@@ -215,11 +310,12 @@ class FunctionalBrainProvider:
         for _ in range(n_proposals):
             proposal = dict(best_params)
             for key, value in proposal.items():
-                if isinstance(value, (int, float)):
-                    proposal[key] = value + self._rng.gauss(
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    perturbed = value + self._rng.gauss(
                         0,
                         self._noise_scale * abs(value) if value != 0 else self._noise_scale,
                     )
+                    proposal[key] = int(round(perturbed)) if isinstance(value, int) else perturbed
             proposals.append(proposal)
         return proposals
 
