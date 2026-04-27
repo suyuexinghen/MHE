@@ -18,6 +18,8 @@
   - `metaharness_ext.abacus` 的 file-driven / launcher-aware 扩展设计、blueprint 与 roadmap
 - [blueprint/](blueprint/)
   - 扩展 blueprint、路线图、handoff、gap report、对齐报告与近期工作材料的集中目录
+- [benchmark/](benchmark/README.md)
+  - 跨 extension / agent / direct workflow 的 benchmark 设计、实验计划与结果报告
 
 ## 推荐阅读路径
 

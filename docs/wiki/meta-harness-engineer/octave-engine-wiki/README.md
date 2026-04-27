@@ -31,6 +31,8 @@
 | [07-v2 对齐方案](07-v2-alignment.md) | v2 Scientific Context Adapter、Study Workflow、Execution/HPC、Governance/Optimizer Bridge | 架构师 / 平台 |
 | [08-测试与路线图](08-testing-and-roadmap.md) | 测试策略、pytest marker、Phase 0–5 roadmap、完成判据 | 核心开发 / QA |
 | [09-范围与分工](09-scope-and-boundaries.md) | 首版支持/不支持边界、与原始愿景的关系、与其他 extension 的分工 | 文档维护者 / reviewer |
+| [10-User Guide](10-user-guide.md) | 安装、任务规格、本地执行、scheduler、optimizer、故障排查 | 使用者 / 开发者 |
+| [11-ODE 实验报告](11-ode-experiment-report.md) | 使用真实 Octave 执行 ODE 求解的实验记录、证据和限制 | 使用者 / QA |
 
 ---
 

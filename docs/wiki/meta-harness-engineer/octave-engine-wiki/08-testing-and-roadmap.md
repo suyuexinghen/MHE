@@ -28,39 +28,23 @@
 
 ### pytest marker 注册
 
-在 `pyproject.toml` 中注册 marker：
+当前 `pyproject.toml` 注册 `octave` marker，并在默认测试中过滤真实 Octave smoke：
 
 ```toml
 [tool.pytest.ini_options]
+addopts = "-m 'not nektar and not quafu and not octave'"
 markers = [
-    "octave: tests that require octave-cli",
+    "octave: opt-in tests requiring MHE_RUN_REAL_OCTAVE=1 and octave-cli",
 ]
-addopts = "-m 'not octave'"
 ```
 
-在 `conftest.py` 中添加自动 skip 逻辑：
-
-```python
-import shutil
-import pytest
-
-def pytest_collection_modifyitems(config, items):
-    if shutil.which("octave-cli") is not None:
-        return
-    skip_octave = pytest.mark.skip(reason="octave-cli not available")
-    for item in items:
-        if "octave" in item.keywords:
-            item.add_marker(skip_octave)
-```
-
-`addopts = "-m 'not octave'"` 确保默认 `pytest` 调用跳过 Octave 测试。当显式使用 `-m octave` 时，`pytest_collection_modifyitems` 在 `octave-cli` 缺失时自动 skip。
+真实 Octave smoke 同时使用 `@pytest.mark.octave`、`MHE_RUN_REAL_OCTAVE=1` 和 `shutil.which("octave-cli")` skip 条件。默认 `pytest` 不会运行这些测试；显式使用 `-m octave` 且设置环境变量后才会尝试真实 `octave-cli`。
 
 ### 推荐命令
 
 ```bash
 python -m pytest tests/test_metaharness_octave_*.py -q
-python -m pytest tests/test_metaharness_octave_minimal_demo.py -q
-python -m pytest -m octave tests/test_metaharness_octave_real_smoke.py -q
+MHE_RUN_REAL_OCTAVE=1 python -m pytest -m octave tests/test_metaharness_octave_environment_executor.py -q
 ```
 
 ## 8.2 实施路线图
