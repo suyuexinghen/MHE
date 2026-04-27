@@ -47,6 +47,7 @@ ProposerFn = Callable[["OptimizerComponent", list[Observation]], list[MutationPr
 EvaluatorFn = Callable[
     ["OptimizerComponent", MutationProposal, list[Observation]], ProposalEvaluation
 ]
+DomainPayloadFn = Callable[["OptimizerComponent", list[Observation]], dict[str, Any] | None]
 
 
 def _default_proposer(_: OptimizerComponent, __: list[Observation]) -> list[MutationProposal]:
@@ -95,6 +96,7 @@ class OptimizerComponent:
         convergence: TripleConvergence | None = None,
         dead_end: DeadEndDetector | None = None,
         negative_reward: NegativeRewardLoop | None = None,
+        domain_payload_provider: DomainPayloadFn | None = None,
     ) -> None:
         self._counter = 0
         self._observations: list[Observation] = []
@@ -110,6 +112,7 @@ class OptimizerComponent:
         self.fitness_history: list[float] = []
         self.last_triggers: list[TriggerEvent] = []
         self.last_convergence: ConvergenceResult | None = None
+        self._domain_payload_provider = domain_payload_provider
 
     # ------------------------------------------------------------------ observe
 
@@ -133,16 +136,20 @@ class OptimizerComponent:
         pending: PendingConnectionSet | None = None,
         *,
         proposer_id: str = "optimizer",
+        domain_payload: dict[str, Any] | None = None,
     ) -> MutationProposal:
         """Emit a single mutation proposal."""
 
         self._counter += 1
         proposal_id = f"p-{self._counter:04d}"
+        if domain_payload is None and self._domain_payload_provider is not None:
+            domain_payload = self._domain_payload_provider(self, list(self._observations))
         return MutationProposal(
             proposal_id=proposal_id,
             description=description,
             pending=pending or PendingConnectionSet(),
             proposer_id=proposer_id,
+            domain_payload=domain_payload,
         )
 
     def propose_batch(self) -> list[MutationProposal]:
@@ -155,7 +162,23 @@ class OptimizerComponent:
     def evaluate(self, proposal: MutationProposal) -> ProposalEvaluation:
         """Score a proposal using the configured brain provider."""
 
-        return self.brain_provider.evaluate(self, proposal, list(self._observations))
+        evaluation = self.brain_provider.evaluate(self, proposal, list(self._observations))
+        if proposal.domain_payload is None or evaluation.evidence is None:
+            return evaluation
+        evidence = evaluation.evidence.model_copy(
+            update={
+                "attributes": {
+                    **evaluation.evidence.attributes,
+                    "domain_payload": proposal.domain_payload,
+                }
+            }
+        )
+        return ProposalEvaluation(
+            proposal_id=evaluation.proposal_id,
+            score=evaluation.score,
+            reasons=evaluation.reasons,
+            evidence=evidence,
+        )
 
     # ------------------------------------------------------------------ commit
 

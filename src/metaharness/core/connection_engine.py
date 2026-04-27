@@ -101,13 +101,22 @@ class ConnectionEngine:
         return snapshot.graph_version
 
     def discard_candidate(
-        self, candidate_id: str, snapshot: GraphSnapshot, report: ValidationReport
+        self,
+        candidate_id: str,
+        snapshot: GraphSnapshot,
+        report: ValidationReport,
+        *,
+        deferred: bool = False,
     ) -> None:
         """Record a candidate that was rejected without promotion."""
 
         self._version_store.save_candidate(
             CandidateRecord(
-                candidate_id=candidate_id, snapshot=snapshot, report=report, promoted=False
+                candidate_id=candidate_id,
+                snapshot=snapshot,
+                report=report,
+                promoted=False,
+                deferred=deferred,
             )
         )
         self._registry.candidate_graph = None

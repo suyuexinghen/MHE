@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any
 
 from metaharness.core.models import SessionEvent, SessionEventType
@@ -15,8 +17,13 @@ from metaharness.provenance import (
     RelationKind,
 )
 from metaharness.sdk.execution import (
+    AsyncExecutorProtocol,
     EvidenceBundleProtocol,
+    ExecutionStatus,
+    JobHandle,
+    PollingStrategy,
     RunArtifactProtocol,
+    RunPlanProtocol,
     ValidationOutcomeProtocol,
 )
 
@@ -31,6 +38,236 @@ class ExecutionEvidenceRecord:
     evidence_snapshot: ArtifactSnapshot
     audit_refs: list[str]
     provenance_refs: list[str]
+
+
+@dataclass(slots=True)
+class ExecutionLifecycleResult:
+    """Events and final artifact produced by one executor lifecycle."""
+
+    job_handle: JobHandle
+    run_artifact: RunArtifactProtocol | Any | None
+    session_events: list[SessionEvent]
+
+
+class ExecutionLifecycleService:
+    """Coordinate async executor lifecycle state with session evidence events."""
+
+    def __init__(
+        self,
+        *,
+        executor: AsyncExecutorProtocol,
+        session_store: SessionStore,
+        polling_strategy: PollingStrategy | None = None,
+    ) -> None:
+        self.executor = executor
+        self.session_store = session_store
+        self.polling_strategy = polling_strategy
+
+    async def run(
+        self,
+        *,
+        session_id: str,
+        plan: RunPlanProtocol | Any,
+        candidate_id: str | None = None,
+        graph_version: int | None = None,
+        timeout: float | None = None,
+    ) -> ExecutionLifecycleResult:
+        job_handle = await self.executor.submit(plan)
+        session_events = [
+            self._append_event(
+                session_id,
+                SessionEventType.TASK_SUBMITTED,
+                job_handle=job_handle,
+                candidate_id=candidate_id,
+                graph_version=graph_version,
+                payload={"plan_ref": self._plan_ref(plan)},
+            )
+        ]
+
+        try:
+            final_status = await self._poll_until_terminal(
+                job_handle,
+                session_id,
+                session_events,
+                candidate_id=candidate_id,
+                graph_version=graph_version,
+            )
+            if final_status == ExecutionStatus.CANCELLED:
+                self._sync_handle(job_handle, final_status)
+                session_events.append(
+                    self._append_event(
+                        session_id,
+                        SessionEventType.TASK_CANCELLED,
+                        job_handle=job_handle,
+                        candidate_id=candidate_id,
+                        graph_version=graph_version,
+                    )
+                )
+                return ExecutionLifecycleResult(job_handle, None, session_events)
+            if final_status in {ExecutionStatus.FAILED, ExecutionStatus.TIMEOUT}:
+                self._sync_handle(job_handle, final_status)
+                session_events.append(
+                    self._append_event(
+                        session_id,
+                        SessionEventType.TASK_FAILED,
+                        job_handle=job_handle,
+                        candidate_id=candidate_id,
+                        graph_version=graph_version,
+                    )
+                )
+                return ExecutionLifecycleResult(job_handle, None, session_events)
+
+            run_artifact = await self.executor.await_result(job_handle.job_id, timeout=timeout)
+            self._sync_handle(job_handle, ExecutionStatus.COMPLETED)
+            session_events.append(
+                self._append_event(
+                    session_id,
+                    SessionEventType.TASK_COMPLETED,
+                    job_handle=job_handle,
+                    candidate_id=candidate_id,
+                    graph_version=graph_version,
+                    payload={"artifact_ref": self._artifact_ref(run_artifact)},
+                )
+            )
+            return ExecutionLifecycleResult(job_handle, run_artifact, session_events)
+        except asyncio.CancelledError:
+            await self.cancel(
+                session_id=session_id,
+                job_handle=job_handle,
+                candidate_id=candidate_id,
+                graph_version=graph_version,
+            )
+            raise
+        except Exception as exc:
+            self._sync_handle(job_handle, ExecutionStatus.FAILED)
+            session_events.append(
+                self._append_event(
+                    session_id,
+                    SessionEventType.TASK_FAILED,
+                    job_handle=job_handle,
+                    candidate_id=candidate_id,
+                    graph_version=graph_version,
+                    payload={"error": str(exc)},
+                )
+            )
+            raise
+
+    async def cancel(
+        self,
+        *,
+        session_id: str,
+        job_handle: JobHandle,
+        candidate_id: str | None = None,
+        graph_version: int | None = None,
+    ) -> SessionEvent:
+        await self.executor.cancel(job_handle.job_id)
+        self._sync_handle(job_handle, ExecutionStatus.CANCELLED)
+        return self._append_event(
+            session_id,
+            SessionEventType.TASK_CANCELLED,
+            job_handle=job_handle,
+            candidate_id=candidate_id,
+            graph_version=graph_version,
+        )
+
+    async def _poll_until_terminal(
+        self,
+        job_handle: JobHandle,
+        session_id: str,
+        session_events: list[SessionEvent],
+        *,
+        candidate_id: str | None,
+        graph_version: int | None,
+    ) -> ExecutionStatus:
+        attempt = 1
+        total_wait = 0.0
+        while True:
+            status = await self.executor.poll(job_handle.job_id)
+            self._sync_handle(job_handle, status)
+            if status == ExecutionStatus.RUNNING and not any(
+                event.event_type == SessionEventType.TASK_RUNNING for event in session_events
+            ):
+                session_events.append(
+                    self._append_event(
+                        session_id,
+                        SessionEventType.TASK_RUNNING,
+                        job_handle=job_handle,
+                        candidate_id=candidate_id,
+                        graph_version=graph_version,
+                    )
+                )
+            if status in {
+                ExecutionStatus.COMPLETED,
+                ExecutionStatus.FAILED,
+                ExecutionStatus.TIMEOUT,
+                ExecutionStatus.CANCELLED,
+            }:
+                return status
+            delay = self._next_delay(attempt, total_wait)
+            if delay is None:
+                return ExecutionStatus.TIMEOUT
+            await asyncio.sleep(delay)
+            total_wait += delay
+            attempt += 1
+
+    def _next_delay(self, attempt: int, total_wait: float) -> float | None:
+        if self.polling_strategy is None:
+            return 0.0
+        remaining = self.polling_strategy.max_total_wait - total_wait
+        if remaining <= 0:
+            return None
+        return min(self.polling_strategy.next_delay(attempt), remaining)
+
+    def _append_event(
+        self,
+        session_id: str,
+        event_type: SessionEventType,
+        *,
+        job_handle: JobHandle,
+        candidate_id: str | None = None,
+        graph_version: int | None = None,
+        payload: dict[str, object] | None = None,
+    ) -> SessionEvent:
+        event_payload = {
+            "job_id": job_handle.job_id,
+            "backend": job_handle.backend,
+            "status": job_handle.status.value,
+            **dict(payload or {}),
+        }
+        event = make_session_event(
+            session_id,
+            event_type,
+            graph_version=graph_version,
+            candidate_id=candidate_id,
+            payload=event_payload,
+        )
+        self.session_store.append(event)
+        return event
+
+    def _sync_handle(self, job_handle: JobHandle, status: ExecutionStatus) -> None:
+        job_handle.status = status
+        if status in {
+            ExecutionStatus.COMPLETED,
+            ExecutionStatus.FAILED,
+            ExecutionStatus.TIMEOUT,
+            ExecutionStatus.CANCELLED,
+        }:
+            job_handle.completed_at = datetime.now(timezone.utc)
+
+    def _plan_ref(self, plan: object) -> str | None:
+        return self._coerce_identifier(plan, ("plan_id", "task_id", "experiment_ref"))
+
+    def _artifact_ref(self, artifact: object) -> str | None:
+        return self._coerce_identifier(artifact, ("artifact_id", "run_id", "task_id"))
+
+    def _coerce_identifier(self, value: object, attribute_names: tuple[str, ...]) -> str | None:
+        for attribute_name in attribute_names:
+            raw = getattr(value, attribute_name, None)
+            if isinstance(raw, str) and raw:
+                return raw
+            if raw is not None:
+                return str(raw)
+        return None
 
 
 class ExecutionEvidenceRecorder:

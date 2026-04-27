@@ -28,7 +28,12 @@ from metaharness.core.graph_versions import (
     GraphVersionStore,
 )
 from metaharness.core.lifecycle_tracker import LifecycleTracker
-from metaharness.core.models import PendingConnectionSet, PromotionContext, SessionEventType
+from metaharness.core.models import (
+    PendingConnectionSet,
+    PromotionContext,
+    SessionEvent,
+    SessionEventType,
+)
 from metaharness.core.mutation import MutationSubmitter
 from metaharness.core.port_index import PortIndex, RouteTable
 from metaharness.hotreload.migration import MigrationAdapterRegistry
@@ -56,6 +61,19 @@ class BootReport:
     overridden_ids: list[str] = field(default_factory=list)
     validation_issues: dict[str, list[str]] = field(default_factory=dict)
     active_graph_version: int | None = None
+
+
+@dataclass(slots=True)
+class RecoveredSession:
+    """Durable context reconstructed for a harness session."""
+
+    session_id: str
+    events: list[SessionEvent]
+    checkpoint_index: int | None = None
+    latest_event: SessionEvent | None = None
+    active_graph_version: int | None = None
+    rollback_graph_version: int | None = None
+    candidate_ids: list[str] = field(default_factory=list)
 
 
 class HarnessRuntime:
@@ -106,6 +124,90 @@ class HarnessRuntime:
         self.provenance_graph = provenance_graph or ProvGraph()
         self.artifact_store = artifact_store or ArtifactSnapshotStore()
         self.resource_quota = resource_quota
+        self.recovered_session = self._recover_session(session_id)
+
+    @classmethod
+    def wake(
+        cls,
+        session_id: str,
+        discovery: ComponentDiscovery,
+        *,
+        registry: ComponentRegistry | None = None,
+        version_store: GraphVersionStore | None = None,
+        event_bus: EventBus | None = None,
+        runtime_factory: Callable[[ComponentManifest], ComponentRuntime] | None = None,
+        enabled_overrides: dict[str, dict[str, object]] | None = None,
+        instance_suffix: str = ".primary",
+        session_store: SessionStore | None = None,
+        trace_collector: Any | None = None,
+        audit_log: AuditLog | None = None,
+        provenance_graph: ProvGraph | None = None,
+        artifact_store: ArtifactSnapshotStore | None = None,
+        resource_quota: Any | None = None,
+    ) -> "HarnessRuntime":
+        return cls(
+            discovery,
+            registry=registry,
+            version_store=version_store,
+            event_bus=event_bus,
+            runtime_factory=runtime_factory,
+            enabled_overrides=enabled_overrides,
+            instance_suffix=instance_suffix,
+            session_id=session_id,
+            session_store=session_store,
+            trace_collector=trace_collector,
+            audit_log=audit_log,
+            provenance_graph=provenance_graph,
+            artifact_store=artifact_store,
+            resource_quota=resource_quota,
+        )
+
+    def _recover_session(self, session_id: str) -> RecoveredSession:
+        events = self.session_store.get_events(session_id)
+        latest_event = events[-1] if events else None
+        committed_events = [
+            event for event in events if event.event_type == SessionEventType.GRAPH_COMMITTED
+        ]
+        active_graph_version = (
+            committed_events[-1].payload.get("committed_graph_version")
+            if committed_events
+            else None
+        )
+        rollback_graph_version = (
+            committed_events[-1].payload.get("rollback_target") if committed_events else None
+        )
+        candidate_ids = list(
+            dict.fromkeys(event.candidate_id for event in events if event.candidate_id is not None)
+        )
+        return RecoveredSession(
+            session_id=session_id,
+            events=events,
+            checkpoint_index=self.session_store.latest_checkpoint_index(session_id),
+            latest_event=latest_event,
+            active_graph_version=(
+                active_graph_version if isinstance(active_graph_version, int) else None
+            ),
+            rollback_graph_version=(
+                rollback_graph_version if isinstance(rollback_graph_version, int) else None
+            ),
+            candidate_ids=candidate_ids,
+        )
+
+    def refresh_recovered_session(self) -> RecoveredSession:
+        self.recovered_session = self._recover_session(self.session_id)
+        return self.recovered_session
+
+    def session_events(
+        self,
+        *,
+        after_index: int | None = None,
+        event_type: SessionEventType | None = None,
+    ) -> list[SessionEvent]:
+        return self.session_store.get_events(
+            self.session_id,
+            after_index=after_index,
+            event_type=event_type,
+        )
 
     def _instance_id(self, manifest: ComponentManifest) -> str:
         base = manifest.resolved_id()
@@ -323,6 +425,28 @@ class HarnessRuntime:
             tier = parse_sandbox_tier(declared_tier)
             default_runtime.require_sandbox_tier(tier)
 
+    def _policy_reviewer(self) -> Callable[[PromotionContext], Any] | None:
+        policy_component = self.components.get("policy.primary")
+        if policy_component is None:
+            return None
+        if hasattr(policy_component, "evaluate_promotion"):
+            return policy_component.evaluate_promotion
+        if hasattr(policy_component, "review_graph_promotion"):
+            return policy_component.review_graph_promotion
+        return None
+
+    def deferred_candidates(self) -> list[CandidateRecord]:
+        """Return candidates still awaiting deferred review."""
+
+        return self.version_manager.deferred_candidates
+
+    def defer_candidate(self, candidate: CandidateRecord) -> CandidateRecord:
+        """Persist a candidate as awaiting deferred review."""
+
+        deferred_candidate = candidate.model_copy(update={"promoted": False, "deferred": True})
+        self.version_manager.save_candidate(deferred_candidate)
+        return deferred_candidate
+
     def review_external_candidate(self, candidate: CandidateRecord) -> CandidateRecord:
         """Attach runtime review state to an externally-produced candidate."""
 
@@ -419,6 +543,101 @@ class HarnessRuntime:
             self.event_bus.publish(CANDIDATE_REJECTED, promotion)
         return reviewed_candidate
 
+    def review_deferred_candidate(self, candidate_id: str) -> CandidateRecord:
+        """Re-run promotion safety review for a deferred candidate."""
+
+        candidate = next(
+            (
+                stored
+                for stored in reversed(self.version_manager.candidates)
+                if stored.candidate_id == candidate_id and stored.deferred
+            ),
+            None,
+        )
+        if candidate is None:
+            raise ValueError(f"Deferred candidate '{candidate_id}' is not available")
+        promotion = PromotionContext(
+            candidate_id=candidate.candidate_id,
+            candidate_snapshot=candidate.snapshot,
+            validation_report=candidate.report,
+            proposed_graph_version=candidate.snapshot.graph_version,
+            rollback_target=self.version_manager.active_version,
+        )
+        blocking_issues = [issue for issue in candidate.report.issues if issue.blocks_promotion]
+        safety_result = self.safety_pipeline.evaluate_graph_promotion(
+            promotion,
+            reviewer=self._policy_reviewer(),
+        )
+        self._append_runtime_evidence(
+            SessionEventType.SAFETY_GATE_EVALUATED,
+            promotion,
+            graph_version=candidate.snapshot.graph_version,
+            payload=self._serialize_safety_result(safety_result),
+        )
+        if blocking_issues or not safety_result.allowed:
+            deferred = not blocking_issues and any(
+                result.decision.value == "defer" for result in safety_result.results
+            )
+            event_type = (
+                SessionEventType.CANDIDATE_DEFERRED
+                if deferred
+                else SessionEventType.CANDIDATE_REJECTED
+            )
+            reason = (
+                "; ".join(f"{issue.code}:{issue.subject}" for issue in blocking_issues)
+                if blocking_issues
+                else (
+                    safety_result.rejected_reason
+                    or ("safety_deferred" if deferred else "safety_rejected")
+                )
+            )
+            reviewed_candidate = candidate.model_copy(
+                update={"promoted": False, "deferred": deferred}
+            )
+            self.version_manager.update_candidate(reviewed_candidate)
+            self._append_runtime_evidence(
+                event_type,
+                promotion,
+                graph_version=candidate.snapshot.graph_version,
+                payload={
+                    "reason": reason,
+                    "blocking_issues": [issue.model_dump(mode="json") for issue in blocking_issues],
+                    "safety": self._serialize_safety_result(safety_result),
+                },
+            )
+            self.event_bus.publish(
+                CANDIDATE_DEFERRED if deferred else CANDIDATE_REJECTED, promotion
+            )
+            return reviewed_candidate
+
+        self.version_manager.cutover(candidate.snapshot)
+        self.engine.load_graph(candidate.snapshot)
+        version = candidate.snapshot.graph_version
+        self.registry.record_graph_version(version)
+        commit_report = (
+            candidate.report
+            if candidate.report.valid
+            else candidate.report.model_copy(update={"valid": True})
+        )
+        promotion = promotion.model_copy(update={"validation_report": commit_report})
+        reviewed_candidate = candidate.model_copy(
+            update={"report": commit_report, "promoted": True, "deferred": False}
+        )
+        self.version_manager.update_candidate(reviewed_candidate)
+        self._append_runtime_evidence(
+            SessionEventType.GRAPH_COMMITTED,
+            promotion,
+            graph_version=version,
+            payload={
+                "committed_graph_version": version,
+                "rollback_target": promotion.rollback_target,
+                "validation": self._serialize_validation_report(promotion),
+                "safety": self._serialize_safety_result(safety_result),
+            },
+        )
+        self.event_bus.publish(AFTER_COMMIT_GRAPH, promotion)
+        return reviewed_candidate
+
     def commit_graph(
         self, pending: PendingConnectionSet, *, candidate_id: str = "boot-graph"
     ) -> int:
@@ -462,16 +681,9 @@ class HarnessRuntime:
         )
 
         blocking_issues = [issue for issue in report.issues if issue.blocks_promotion]
-        policy_component = self.components.get("policy.primary")
-        reviewer = None
-        if policy_component is not None:
-            if hasattr(policy_component, "evaluate_promotion"):
-                reviewer = policy_component.evaluate_promotion
-            elif hasattr(policy_component, "review_graph_promotion"):
-                reviewer = policy_component.review_graph_promotion
         safety_result = self.safety_pipeline.evaluate_graph_promotion(
             promotion,
-            reviewer=reviewer,
+            reviewer=self._policy_reviewer(),
         )
         self._append_runtime_evidence(
             SessionEventType.SAFETY_GATE_EVALUATED,
@@ -480,10 +692,10 @@ class HarnessRuntime:
             payload=self._serialize_safety_result(safety_result),
         )
         if blocking_issues or not safety_result.allowed:
-            self.engine.discard_candidate(candidate_id, candidate, report)
             deferred = not blocking_issues and any(
                 result.decision.value == "defer" for result in safety_result.results
             )
+            self.engine.discard_candidate(candidate_id, candidate, report, deferred=deferred)
             event_type = (
                 SessionEventType.CANDIDATE_DEFERRED
                 if deferred

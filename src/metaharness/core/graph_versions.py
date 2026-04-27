@@ -32,6 +32,7 @@ class CandidateRecord(BaseModel):
     snapshot: GraphSnapshot
     report: ValidationReport
     promoted: bool = False
+    deferred: bool = False
     external_review: ExternalCandidateReview | None = None
 
 
@@ -62,6 +63,20 @@ class GraphVersionStore(BaseModel):
         """Store a candidate validation result."""
 
         self.candidates.append(candidate)
+
+    def update_candidate(self, candidate: CandidateRecord) -> None:
+        """Replace the stored record for a candidate."""
+
+        for index, stored in enumerate(self.candidates):
+            if stored.candidate_id == candidate.candidate_id:
+                self.candidates[index] = candidate
+                return
+        self.candidates.append(candidate)
+
+    def deferred_candidates(self) -> list[CandidateRecord]:
+        """Return candidates still awaiting review."""
+
+        return [candidate for candidate in self.candidates if candidate.deferred]
 
     def commit(self, snapshot: GraphSnapshot) -> None:
         """Promote a validated snapshot to active state."""
@@ -171,6 +186,10 @@ class GraphVersionManager:
     def candidates(self) -> list[CandidateRecord]:
         return list(self._store.candidates)
 
+    @property
+    def deferred_candidates(self) -> list[CandidateRecord]:
+        return self._store.deferred_candidates()
+
     # --------------------------------------------------------------- actions
 
     def next_version(self) -> int:
@@ -178,6 +197,9 @@ class GraphVersionManager:
 
     def save_candidate(self, record: CandidateRecord) -> None:
         self._store.save_candidate(record)
+
+    def update_candidate(self, record: CandidateRecord) -> None:
+        self._store.update_candidate(record)
 
     def cutover(self, snapshot: GraphSnapshot) -> int:
         """Atomically promote ``snapshot`` to the active version."""

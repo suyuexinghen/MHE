@@ -82,6 +82,25 @@ def test_optimizer_observe_and_evaluate() -> None:
     assert eval_empty.evidence.evidence_refs == [empty.proposal_id]
 
 
+def test_optimizer_domain_payload_provider_uses_observations() -> None:
+    def domain_payload_provider(
+        _: OptimizerComponent, observations: list[Observation]
+    ) -> dict[str, object]:
+        return {"study_id": observations[0].value["study_id"], "shots": 1024}
+
+    optimizer = OptimizerComponent(domain_payload_provider=domain_payload_provider)
+    optimizer.observe(
+        Observation(source="qcompute", value={"study_id": "study-1"}, tags=("domain",))
+    )
+
+    proposal = optimizer.propose("domain candidate")
+    evaluation = optimizer.evaluate(proposal)
+
+    assert proposal.domain_payload == {"study_id": "study-1", "shots": 1024}
+    assert evaluation.evidence is not None
+    assert evaluation.evidence.attributes["domain_payload"] == proposal.domain_payload
+
+
 def test_optimizer_commit_routes_through_submitter(manifest_dir: Path, graphs_dir: Path) -> None:
     registry = ComponentRegistry()
     for name in ["gateway", "runtime", "executor", "evaluation"]:
@@ -96,11 +115,16 @@ def test_optimizer_commit_routes_through_submitter(manifest_dir: Path, graphs_di
 
     snapshot = parse_graph_xml(graphs_dir / "minimal-happy-path.xml")
     pending = PendingConnectionSet(nodes=snapshot.nodes, edges=snapshot.edges)
-    proposal = optimizer.propose("install happy path", pending=pending)
+    domain_payload = {"study_id": "study-1", "candidate": "happy-path"}
+    proposal = optimizer.propose(
+        "install happy path", pending=pending, domain_payload=domain_payload
+    )
     record = optimizer.commit(proposal, submitter)
 
     assert record.decision.decision == "allow"
     assert record.graph_version == 1
+    assert record.proposal.domain_payload == domain_payload
+    assert submitter.history[0].proposal.domain_payload == domain_payload
 
 
 class _RecordingBrainProvider(BrainProvider):

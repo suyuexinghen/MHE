@@ -27,7 +27,11 @@ from metaharness.core.models import (
 )
 from metaharness.hotreload import HotSwapOrchestrator
 from metaharness.identity import InMemoryIdentityBoundary
-from metaharness.observability.events import InMemorySessionStore
+from metaharness.observability.events import (
+    FileSessionStore,
+    InMemorySessionStore,
+    make_session_event,
+)
 from metaharness.provenance import RelationKind
 from metaharness.safety import SandboxTier
 from metaharness.sdk import ResourceQuota
@@ -217,6 +221,84 @@ def test_session_event_type_includes_execution_lifecycle_values() -> None:
     assert SessionEventType.TASK_RETRIED.value == "task_retried"
 
 
+def test_wake_recovers_file_backed_session_events(tmp_path: Path) -> None:
+    session_store = FileSessionStore(tmp_path / "sessions.jsonl")
+    session_id = "wake-session"
+    session_store.append(
+        make_session_event(
+            session_id,
+            SessionEventType.CANDIDATE_CREATED,
+            candidate_id="candidate-before-wake",
+            graph_version=1,
+        )
+    )
+    session_store.append(
+        make_session_event(
+            session_id,
+            SessionEventType.GRAPH_COMMITTED,
+            candidate_id="candidate-before-wake",
+            graph_version=1,
+            payload={"committed_graph_version": 1, "rollback_target": None},
+        )
+    )
+
+    runtime = HarnessRuntime.wake(
+        session_id,
+        ComponentDiscovery(bundled=tmp_path / "manifests"),
+        session_store=FileSessionStore(tmp_path / "sessions.jsonl"),
+    )
+
+    assert [event.event_type for event in runtime.recovered_session.events] == [
+        SessionEventType.CANDIDATE_CREATED,
+        SessionEventType.GRAPH_COMMITTED,
+    ]
+    assert runtime.recovered_session.latest_event is not None
+    assert runtime.recovered_session.latest_event.event_type == SessionEventType.GRAPH_COMMITTED
+    assert runtime.recovered_session.active_graph_version == 1
+    assert runtime.recovered_session.rollback_graph_version is None
+    assert runtime.recovered_session.candidate_ids == ["candidate-before-wake"]
+    committed_events = runtime.session_events(event_type=SessionEventType.GRAPH_COMMITTED)
+    assert committed_events[0].graph_version == 1
+
+
+def test_woken_runtime_continues_appending_and_querying_events(tmp_path: Path) -> None:
+    session_path = tmp_path / "sessions.jsonl"
+    session_id = "wake-append-session"
+    session_store = FileSessionStore(session_path)
+    session_store.append(
+        make_session_event(
+            session_id,
+            SessionEventType.CHECKPOINT_SAVED,
+            payload={"snapshot_id": "checkpoint-1"},
+        )
+    )
+
+    runtime = HarnessRuntime.wake(
+        session_id,
+        ComponentDiscovery(bundled=tmp_path / "manifests"),
+        session_store=FileSessionStore(session_path),
+    )
+    runtime.session_store.append(
+        make_session_event(
+            session_id,
+            SessionEventType.TASK_SUBMITTED,
+            payload={"task_id": "task-after-wake"},
+        )
+    )
+
+    refreshed = runtime.refresh_recovered_session()
+
+    assert refreshed.checkpoint_index == 0
+    assert [event.event_type for event in runtime.session_events()] == [
+        SessionEventType.CHECKPOINT_SAVED,
+        SessionEventType.TASK_SUBMITTED,
+    ]
+    assert runtime.session_events(after_index=0)[0].payload["task_id"] == "task-after-wake"
+    assert FileSessionStore(session_path).get_events(session_id)[-1].event_type == (
+        SessionEventType.TASK_SUBMITTED
+    )
+
+
 def test_commit_graph_records_session_events_and_graph_links(
     manifest_dir: Path, graphs_dir: Path
 ) -> None:
@@ -372,6 +454,85 @@ def test_commit_graph_defers_when_policy_requests_manual_review(
     candidate_record = runtime.version_manager.candidates[-1]
     assert candidate_record.candidate_id == "policy-defer"
     assert candidate_record.promoted is False
+    assert candidate_record.deferred is True
+    assert runtime.deferred_candidates() == [candidate_record]
+    assert runtime.version_manager.active_version is None
+
+
+def test_review_deferred_candidate_can_promote_after_policy_allows(
+    manifest_dir: Path, graphs_dir: Path
+) -> None:
+    session_store = InMemorySessionStore()
+    runtime = HarnessRuntime(ComponentDiscovery(bundled=manifest_dir), session_store=session_store)
+    runtime.boot()
+    snapshot = parse_graph_xml(graphs_dir / "default-topology.xml")
+    policy = runtime.components["policy.primary"]
+    original_review = policy.evaluate_promotion
+
+    def defer_review(promotion):
+        decision = original_review(promotion)
+        return decision.model_copy(update={"decision": "defer", "reason": "manual_review"})
+
+    policy.evaluate_promotion = defer_review
+
+    with pytest.raises(ValueError, match="manual_review"):
+        runtime.commit_graph(
+            PendingConnectionSet(nodes=snapshot.nodes, edges=snapshot.edges),
+            candidate_id="policy-defer-allow",
+        )
+
+    policy.evaluate_promotion = original_review
+    reviewed = runtime.review_deferred_candidate("policy-defer-allow")
+
+    assert reviewed.promoted is True
+    assert reviewed.deferred is False
+    assert runtime.deferred_candidates() == []
+    assert runtime.version_manager.active_version == 1
+    assert runtime.build_route_table() is not None
+    events = session_store.get_events(runtime.session_id)
+    assert events[-2].event_type == SessionEventType.SAFETY_GATE_EVALUATED
+    assert events[-1].event_type == SessionEventType.GRAPH_COMMITTED
+
+
+def test_review_deferred_candidate_can_reject_after_policy_vetoes(
+    manifest_dir: Path, graphs_dir: Path
+) -> None:
+    session_store = InMemorySessionStore()
+    runtime = HarnessRuntime(ComponentDiscovery(bundled=manifest_dir), session_store=session_store)
+    runtime.boot()
+    snapshot = parse_graph_xml(graphs_dir / "default-topology.xml")
+    policy = runtime.components["policy.primary"]
+    original_review = policy.evaluate_promotion
+    bus_events: list[str] = []
+    runtime.event_bus.subscribe(CANDIDATE_REJECTED, lambda event: bus_events.append(event.name))
+
+    def defer_review(promotion):
+        decision = original_review(promotion)
+        return decision.model_copy(update={"decision": "defer", "reason": "manual_review"})
+
+    def reject_review(promotion):
+        decision = original_review(promotion)
+        return decision.model_copy(update={"decision": "reject", "reason": "manual_reject"})
+
+    policy.evaluate_promotion = defer_review
+
+    with pytest.raises(ValueError, match="manual_review"):
+        runtime.commit_graph(
+            PendingConnectionSet(nodes=snapshot.nodes, edges=snapshot.edges),
+            candidate_id="policy-defer-reject",
+        )
+
+    policy.evaluate_promotion = reject_review
+    reviewed = runtime.review_deferred_candidate("policy-defer-reject")
+
+    assert reviewed.promoted is False
+    assert reviewed.deferred is False
+    assert runtime.deferred_candidates() == []
+    assert runtime.version_manager.active_version is None
+    assert bus_events == [CANDIDATE_REJECTED]
+    events = session_store.get_events(runtime.session_id)
+    assert events[-1].event_type == SessionEventType.CANDIDATE_REJECTED
+    assert events[-1].payload["reason"] == "manual_reject"
 
 
 def test_review_external_candidate_marks_adopted_state() -> None:
