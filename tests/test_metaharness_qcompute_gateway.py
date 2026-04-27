@@ -138,10 +138,9 @@ async def test_gateway_run_baseline_pennylane(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_gateway_run_baseline_environment_unavailable(tmp_path: Path) -> None:
     """run_baseline() returns bundle even when environment fails."""
-    # Use quafu platform which is unsupported in Phase 1
     spec = _build_spec(
         task_id="gw-env-fail",
-        platform="quafu",
+        platform="ibm_quantum",
     )
     gateway = QComputeGatewayComponent()
     await gateway.activate(ComponentRuntime(storage_path=tmp_path))

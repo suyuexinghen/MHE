@@ -1,5 +1,8 @@
 from pathlib import Path
 
+import pytest
+
+from metaharness.sdk.runtime import ComponentRuntime
 from metaharness_ext.abacus.contracts import (
     AbacusExecutableSpec,
     AbacusKPointSpec,
@@ -16,7 +19,8 @@ from metaharness_ext.abacus.input_compiler import AbacusInputCompilerComponent
 from metaharness_ext.abacus.validator import AbacusValidatorComponent
 
 
-def test_abacus_minimal_scf_chain_with_missing_binary() -> None:
+@pytest.mark.asyncio
+async def test_abacus_minimal_scf_chain_with_missing_binary(test_runs_dir: Path) -> None:
     spec = AbacusScfSpec(
         task_id="demo-task-1",
         executable=AbacusExecutableSpec(binary_name="nonexistent_abacus"),
@@ -35,6 +39,7 @@ def test_abacus_minimal_scf_chain_with_missing_binary() -> None:
     assert plan.structure_content
 
     executor = AbacusExecutorComponent()
+    await executor.activate(ComponentRuntime(storage_path=test_runs_dir))
     artifact = executor.execute_plan(plan)
     assert artifact.status == "unavailable"
     assert artifact.result_summary.get("fallback_reason") == "binary_not_found"
@@ -49,7 +54,8 @@ def test_abacus_minimal_scf_chain_with_missing_binary() -> None:
     assert report.scored_evidence.attributes["governance_state"] == "blocked"
 
 
-def test_abacus_minimal_scf_chain_with_real_echo_binary() -> None:
+@pytest.mark.asyncio
+async def test_abacus_minimal_scf_chain_with_real_echo_binary(test_runs_dir: Path) -> None:
     spec = AbacusScfSpec(
         task_id="demo-task-2",
         executable=AbacusExecutableSpec(binary_name="echo"),
@@ -68,6 +74,7 @@ def test_abacus_minimal_scf_chain_with_real_echo_binary() -> None:
     assert plan.application_family == "scf"
 
     executor = AbacusExecutorComponent()
+    await executor.activate(ComponentRuntime(storage_path=test_runs_dir))
     artifact = executor.execute_plan(plan)
     assert artifact.status == "completed"
     assert artifact.return_code == 0
