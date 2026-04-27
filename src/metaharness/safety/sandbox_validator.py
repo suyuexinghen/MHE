@@ -10,7 +10,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from metaharness.core.models import GraphSnapshot, PendingConnectionSet, PromotionContext
+from metaharness.core.models import (
+    GraphSnapshot,
+    PendingConnectionSet,
+    PromotionContext,
+    ValidationIssueCategory,
+)
 from metaharness.core.validators import validate_graph
 from metaharness.safety.gates import GateDecision, GateResult
 
@@ -44,10 +49,23 @@ class SandboxValidator:
     def evaluate_promotion(
         self, promotion: PromotionContext, context: dict[str, Any] | None = None
     ) -> GateResult:
-        return self._evaluate_snapshot(promotion.candidate_snapshot)
+        return self._evaluate_snapshot(promotion.candidate_snapshot, context=context)
 
-    def _evaluate_snapshot(self, snapshot: GraphSnapshot) -> GateResult:
+    def _evaluate_snapshot(
+        self, snapshot: GraphSnapshot, context: dict[str, Any] | None = None
+    ) -> GateResult:
         report = validate_graph(snapshot, self._registry)
+        authorized = set((context or {}).get("authorized_protected_components", []))
+        if authorized:
+            issues = [
+                issue
+                for issue in report.issues
+                if not (
+                    issue.category == ValidationIssueCategory.PROTECTED_COMPONENT
+                    and issue.subject in authorized
+                )
+            ]
+            report = report.model_copy(update={"valid": not issues, "issues": issues})
         if report.valid:
             return GateResult(
                 gate=self.name,

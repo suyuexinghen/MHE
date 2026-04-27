@@ -145,6 +145,91 @@ def test_emit_async_awaits_coroutine_handlers() -> None:
     assert results == [101]
 
 
+def test_dispatch_against_candidate_graph_does_not_replace_active_routes() -> None:
+    engine = _engine_with(
+        [
+            ConnectionEdge(
+                connection_id="c1",
+                source="a.out",
+                target="b.in",
+                payload="X",
+                mode=RouteMode.SYNC,
+            )
+        ]
+    )
+    engine.register_handler("b.in", lambda payload: f"active:{payload}")
+    engine.register_handler("c.in", lambda payload: f"candidate:{payload}")
+    candidate = _snapshot(
+        [
+            ConnectionEdge(
+                connection_id="c2",
+                source="a.out",
+                target="c.in",
+                payload="X",
+                mode=RouteMode.SYNC,
+            )
+        ]
+    )
+
+    assert engine.dispatch_against(candidate, "a.out", "payload") == ["candidate:payload"]
+    assert engine.emit("a.out", "payload") == ["active:payload"]
+
+
+def test_compile_route_table_does_not_replace_active_routes() -> None:
+    engine = _engine_with(
+        [
+            ConnectionEdge(
+                connection_id="c1",
+                source="a.out",
+                target="b.in",
+                payload="X",
+                mode=RouteMode.SYNC,
+            )
+        ]
+    )
+    candidate = _snapshot(
+        [
+            ConnectionEdge(
+                connection_id="c2",
+                source="a.out",
+                target="c.in",
+                payload="X",
+                mode=RouteMode.SYNC,
+            )
+        ]
+    )
+
+    compiled = engine.compile_route_table(candidate)
+
+    assert [binding.target for binding in compiled["a.out"]] == ["c.in"]
+    assert [binding.target for binding in engine.bindings_for("a.out")] == ["b.in"]
+
+
+def test_missing_required_handlers_ignores_shadow_routes() -> None:
+    engine = _engine_with([])
+    candidate = _snapshot(
+        [
+            ConnectionEdge(
+                connection_id="c1",
+                source="a.out",
+                target="required.in",
+                payload="X",
+                mode=RouteMode.SYNC,
+            ),
+            ConnectionEdge(
+                connection_id="c2",
+                source="a.out",
+                target="shadow.in",
+                payload="X",
+                mode=RouteMode.SHADOW,
+                policy=ConnectionPolicy.SHADOW,
+            ),
+        ]
+    )
+
+    assert engine.missing_required_handlers(candidate) == ["required.in"]
+
+
 def test_rollback_reloads_previous_route_table() -> None:
     store = GraphVersionStore()
     engine = ConnectionEngine(ComponentRegistry(), store)

@@ -18,8 +18,9 @@
 总体上，MHE 当前状态可概括为：
 
 - **基础骨架已较完整**：组件 SDK、图连接引擎、核心组件骨架、热更新基础设施、审计与 provenance 机制已经成型。
-- **工程化能力不均衡**：安全治理、自进化优化、模板化生成、可观测性等模块已经具备接口或子模块，但离 wiki 所描述的“生产级闭环能力”还有差距。
-- **若干章节明显超前于代码**：尤其是独立策略控制平面、强隔离沙箱、完整重放与故障恢复、成熟的多目标优化闭环等，当前更多体现为架构方向，而非已完全落地的功能。
+- **核心热更新与安全链条已有实质落地**：统一 drain 协议、默认安全管线、shadow validation hook、L4 即时回滚、候选 route-table 预编译、readiness-gated cutover、观察窗口回滚、隔离候选图 shadow trial 与 protected promotion 授权语义均已有代码和测试覆盖。
+- **工程化能力仍不均衡**：自进化优化、模板化生成、可观测性、强隔离沙箱、独立策略控制面等模块已经具备接口或子能力，但离 wiki 所描述的“生产级闭环能力”还有差距。
+- **若干章节仍明显超前于代码**：尤其是独立策略控制平面、强隔离沙箱、完整重放与故障恢复、成熟的多目标优化闭环等，当前更多体现为架构方向，而非已完全落地的功能。
 
 换言之，**wiki 更像“目标架构 + 当前实现混合体”**，而不是一份完全与代码同步的实现说明书。
 
@@ -50,7 +51,7 @@
   - `src/metaharness/config/xml_parser.py:1`
   - `src/metaharness/config/xsd_validator.py:1`
 
-**结论**：`stage -> validate -> commit/rollback` 的候选图工作流与文档基本一致，是当前实现最成熟的主干能力之一。
+**结论**：`stage -> validate -> commit/rollback` 的候选图工作流与文档基本一致，是当前实现最成熟的主干能力之一。当前还支持提交前候选 route-table 预编译、候选图隔离 dispatch、可选严格 handler readiness 校验，以及失败候选不替换 active graph 的 readiness-gated cutover。
 
 #### 3.1.3 核心组件骨架
 
@@ -79,7 +80,7 @@
   - `src/metaharness/hotreload/observation.py:39`
   - `src/metaharness/hotreload/saga.py:40`
 
-**结论**：热更新涉及的检查点、迁移适配器、交换与观测窗口均已有代码支持，说明该部分具备较强实现基础。
+**结论**：热更新涉及的检查点、迁移适配器、交换与观测窗口均已有代码支持，说明该部分具备较强实现基础。统一 orchestrator 级 drain 协议、route/event buffering、drain 事件证据、L4 即时 health probe rollback 与观察窗口 rollback 也已经接入运行时，但观察窗口仍是显式 API 触发，尚未形成长期后台监控服务。
 
 #### 3.1.5 审计与 Provenance 能力
 
@@ -121,7 +122,7 @@
   - `src/metaharness/safety/auto_rollback.py:1`
   - `src/metaharness/safety/hooks.py:1`
 
-**差距说明**：代码中已经形成四层防线式的安全链条，但 wiki 对“宪法式治理”“独立权威策略层”“强一致约束库”的表述明显更强，当前实现尚不足以完全支撑这些更高阶承诺。
+**差距说明**：代码中已经形成四层防线式的安全链条，并已作为 `HarnessRuntime` 的默认 graph promotion 路径接入。当前具备 sandbox validation、policy review、shadow validation runner/trial hook、auto rollback、protected component blocking 与 actor/approval 授权语义；但 wiki 对“宪法式治理”“独立权威策略层”“强一致约束库”的表述仍明显更强，当前实现尚不足以完全支撑这些更高阶承诺。
 
 #### 3.2.3 模板库与代码生成
 
@@ -174,9 +175,13 @@
 #### 3.4.2 热更新期间的集中式 drain / buffer 协议
 
 - **wiki 依据**：`docs/wiki/meta-harness-engineer/meta-harness-wiki/08-hot-reload.md`
-- **相关文档证据**：`docs/TECHNICAL_MANUAL.md:375`
+- **相关实现证据**：
+  - `src/metaharness/core/drain.py:1`
+  - `src/metaharness/core/boot.py:1`
+  - `src/metaharness/core/connection_engine.py:1`
+  - `src/metaharness/core/event_bus.py:1`
 
-**判断**：热更新机制已经存在，但技术手册同时暗示仍缺少统一的 orchestrator 级 drain 协议，因此 wiki 在这里可能略微超前。
+**判断**：统一的 orchestrator 级 drain 协议已经实现，包含 drain epoch、route/event buffering、in-flight 等待、replay/drop 策略和 session evidence。剩余限制主要是 drain 与外部持久消息队列、跨进程恢复和分布式组件协调尚未证明为生产级能力。
 
 ---
 
@@ -204,7 +209,7 @@ wiki 容易让读者理解为系统已经具备成熟的多级强隔离执行后
 
 ### 5.2 策略治理独立性表述偏强
 
-wiki 对 Policy 的表述接近“独立权威控制面”，而当前实现证据更像运行时内部治理链条，二者在架构级别上有明显差距。
+wiki 对 Policy 的表述接近“独立权威控制面”，而当前实现证据更像运行时内部治理链条。protected graph promotion 已有 actor/approval 授权语义，但审批仍是运行时本地授权记录，不是独立签名化控制面。
 
 ### 5.3 Replay / 故障恢复能力表述偏强
 
@@ -216,7 +221,7 @@ wiki 强调自增长、多阶段搜索、多目标性能驱动，但代码侧更
 
 ### 5.5 热更新安全边界表述偏强
 
-虽然热更新模块较完整，但统一 drain 协议与更强的状态一致性保障证据不足，说明 wiki 对热更新稳定性的暗示略超前。
+热更新模块和统一 drain 协议已经较完整，但跨进程、持久队列、分布式组件协调和长窗口自动观测仍未证明为生产级能力，wiki 不应暗示这些边界已经全部闭环。
 
 ---
 

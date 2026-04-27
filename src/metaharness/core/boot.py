@@ -35,11 +35,14 @@ from metaharness.core.models import (
     PromotionContext,
     SessionEvent,
     SessionEventType,
+    ValidationIssue,
+    ValidationIssueCategory,
     ValidationReport,
 )
 from metaharness.core.mutation import MutationSubmitter
 from metaharness.core.port_index import PortIndex, RouteTable
 from metaharness.hotreload.migration import MigrationAdapterRegistry
+from metaharness.hotreload.observation import EventList, MetricMap, ObservationProbe
 from metaharness.identity import InMemoryIdentityBoundary
 from metaharness.observability.events import InMemorySessionStore, SessionStore, make_session_event
 from metaharness.provenance import ArtifactSnapshotStore, AuditLog, ProvGraph, RelationKind
@@ -111,6 +114,7 @@ class HarnessRuntime:
         provenance_graph: ProvGraph | None = None,
         artifact_store: ArtifactSnapshotStore | None = None,
         resource_quota: Any | None = None,
+        require_route_handlers: bool = False,
     ) -> None:
         self.discovery = discovery
         self.registry = registry or ComponentRegistry()
@@ -141,6 +145,9 @@ class HarnessRuntime:
         self.provenance_graph = provenance_graph or ProvGraph()
         self.artifact_store = artifact_store or ArtifactSnapshotStore()
         self.resource_quota = resource_quota
+        self.require_route_handlers = require_route_handlers
+        self._shadow_trials: list[dict[str, Any]] = []
+        self._protected_approvals: dict[str, str] = {}
         self.recovered_session = self._recover_session(session_id)
 
     @classmethod
@@ -161,6 +168,7 @@ class HarnessRuntime:
         provenance_graph: ProvGraph | None = None,
         artifact_store: ArtifactSnapshotStore | None = None,
         resource_quota: Any | None = None,
+        require_route_handlers: bool = False,
     ) -> "HarnessRuntime":
         return cls(
             discovery,
@@ -177,6 +185,7 @@ class HarnessRuntime:
             provenance_graph=provenance_graph,
             artifact_store=artifact_store,
             resource_quota=resource_quota,
+            require_route_handlers=require_route_handlers,
         )
 
     def _recover_session(self, session_id: str) -> RecoveredSession:
@@ -455,6 +464,79 @@ class HarnessRuntime:
             return policy_component.review_graph_promotion
         return None
 
+    def authorize_protected_promotion(self, approval_id: str, *, actor: str) -> None:
+        self._protected_approvals[approval_id] = actor
+
+    def _protected_promotion_authorized(self, promotion: PromotionContext) -> bool:
+        return (
+            promotion.approval_id is not None
+            and promotion.actor is not None
+            and self._protected_approvals.get(promotion.approval_id) == promotion.actor
+        )
+
+    def _validate_protected_authorization(self, promotion: PromotionContext) -> ValidationReport:
+        if not promotion.affected_protected_components:
+            return ValidationReport(valid=True)
+        if self._protected_promotion_authorized(promotion):
+            return ValidationReport(valid=True)
+        return ValidationReport(
+            valid=False,
+            issues=[
+                ValidationIssue(
+                    code="protected_authorization_required",
+                    message="Protected graph promotion requires matching actor approval",
+                    subject=component_id,
+                    category=ValidationIssueCategory.PROTECTED_COMPONENT,
+                    blocks_promotion=True,
+                )
+                for component_id in promotion.affected_protected_components
+            ],
+        )
+
+    def _promotion_safety_context(self, promotion: PromotionContext) -> dict[str, Any]:
+        authorized_protected_components = (
+            promotion.affected_protected_components
+            if self._protected_promotion_authorized(promotion)
+            else []
+        )
+        return {
+            "trials": self._shadow_trials,
+            "authorized_protected_components": authorized_protected_components,
+        }
+
+    def _validate_candidate_readiness(self, snapshot: GraphSnapshot) -> ValidationReport:
+        issues: list[ValidationIssue] = []
+        if self.require_route_handlers:
+            for target in self.engine.missing_required_handlers(snapshot):
+                issues.append(
+                    ValidationIssue(
+                        code="missing_route_handler",
+                        message="Candidate route target has no registered handler",
+                        subject=target,
+                        category=ValidationIssueCategory.READINESS,
+                        blocks_promotion=True,
+                    )
+                )
+        for node in snapshot.nodes:
+            component = self.components.get(node.component_id)
+            if component is None:
+                continue
+            health_check = getattr(component, "health_check", None)
+            if health_check is None:
+                continue
+            health = health_check()
+            if isinstance(health, dict) and health.get("status") in {"failed", "unhealthy"}:
+                issues.append(
+                    ValidationIssue(
+                        code="component_not_ready",
+                        message="Candidate component health check failed",
+                        subject=node.component_id,
+                        category=ValidationIssueCategory.READINESS,
+                        blocks_promotion=True,
+                    )
+                )
+        return ValidationReport(valid=not issues, issues=issues)
+
     def register_shadow_runners(
         self,
         *,
@@ -467,12 +549,83 @@ class HarnessRuntime:
         if comparator is not None:
             self.shadow_tester.comparator = comparator
 
+    def register_shadow_trials(
+        self,
+        trials: list[dict[str, Any]],
+        *,
+        comparator: Callable[[Any, Any], tuple[bool, str]] | None = None,
+    ) -> None:
+        self._shadow_trials = list(trials)
+        self.shadow_tester.baseline_runner = self._run_baseline_shadow_trial
+        self.shadow_tester.candidate_runner = self._run_candidate_shadow_trial
+        if comparator is not None:
+            self.shadow_tester.comparator = comparator
+
+    def _run_baseline_shadow_trial(
+        self, promotion: PromotionContext, trial: dict[str, Any]
+    ) -> list[Any]:
+        active = self.version_manager.active_snapshot()
+        if active is None:
+            return []
+        return self.engine.dispatch_against(active, str(trial["source"]), trial.get("payload"))
+
+    def _run_candidate_shadow_trial(
+        self, promotion: PromotionContext, trial: dict[str, Any]
+    ) -> list[Any]:
+        return self.engine.dispatch_against(
+            promotion.candidate_snapshot,
+            str(trial["source"]),
+            trial.get("payload"),
+        )
+
     def register_health_probe(
         self,
         name: str,
         probe: Callable[[dict[str, Any]], tuple[bool, str]],
     ) -> None:
         self.auto_rollback.register_probe(name, probe)
+
+    def register_observation_probe(self, name: str, probe: ObservationProbe) -> None:
+        self.auto_rollback.register_observation_probe(name, probe)
+
+    def evaluate_observation_window(
+        self,
+        *,
+        metrics: MetricMap | None = None,
+        events: EventList | None = None,
+        context: dict[str, Any] | None = None,
+    ) -> None:
+        promotion = (context or {}).get("promotion")
+        if not isinstance(promotion, PromotionContext):
+            active = self.version_manager.active_snapshot() or GraphSnapshot(graph_version=0)
+            promotion = PromotionContext(
+                candidate_id="observation-window",
+                candidate_snapshot=active,
+                validation_report=ValidationReport(valid=True),
+                proposed_graph_version=active.graph_version,
+                rollback_target=self.version_manager.rollback_target,
+            )
+        result, report = self.auto_rollback.check_observation_window(
+            metrics=metrics,
+            events=events,
+            context={"promotion": promotion, **dict(context or {})},
+        )
+        if result.allowed:
+            return
+        self.registry.record_graph_version(self.version_manager.active_version or 0)
+        self._append_runtime_evidence(
+            SessionEventType.GRAPH_ROLLED_BACK,
+            promotion,
+            graph_version=self.version_manager.active_version,
+            payload={
+                "reason": result.reason,
+                "rolled_back_from": result.evidence.get("rolled_back_from"),
+                "rolled_back_to": result.evidence.get("rolled_back_to"),
+                "probe": result.evidence.get("probe"),
+                "observation": result.evidence.get("observation"),
+            },
+        )
+        raise RuntimeError(f"observation window failed: {report.reason}")
 
     def deferred_candidates(self) -> list[CandidateRecord]:
         """Return candidates still awaiting deferred review."""
@@ -606,6 +759,7 @@ class HarnessRuntime:
         safety_result = self.safety_pipeline.evaluate_graph_promotion(
             promotion,
             reviewer=self._policy_reviewer(),
+            context=self._promotion_safety_context(promotion),
         )
         self._append_runtime_evidence(
             SessionEventType.SAFETY_GATE_EVALUATED,
@@ -771,12 +925,25 @@ class HarnessRuntime:
             raise
 
     def commit_graph(
-        self, pending: PendingConnectionSet, *, candidate_id: str = "boot-graph"
+        self,
+        pending: PendingConnectionSet,
+        *,
+        candidate_id: str = "boot-graph",
+        actor: str | None = None,
+        approval_id: str | None = None,
     ) -> int:
         """Stage, validate, and commit a graph using the booted registry."""
 
         self._enforce_promotion_policies(pending)
         candidate, report = self.engine.stage(pending)
+        readiness_report = self._validate_candidate_readiness(candidate)
+        if readiness_report.issues:
+            report = report.model_copy(
+                update={
+                    "valid": False,
+                    "issues": [*report.issues, *readiness_report.issues],
+                }
+            )
         proposed_version = candidate.graph_version
         rollback_target = self.version_manager.active_version
         affected_protected_components = sorted(
@@ -792,8 +959,28 @@ class HarnessRuntime:
             validation_report=report,
             proposed_graph_version=proposed_version,
             rollback_target=rollback_target,
+            actor=actor,
+            approval_id=approval_id,
             affected_protected_components=affected_protected_components,
         )
+        if self._protected_promotion_authorized(promotion):
+            non_protected_issues = [
+                issue
+                for issue in report.issues
+                if issue.category != ValidationIssueCategory.PROTECTED_COMPONENT
+            ]
+            report = report.model_copy(update={"valid": not non_protected_issues, "issues": non_protected_issues})
+            promotion = promotion.model_copy(update={"validation_report": report})
+        else:
+            protected_authorization_report = self._validate_protected_authorization(promotion)
+            if protected_authorization_report.issues:
+                report = report.model_copy(
+                    update={
+                        "valid": False,
+                        "issues": [*report.issues, *protected_authorization_report.issues],
+                    }
+                )
+                promotion = promotion.model_copy(update={"validation_report": report})
 
         self._append_runtime_evidence(
             SessionEventType.CANDIDATE_CREATED,
@@ -803,6 +990,8 @@ class HarnessRuntime:
                 "node_ids": [node.component_id for node in candidate.nodes],
                 "edge_ids": [edge.connection_id for edge in candidate.edges],
                 "rollback_target": rollback_target,
+                "actor": actor,
+                "approval_id": approval_id,
             },
         )
         self._append_runtime_evidence(
@@ -816,6 +1005,7 @@ class HarnessRuntime:
         safety_result = self.safety_pipeline.evaluate_graph_promotion(
             promotion,
             reviewer=self._policy_reviewer(),
+            context=self._promotion_safety_context(promotion),
         )
         self._append_runtime_evidence(
             SessionEventType.SAFETY_GATE_EVALUATED,
@@ -896,6 +1086,8 @@ class HarnessRuntime:
             payload={
                 "committed_graph_version": version,
                 "rollback_target": rollback_target,
+                "actor": promotion.actor,
+                "approval_id": promotion.approval_id,
                 "validation": self._serialize_validation_report(promotion),
                 "safety": self._serialize_safety_result(safety_result),
             },

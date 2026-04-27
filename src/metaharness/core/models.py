@@ -207,6 +207,7 @@ class PromotionContext(BaseModel):
     proposed_graph_version: int
     rollback_target: int | None = None
     actor: str | None = None
+    approval_id: str | None = None
     affected_protected_components: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 

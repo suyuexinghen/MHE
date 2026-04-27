@@ -26,6 +26,7 @@ from metaharness.core.models import (
     ValidationReport,
 )
 from metaharness.hotreload import HotSwapOrchestrator
+from metaharness.hotreload.observation import max_metric_probe
 from metaharness.identity import InMemoryIdentityBoundary
 from metaharness.observability.events import (
     FileSessionStore,
@@ -441,6 +442,36 @@ def test_commit_graph_rejects_shadow_divergence(manifest_dir: Path, graphs_dir: 
     assert rejected.payload["safety"]["rejected_by"] == "level_2_ab_shadow"
 
 
+def test_commit_graph_runs_shadow_trials_against_isolated_candidate(
+    manifest_dir: Path, graphs_dir: Path
+) -> None:
+    runtime = HarnessRuntime(ComponentDiscovery(bundled=manifest_dir))
+    runtime.boot()
+    snapshot = parse_graph_xml(graphs_dir / "default-topology.xml")
+    pending = PendingConnectionSet(nodes=snapshot.nodes, edges=snapshot.edges)
+    runtime.commit_graph(pending, candidate_id="shadow-active")
+    source = snapshot.edges[0].source
+    active_target = snapshot.edges[0].target
+    candidate_target = snapshot.edges[1].target
+    runtime.engine.register_handler(active_target, lambda payload: f"active:{payload}")
+    runtime.engine.register_handler(candidate_target, lambda payload: f"candidate:{payload}")
+    candidate_edges = [
+        *snapshot.edges,
+        snapshot.edges[0].model_copy(
+            update={"connection_id": "shadow-trial-candidate", "target": candidate_target}
+        ),
+    ]
+    runtime.register_shadow_trials([{"source": source, "payload": "trial"}])
+
+    with pytest.raises(ValueError, match="shadow mismatch"):
+        runtime.commit_graph(
+            PendingConnectionSet(nodes=snapshot.nodes, edges=candidate_edges),
+            candidate_id="shadow-isolated-candidate",
+        )
+
+    assert runtime.engine.emit(source, "trial") == ["active:trial"]
+
+
 def test_commit_graph_auto_rolls_back_after_health_probe_failure(
     manifest_dir: Path, graphs_dir: Path
 ) -> None:
@@ -460,6 +491,27 @@ def test_commit_graph_auto_rolls_back_after_health_probe_failure(
     assert events[-1].event_type == SessionEventType.GRAPH_ROLLED_BACK
     assert events[-1].payload["rolled_back_from"] == 2
     assert events[-1].payload["rolled_back_to"] == 1
+
+
+def test_observation_window_rolls_back_with_evidence(
+    manifest_dir: Path, graphs_dir: Path
+) -> None:
+    runtime = HarnessRuntime(ComponentDiscovery(bundled=manifest_dir))
+    runtime.boot()
+    snapshot = parse_graph_xml(graphs_dir / "default-topology.xml")
+    pending = PendingConnectionSet(nodes=snapshot.nodes, edges=snapshot.edges)
+
+    runtime.commit_graph(pending, candidate_id="observation-baseline")
+    runtime.commit_graph(pending, candidate_id="observation-candidate")
+    runtime.register_observation_probe("latency-window", max_metric_probe("latency_p95_ms", 100.0))
+
+    with pytest.raises(RuntimeError, match="observation window failed"):
+        runtime.evaluate_observation_window(metrics={"latency_p95_ms": 140.0})
+
+    assert runtime.version_manager.active_version == 1
+    rolled_back = runtime.session_events(event_type=SessionEventType.GRAPH_ROLLED_BACK)[-1]
+    assert rolled_back.payload["probe"] == "latency-window"
+    assert rolled_back.payload["observation"]["rejected_by"] == "latency-window"
 
 
 def test_commit_graph_preserves_rollback_target_invariant(
@@ -666,6 +718,94 @@ def test_review_external_candidate_marks_rejected_state_from_blocking_issues() -
     assert reviewed.external_review.reviewer == "extension_governance"
 
 
+def test_commit_graph_rejects_missing_route_handler_without_replacing_active_graph(
+    manifest_dir: Path, graphs_dir: Path
+) -> None:
+    runtime = HarnessRuntime(ComponentDiscovery(bundled=manifest_dir))
+    runtime.boot()
+    snapshot = parse_graph_xml(graphs_dir / "default-topology.xml")
+    pending = PendingConnectionSet(nodes=snapshot.nodes, edges=snapshot.edges)
+    runtime.commit_graph(pending, candidate_id="readiness-active")
+    for edge in snapshot.edges:
+        runtime.engine.register_handler(edge.target, lambda payload: payload)
+    runtime.require_route_handlers = True
+    active_version = runtime.version_manager.active_version
+    active_bindings = runtime.engine.bindings_for(snapshot.edges[0].source)
+    candidate_edges = [
+        *snapshot.edges,
+        snapshot.edges[0].model_copy(
+            update={"connection_id": "missing-handler", "target": "runtime.primary.missing"}
+        ),
+    ]
+
+    with pytest.raises(ValueError, match="missing_route_handler:runtime.primary.missing"):
+        runtime.commit_graph(
+            PendingConnectionSet(nodes=snapshot.nodes, edges=candidate_edges),
+            candidate_id="readiness-missing-handler",
+        )
+
+    assert runtime.version_manager.active_version == active_version
+    assert runtime.engine.bindings_for(snapshot.edges[0].source) == active_bindings
+    rejected = runtime.session_events()[-1]
+    assert rejected.event_type == SessionEventType.CANDIDATE_REJECTED
+    assert rejected.payload["blocking_issues"][0]["category"] == "readiness"
+
+
+def test_commit_graph_rejects_protected_change_without_explicit_authorization(
+    manifest_dir: Path, graphs_dir: Path
+) -> None:
+    runtime = HarnessRuntime(ComponentDiscovery(bundled=manifest_dir))
+    runtime.boot()
+    active_snapshot = parse_graph_xml(graphs_dir / "default-topology.xml")
+    runtime.commit_graph(
+        PendingConnectionSet(nodes=active_snapshot.nodes, edges=active_snapshot.edges),
+        candidate_id="protected-auth-active",
+    )
+    candidate_edges = [
+        *active_snapshot.edges,
+        active_snapshot.edges[0].model_copy(
+            update={"connection_id": "policy-feed-auth", "target": "policy.primary.decision"}
+        ),
+    ]
+
+    with pytest.raises(ValueError, match="protected_authorization_required:policy.primary"):
+        runtime.commit_graph(
+            PendingConnectionSet(nodes=active_snapshot.nodes, edges=candidate_edges),
+            candidate_id="protected-auth-missing",
+            actor="operator",
+        )
+
+    assert runtime.version_manager.active_version == 1
+
+
+def test_commit_graph_allows_protected_change_with_matching_authorization(
+    manifest_dir: Path, graphs_dir: Path
+) -> None:
+    runtime = HarnessRuntime(ComponentDiscovery(bundled=manifest_dir))
+    runtime.boot()
+    active_snapshot = parse_graph_xml(graphs_dir / "default-topology.xml")
+    runtime.commit_graph(
+        PendingConnectionSet(nodes=active_snapshot.nodes, edges=active_snapshot.edges),
+        candidate_id="protected-auth-allow-active",
+    )
+    candidate_nodes = [
+        node for node in active_snapshot.nodes if node.component_id != "policy.primary"
+    ]
+    runtime.authorize_protected_promotion("approval-1", actor="operator")
+
+    version = runtime.commit_graph(
+        PendingConnectionSet(nodes=candidate_nodes, edges=active_snapshot.edges),
+        candidate_id="protected-auth-allowed",
+        actor="operator",
+        approval_id="approval-1",
+    )
+
+    assert version == 2
+    committed = runtime.session_events(event_type=SessionEventType.GRAPH_COMMITTED)[-1]
+    assert committed.payload["actor"] == "operator"
+    assert committed.payload["approval_id"] == "approval-1"
+
+
 def test_commit_graph_rejects_protected_boundary_rewire_with_evidence(
     manifest_dir: Path, graphs_dir: Path
 ) -> None:
@@ -706,8 +846,12 @@ def test_commit_graph_rejects_protected_boundary_rewire_with_evidence(
     events = session_store.get_events(runtime.session_id)
     rejected = events[-1]
     assert rejected.event_type == SessionEventType.CANDIDATE_REJECTED
-    assert rejected.payload["reason"] == "protected_boundary_violation:policy.primary"
+    assert rejected.payload["reason"] == (
+        "protected_boundary_violation:policy.primary; "
+        "protected_authorization_required:policy.primary"
+    )
     assert rejected.payload["blocking_issues"][0]["code"] == "protected_boundary_violation"
+    assert rejected.payload["blocking_issues"][1]["code"] == "protected_authorization_required"
 
 
 def test_boot_injects_default_identity_boundary(manifest_dir: Path) -> None:

@@ -233,6 +233,44 @@ def test_pipeline_evaluate_graph_promotion_delegates_to_reviewer(
     assert rejected.rejected_by == "policy_review"
 
 
+def test_sandbox_validator_allows_authorized_protected_promotion(
+    manifest_dir: Path, graphs_dir: Path
+) -> None:
+    registry = _registry(
+        manifest_dir,
+        [
+            "gateway",
+            "runtime",
+            "executor",
+            "evaluation",
+            "policy",
+            "planner",
+            "memory",
+            "toolhub",
+            "observability",
+        ],
+    )
+    snapshot = parse_graph_xml(graphs_dir / "default-topology.xml")
+    candidate_nodes = [node for node in snapshot.nodes if node.component_id != "policy.primary"]
+    candidate = snapshot.model_copy(update={"nodes": candidate_nodes})
+    promotion = PromotionContext(
+        candidate_id="authorized-protected",
+        candidate_snapshot=candidate,
+        validation_report=validate_graph(candidate, registry),
+        proposed_graph_version=2,
+        rollback_target=1,
+        affected_protected_components=["policy.primary"],
+    )
+
+    result = SandboxValidator(registry).evaluate_promotion(
+        promotion,
+        context={"authorized_protected_components": ["policy.primary"]},
+    )
+
+    assert result.decision == GateDecision.ALLOW
+
+
+
 def test_pipeline_rejects_promotion_when_protected_components_are_flagged(
     manifest_dir: Path, graphs_dir: Path
 ) -> None:

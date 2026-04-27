@@ -67,8 +67,8 @@ class ConnectionEngine:
 
     # ------------------------------------------------------------------ graph
 
-    def load_graph(self, graph_snapshot: GraphSnapshot) -> None:
-        """Load a committed graph into the active route table."""
+    def compile_route_table(self, graph_snapshot: GraphSnapshot) -> dict[str, list[RouteBinding]]:
+        """Compile a route table without publishing it as active."""
 
         route_table: dict[str, list[RouteBinding]] = defaultdict(list)
         for edge in graph_snapshot.edges:
@@ -81,7 +81,23 @@ class ConnectionEngine:
                     policy=edge.policy,
                 )
             )
-        self._route_table = dict(route_table)
+        return dict(route_table)
+
+    def missing_required_handlers(self, graph_snapshot: GraphSnapshot) -> list[str]:
+        route_table = self.compile_route_table(graph_snapshot)
+        missing: list[str] = []
+        for bindings in route_table.values():
+            for binding in bindings:
+                if binding.mode == RouteMode.SHADOW:
+                    continue
+                if binding.target not in self._handlers:
+                    missing.append(binding.target)
+        return sorted(dict.fromkeys(missing))
+
+    def load_graph(self, graph_snapshot: GraphSnapshot) -> None:
+        """Load a committed graph into the active route table."""
+
+        self._route_table = self.compile_route_table(graph_snapshot)
         self._registry.active_graph = graph_snapshot
 
     def stage(self, pending: PendingConnectionSet) -> tuple[GraphSnapshot, ValidationReport]:
@@ -160,6 +176,15 @@ class ConnectionEngine:
 
         return list(self._route_table.get(source, []))
 
+    def dispatch_against(
+        self,
+        graph_snapshot: GraphSnapshot,
+        source: str,
+        payload: Any,
+    ) -> list[Any]:
+        route_table = self.compile_route_table(graph_snapshot)
+        return self._emit_with_route_table(route_table, source, payload)
+
     @property
     def drain_active(self) -> bool:
         return self._drain_epoch_id is not None
@@ -207,20 +232,7 @@ class ConnectionEngine:
             return []
         self._enter_inflight()
         try:
-            results: list[Any] = []
-            for binding in self._route_table.get(source, []):
-                handler = self._handlers.get(binding.target)
-                if handler is None:
-                    continue
-                try:
-                    value = self._dispatch_sync(handler, payload)
-                except Exception:
-                    if binding.mode == RouteMode.SHADOW:
-                        continue
-                    raise
-                if binding.mode != RouteMode.SHADOW:
-                    results.append(value)
-            return results
+            return self._emit_with_route_table(self._route_table, source, payload)
         finally:
             self._exit_inflight()
 
@@ -249,6 +261,27 @@ class ConnectionEngine:
             self._exit_inflight()
 
     # ---------------------------------------------------------------- internal
+
+    def _emit_with_route_table(
+        self,
+        route_table: dict[str, list[RouteBinding]],
+        source: str,
+        payload: Any,
+    ) -> list[Any]:
+        results: list[Any] = []
+        for binding in route_table.get(source, []):
+            handler = self._handlers.get(binding.target)
+            if handler is None:
+                continue
+            try:
+                value = self._dispatch_sync(handler, payload)
+            except Exception:
+                if binding.mode == RouteMode.SHADOW:
+                    continue
+                raise
+            if binding.mode != RouteMode.SHADOW:
+                results.append(value)
+        return results
 
     def _buffer_route_if_draining(self, source: str, payload: Any, *, async_mode: bool) -> bool:
         if self._drain_epoch_id is None:
