@@ -1,0 +1,78 @@
+{
+  "name": "octave",
+  "version": "0.1.0",
+  "kind": "custom",
+  "entry": "metaharness_ext.octave",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [],
+    "outputs": [],
+    "events": [],
+    "provides": [
+      {
+        "name": "octave.task.issue",
+        "description": "Issue controlled GNU Octave task specifications."
+      },
+      {
+        "name": "octave.environment.probe",
+        "description": "Probe octave-cli, package, and workspace readiness."
+      },
+      {
+        "name": "octave.script.compile",
+        "description": "Compile typed Octave specifications into wrapper-backed run plans."
+      },
+      {
+        "name": "octave.execute.run",
+        "description": "Execute compiled Octave run plans in managed workspaces."
+      },
+      {
+        "name": "octave.validate.report",
+        "description": "Validate Octave outputs, warnings, and numeric evidence."
+      },
+      {
+        "name": "octave.evidence.bundle",
+        "description": "Bundle Octave environment, plan, run, and validation evidence."
+      },
+      {
+        "name": "octave.policy.evaluate",
+        "description": "Map Octave validation evidence to governance decisions."
+      },
+      {
+        "name": "octave.study.run",
+        "description": "Run controlled Octave parameter studies."
+      }
+    ],
+    "requires": [],
+    "slots": []
+  },
+  "safety": {
+    "protected": false,
+    "mutability": "mutable",
+    "sandbox_profile": "workspace-write",
+    "hot_swap": true
+  },
+  "policy": {
+    "sandbox": {
+      "tier": "workspace-write"
+    },
+    "credentials": {
+      "requires_subject": false,
+      "allow_inline_credentials": false,
+      "required_claims": []
+    }
+  },
+  "state_schema_version": 1,
+  "bins": [
+    "octave-cli"
+  ],
+  "provides": [
+    "octave.task.issue",
+    "octave.environment.probe",
+    "octave.script.compile",
+    "octave.execute.run",
+    "octave.validate.report",
+    "octave.evidence.bundle",
+    "octave.policy.evaluate",
+    "octave.study.run"
+  ]
+}

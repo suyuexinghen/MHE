@@ -1,0 +1,77 @@
+{
+  "name": "octave_script_compiler",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.octave.script_compiler:OctaveScriptCompilerComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [
+      {
+        "name": "task",
+        "type": "OctaveExperimentSpec",
+        "required": true,
+        "description": "Compile a typed Octave task specification into a deterministic wrapper run plan.",
+        "cardinality": "one"
+      },
+      {
+        "name": "environment",
+        "type": "OctaveEnvironmentReport",
+        "required": false,
+        "description": "Optional environment report used to reject missing binaries or packages before planning.",
+        "cardinality": "one"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "plan",
+        "type": "OctaveRunPlan",
+        "mode": "sync",
+        "description": "Emit a wrapper-first Octave run plan with declared inputs and expected outputs."
+      }
+    ],
+    "events": [],
+    "provides": [
+      {
+        "name": "octave.script.compile",
+        "description": "Compile controlled Octave specs into deterministic wrapper and workspace plans."
+      }
+    ],
+    "requires": [],
+    "slots": [
+      {
+        "slot": "octave_script_compiler.primary",
+        "binding": "primary",
+        "required": true
+      }
+    ]
+  },
+  "safety": {
+    "protected": false,
+    "mutability": "mutable",
+    "sandbox_profile": "workspace-write",
+    "hot_swap": true
+  },
+  "policy": {
+    "sandbox": {
+      "tier": "workspace-write"
+    },
+    "credentials": {
+      "requires_subject": false,
+      "allow_inline_credentials": false,
+      "required_claims": []
+    }
+  },
+  "state_schema_version": 1,
+  "provides": [
+    "octave.script.compile"
+  ],
+  "requires": [
+    "octave.environment.probe"
+  ],
+  "deps": {
+    "components": [],
+    "capabilities": [
+      "octave.environment.probe"
+    ]
+  }
+}

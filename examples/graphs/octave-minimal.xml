@@ -1,0 +1,16 @@
+<Harness version="0.1.0" graphVersion="1" schemaVersion="1.1">
+  <Components>
+    <Component id="octave_gateway.primary" type="OctaveGateway" impl="metaharness_ext.octave.gateway" version="0.1.0" />
+    <Component id="octave_environment.primary" type="OctaveEnvironmentProbe" impl="metaharness_ext.octave.environment" version="0.1.0" />
+    <Component id="octave_script_compiler.primary" type="OctaveScriptCompiler" impl="metaharness_ext.octave.script_compiler" version="0.1.0" />
+    <Component id="octave_executor.primary" type="OctaveExecutor" impl="metaharness_ext.octave.executor" version="0.1.0" />
+    <Component id="octave_validator.primary" type="OctaveValidator" impl="metaharness_ext.octave.validator" version="0.1.0" protected="true" />
+  </Components>
+  <Connections>
+    <Connection id="c1" from="octave_gateway.primary.task" to="octave_environment.primary.task" payload="OctaveExperimentSpec" mode="sync" policy="required" />
+    <Connection id="c2" from="octave_gateway.primary.task" to="octave_script_compiler.primary.task" payload="OctaveExperimentSpec" mode="sync" policy="required" />
+    <Connection id="c3" from="octave_environment.primary.environment" to="octave_script_compiler.primary.environment" payload="OctaveEnvironmentReport" mode="sync" policy="required" />
+    <Connection id="c4" from="octave_script_compiler.primary.plan" to="octave_executor.primary.plan" payload="OctaveRunPlan" mode="sync" policy="required" />
+    <Connection id="c5" from="octave_executor.primary.run" to="octave_validator.primary.run" payload="OctaveRunArtifact" mode="sync" policy="required" />
+  </Connections>
+</Harness>

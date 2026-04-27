@@ -1,0 +1,84 @@
+{
+  "name": "octave_gateway",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.octave.gateway:OctaveGatewayComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [
+      {
+        "name": "experiment_spec",
+        "type": "OctaveExperimentSpec",
+        "required": true,
+        "description": "Accept a controlled Octave task specification for issue and dispatch.",
+        "cardinality": "one"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "task",
+        "type": "OctaveExperimentSpec",
+        "mode": "sync",
+        "description": "Emit the normalized Octave task specification for downstream probing and compilation."
+      }
+    ],
+    "events": [],
+    "provides": [
+      {
+        "name": "octave.task.issue",
+        "description": "Issue Octave script_run, function_eval, and numeric_benchmark tasks."
+      }
+    ],
+    "requires": [
+      {
+        "name": "octave.environment.probe",
+        "description": "Require environment readiness before executable planning."
+      },
+      {
+        "name": "octave.script.compile",
+        "description": "Require wrapper-first compilation for accepted task specifications."
+      }
+    ],
+    "slots": [
+      {
+        "slot": "octave_gateway.primary",
+        "binding": "primary",
+        "required": true
+      }
+    ]
+  },
+  "safety": {
+    "protected": false,
+    "mutability": "mutable",
+    "sandbox_profile": "workspace-write",
+    "hot_swap": true
+  },
+  "policy": {
+    "sandbox": {
+      "tier": "workspace-write"
+    },
+    "credentials": {
+      "requires_subject": false,
+      "allow_inline_credentials": false,
+      "required_claims": []
+    }
+  },
+  "state_schema_version": 1,
+  "provides": [
+    "octave.task.issue"
+  ],
+  "requires": [
+    "octave.environment.probe",
+    "octave.script.compile"
+  ],
+  "deps": {
+    "components": [],
+    "capabilities": [
+      "octave.environment.probe",
+      "octave.script.compile"
+    ]
+  },
+  "bins": [
+    "octave-cli"
+  ]
+}

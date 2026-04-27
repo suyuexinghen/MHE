@@ -1,0 +1,88 @@
+{
+  "name": "octave_validator",
+  "version": "0.1.0",
+  "kind": "governance",
+  "entry": "metaharness_ext.octave.validator:OctaveValidatorComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [
+      {
+        "name": "run",
+        "type": "OctaveRunArtifact",
+        "required": true,
+        "description": "Validate Octave execution artifacts and declared outputs.",
+        "cardinality": "one"
+      },
+      {
+        "name": "plan",
+        "type": "OctaveRunPlan",
+        "required": true,
+        "description": "Compiled plan used to interpret expected outputs, packages, and tolerance checks.",
+        "cardinality": "one"
+      },
+      {
+        "name": "environment",
+        "type": "OctaveEnvironmentReport",
+        "required": true,
+        "description": "Environment report used for missing binary, package, and workspace promotion blockers.",
+        "cardinality": "one"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "validation",
+        "type": "OctaveValidationReport",
+        "mode": "sync",
+        "description": "Return validation status, issues, numeric metrics, evidence refs, and governance hints."
+      }
+    ],
+    "events": [],
+    "provides": [
+      {
+        "name": "octave.validate.report",
+        "description": "Validate Octave run artifacts for output completeness and numeric evidence."
+      }
+    ],
+    "requires": [],
+    "slots": [
+      {
+        "slot": "octave_validator.primary",
+        "binding": "primary",
+        "required": true
+      }
+    ]
+  },
+  "safety": {
+    "protected": true,
+    "mutability": "mutable",
+    "sandbox_profile": "read-only",
+    "hot_swap": false
+  },
+  "policy": {
+    "sandbox": {
+      "tier": "read-only"
+    },
+    "credentials": {
+      "requires_subject": false,
+      "allow_inline_credentials": false,
+      "required_claims": []
+    }
+  },
+  "state_schema_version": 1,
+  "provides": [
+    "octave.validate.report"
+  ],
+  "requires": [
+    "octave.execute.run",
+    "octave.script.compile",
+    "octave.environment.probe"
+  ],
+  "deps": {
+    "components": [],
+    "capabilities": [
+      "octave.execute.run",
+      "octave.script.compile",
+      "octave.environment.probe"
+    ]
+  }
+}
