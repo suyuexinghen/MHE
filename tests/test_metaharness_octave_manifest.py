@@ -10,9 +10,15 @@ from metaharness.sdk.loader import declare_component, load_manifest
 from metaharness.sdk.manifest import ComponentManifest
 from metaharness.sdk.registry import ComponentRegistry
 from metaharness_ext.octave.capabilities import (
+    CAP_OCTAVE_ARTIFACT_DISCOVER,
+    CAP_OCTAVE_ASYNC_EXECUTE,
     CAP_OCTAVE_ENV_PROBE,
     CAP_OCTAVE_EXECUTE_RUN,
+    CAP_OCTAVE_GOVERNANCE_ADAPT,
+    CAP_OCTAVE_OPTIMIZER_PROPOSE,
+    CAP_OCTAVE_SCHEDULER_DRYRUN,
     CAP_OCTAVE_SCRIPT_COMPILE,
+    CAP_OCTAVE_SECURITY_SCAN,
     CAP_OCTAVE_STUDY_RUN,
     CAP_OCTAVE_TASK_ISSUE,
     CAP_OCTAVE_VALIDATE_REPORT,
@@ -43,6 +49,12 @@ EXPECTED_MANIFESTS = {
             "octave.evidence.bundle",
             "octave.policy.evaluate",
             CAP_OCTAVE_STUDY_RUN,
+            CAP_OCTAVE_GOVERNANCE_ADAPT,
+            CAP_OCTAVE_ASYNC_EXECUTE,
+            CAP_OCTAVE_SCHEDULER_DRYRUN,
+            CAP_OCTAVE_ARTIFACT_DISCOVER,
+            CAP_OCTAVE_OPTIMIZER_PROPOSE,
+            CAP_OCTAVE_SECURITY_SCAN,
         ],
         "sandbox_tier": "workspace-write",
     },

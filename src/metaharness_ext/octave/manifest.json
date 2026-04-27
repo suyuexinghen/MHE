@@ -40,6 +40,30 @@
       {
         "name": "octave.study.run",
         "description": "Run controlled Octave parameter studies."
+      },
+      {
+        "name": "octave.governance.adapt",
+        "description": "Adapt Octave validation and policy evidence to MHE governance records."
+      },
+      {
+        "name": "octave.execute.async",
+        "description": "Expose Octave execution through the MHE async executor protocol."
+      },
+      {
+        "name": "octave.scheduler.dryrun",
+        "description": "Build dry-run SLURM and Kubernetes scheduler submissions for Octave plans."
+      },
+      {
+        "name": "octave.artifact.discover",
+        "description": "Discover Octave output artifacts and parse MAT metadata when supported."
+      },
+      {
+        "name": "octave.optimizer.propose",
+        "description": "Propose typed whitelist Octave study parameter mutations."
+      },
+      {
+        "name": "octave.security.scan",
+        "description": "Scan Octave scripts for dangerous compile-time patterns."
       }
     ],
     "requires": [],
@@ -73,6 +97,12 @@
     "octave.validate.report",
     "octave.evidence.bundle",
     "octave.policy.evaluate",
-    "octave.study.run"
+    "octave.study.run",
+    "octave.governance.adapt",
+    "octave.execute.async",
+    "octave.scheduler.dryrun",
+    "octave.artifact.discover",
+    "octave.optimizer.propose",
+    "octave.security.scan"
   ]
 }

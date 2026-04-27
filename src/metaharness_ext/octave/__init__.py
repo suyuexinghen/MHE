@@ -1,10 +1,18 @@
+from metaharness_ext.octave.artifacts import OctaveArtifactDetector, OctaveMATFileParser
+from metaharness_ext.octave.async_executor import OctaveAsyncExecutor
 from metaharness_ext.octave.capabilities import (
     CANONICAL_CAPABILITIES,
+    CAP_OCTAVE_ARTIFACT_DISCOVER,
+    CAP_OCTAVE_ASYNC_EXECUTE,
     CAP_OCTAVE_ENV_PROBE,
     CAP_OCTAVE_EVIDENCE_BUNDLE,
     CAP_OCTAVE_EXECUTE_RUN,
+    CAP_OCTAVE_GOVERNANCE_ADAPT,
+    CAP_OCTAVE_OPTIMIZER_PROPOSE,
     CAP_OCTAVE_POLICY_EVALUATE,
+    CAP_OCTAVE_SCHEDULER_DRYRUN,
     CAP_OCTAVE_SCRIPT_COMPILE,
+    CAP_OCTAVE_SECURITY_SCAN,
     CAP_OCTAVE_STUDY_RUN,
     CAP_OCTAVE_TASK_ISSUE,
     CAP_OCTAVE_VALIDATE_REPORT,
@@ -34,6 +42,14 @@ from metaharness_ext.octave.contracts import (
     OctaveWarning,
     OctaveWorkspaceSpec,
 )
+from metaharness_ext.octave.governance import OctaveGovernanceAdapter
+from metaharness_ext.octave.optimizer import OctaveDomainBrainProvider
+from metaharness_ext.octave.scheduler import (
+    OctaveK8sBackend,
+    OctaveSchedulerAdapter,
+    OctaveSlurmBackend,
+    OctaveWorkspaceSyncPlan,
+)
 from metaharness_ext.octave.security import OctaveSecurityScanError, OctaveSecurityScanner
 from metaharness_ext.octave.slots import (
     OCTAVE_ENVIRONMENT_SLOT,
@@ -58,11 +74,17 @@ from metaharness_ext.octave.types import (
 
 __all__ = [
     "CANONICAL_CAPABILITIES",
+    "CAP_OCTAVE_ARTIFACT_DISCOVER",
+    "CAP_OCTAVE_ASYNC_EXECUTE",
     "CAP_OCTAVE_ENV_PROBE",
     "CAP_OCTAVE_EVIDENCE_BUNDLE",
     "CAP_OCTAVE_EXECUTE_RUN",
+    "CAP_OCTAVE_GOVERNANCE_ADAPT",
+    "CAP_OCTAVE_OPTIMIZER_PROPOSE",
     "CAP_OCTAVE_POLICY_EVALUATE",
+    "CAP_OCTAVE_SCHEDULER_DRYRUN",
     "CAP_OCTAVE_SCRIPT_COMPILE",
+    "CAP_OCTAVE_SECURITY_SCAN",
     "CAP_OCTAVE_STUDY_RUN",
     "CAP_OCTAVE_TASK_ISSUE",
     "CAP_OCTAVE_VALIDATE_REPORT",
@@ -73,6 +95,9 @@ __all__ = [
     "OCTAVE_STUDY_SLOT",
     "OCTAVE_VALIDATOR_SLOT",
     "PROTECTED_SLOTS",
+    "OctaveArtifactDetector",
+    "OctaveAsyncExecutor",
+    "OctaveDomainBrainProvider",
     "OctaveEnvironmentReport",
     "OctaveEvidenceBundle",
     "OctaveEvidenceWarning",
@@ -80,6 +105,7 @@ __all__ = [
     "OctaveExecutionParams",
     "OctaveExperimentFamily",
     "OctaveExperimentSpec",
+    "OctaveGovernanceAdapter",
     "OctaveGovernanceState",
     "OctaveInputAssetSpec",
     "OctaveInputKind",
@@ -92,10 +118,13 @@ __all__ = [
     "OctaveRunArtifact",
     "OctaveRunArtifactStatus",
     "OctaveRunPlan",
+    "OctaveSchedulerAdapter",
     "OctaveScriptMode",
     "OctaveScriptSpec",
     "OctaveSecurityScanError",
     "OctaveSecurityScanner",
+    "OctaveSlurmBackend",
+    "OctaveK8sBackend",
     "OctaveStudyAxis",
     "OctaveStudyReport",
     "OctaveStudySpec",
@@ -103,6 +132,8 @@ __all__ = [
     "OctaveStudyTrial",
     "OctaveToleranceSpec",
     "OctaveValidationReport",
+    "OctaveMATFileParser",
+    "OctaveWorkspaceSyncPlan",
     "OctaveValidationStatus",
     "OctaveWarning",
     "OctaveWarningSeverity",
