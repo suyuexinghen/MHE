@@ -1,5 +1,9 @@
+import os
+import shutil
 import subprocess
 from pathlib import Path
+
+import pytest
 
 from metaharness_ext.octave.contracts import (
     OctaveEnvironmentReport,
@@ -8,10 +12,12 @@ from metaharness_ext.octave.contracts import (
     OctavePackageSpec,
     OctaveScriptSpec,
     OctaveToleranceSpec,
+    OctaveWorkspaceSpec,
 )
 from metaharness_ext.octave.environment import OctaveEnvironmentProbeComponent
 from metaharness_ext.octave.executor import OctaveExecutorComponent
 from metaharness_ext.octave.script_compiler import OctaveScriptCompilerComponent
+from metaharness_ext.octave.validator import OctaveValidatorComponent
 
 
 def _spec() -> OctaveExperimentSpec:
@@ -116,3 +122,38 @@ def test_octave_executor_short_circuits_unavailable_environment(tmp_path: Path) 
     assert artifact.terminal_error_type == "environment_unavailable"
     assert artifact.return_code is None
     assert artifact.warnings[0].severity == "blocking"
+
+
+@pytest.mark.octave
+@pytest.mark.skipif(
+    os.environ.get("MHE_RUN_REAL_OCTAVE") != "1",
+    reason="set MHE_RUN_REAL_OCTAVE=1 to run real octave-cli smoke tests",
+)
+@pytest.mark.skipif(shutil.which("octave-cli") is None, reason="octave-cli is not installed")
+def test_octave_cli_smoke_compiles_executes_and_validates(tmp_path: Path) -> None:
+    spec = OctaveExperimentSpec(
+        task_id="real-octave-smoke",
+        script=OctaveScriptSpec(
+            mode="inline",
+            inline_source=(
+                "warning('off', 'Octave:language-extension'); "
+                "fid = fopen('outputs/result.txt', 'w'); fprintf(fid, '5\\n'); fclose(fid);"
+            ),
+        ),
+        workspace=OctaveWorkspaceSpec(working_directory=str(tmp_path / "run")),
+        expected_outputs=[
+            OctaveOutputSpec(name="result-file", kind="text", file_name="result.txt")
+        ],
+    )
+    environment = OctaveEnvironmentProbeComponent().probe(spec)
+    assert environment.available, environment.missing_prerequisites
+
+    plan = OctaveScriptCompilerComponent().compile(spec, environment)
+    artifact = OctaveExecutorComponent().execute_plan(plan, environment)
+    validation = OctaveValidatorComponent().validate_run(artifact, plan)
+
+    assert artifact.status == "completed"
+    assert artifact.return_code == 0
+    assert Path(artifact.output_files[0]).read_text().strip() == "5"
+    assert validation.passed
+    assert validation.status.value == "executed"

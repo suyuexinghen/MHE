@@ -414,17 +414,15 @@ Octave extension 必须把“运行脚本”视为高风险边界，而不是普
 - warning classification 与 `blocks_promotion` tests；
 - evidence refs / scored evidence / governance state tests。
 
-### 可选真实 Octave smoke（future gated）
+### 可选真实 Octave smoke（gated）
 
-当前默认测试全部 mock 或绕过真实 `octave-cli`，因此不注册 `octave` pytest marker。后续若增加真实 smoke，可再引入显式 marker 与自动 skip 逻辑。
+默认测试全部 mock 或绕过真实 `octave-cli`。真实 smoke 通过 `octave` pytest marker、`MHE_RUN_REAL_OCTAVE=1` 和本机 `octave-cli` 自动探测共同 gate；缺少任一条件时默认跳过。
 
-候选 smoke 场景：
+当前 smoke 场景：
 
-- minimal script：`x = 1 + 1`，保存 JSON / MAT 输出；
-- function eval：调用受控函数并验证变量；
-- package probe：检测已安装 package；
-- numeric tolerance：计算线性代数 / ODE 小例子并校验容差；
-- plot export：生成 PNG/PDF 并验证文件存在。
+- minimal inline script：写入 `outputs/result.txt`；
+- executor 使用真实 `octave-cli` 执行 wrapper；
+- validator 验证 expected text artifact 与执行状态。
 
 ### 推荐命令
 
@@ -472,7 +470,7 @@ ruff format --check src/metaharness_ext/octave tests/test_metaharness_octave_*.p
 
 ### Phase 5：Scientific workflow expansion（v2 alignment）
 
-Phase 5 进入 v2：在稳定 Octave worker 之上叠加 scientific workflow substrate。当前已完成默认测试覆盖的 v2 prototype；真实 SLURM/K8s 后端仍保持 gated/dry-run。完整设计见 `docs/wiki/meta-harness-engineer/octave-engine-wiki/02-v2-alignment.md`。
+Phase 5 进入 v2：在稳定 Octave worker 之上叠加 scientific workflow substrate。当前已完成默认测试覆盖的 v2 prototype，并补齐真实模式 SLURM/K8s submit/poll/cancel/collect seam、注入式 Bayesian/LLM-guided optimizer 策略与 gated real Octave smoke。真实集群执行仍需显式关闭 dry-run 并提供对应环境。完整设计见 `docs/wiki/meta-harness-engineer/octave-engine-wiki/02-v2-alignment.md`。
 
 #### Phase 5a：Study Component
 
@@ -495,14 +493,14 @@ Phase 5 进入 v2：在稳定 Octave worker 之上叠加 scientific workflow sub
 #### Phase 5d：Execution Lifecycle + Security
 
 - 实现 `OctaveAsyncExecutor`，暴露 `ExecutionLifecycleService.run()` / `.cancel()` 可消费的 executor seam；
-- 为 long-running 本地任务和后续真实 SLURM/K8s adapter 保留 dry-run backend contract；
+- 实现 dry-run 默认、可显式启用真实模式的 SLURM/K8s submit/poll/cancel/collect backend contract；
 - 增加 static script scanner、MAT file parser 和 artifact detector。
 
 #### Phase 5e：Optimizer Bridge
 
 - 实现 `OctaveDomainBrainProvider`，只对 typed whitelist fields 生成 `MutationProposal`；
 - 通过 study observations 评估 proposal 与 validation evidence；
-- 默认采用 deterministic untried-parameter strategy，Bayesian / LLM-guided 策略保留为后续增强。
+- 支持 deterministic、注入式 Bayesian、注入式 LLM-guided 策略；无外部 optimizer/client 时保持安全 fallback。
 
 ---
 
@@ -515,13 +513,13 @@ Phase 5 进入 v2：在稳定 Octave worker 之上叠加 scientific workflow sub
 | package 生态差异 | 中 | package probe + required/optional spec + missing prerequisite report |
 | 输出格式不稳定 | 中 | 首版优先 JSON/CSV/status file，`.mat` 作为增强 |
 | 图像/plot backend 环境差异 | 中 | figure 输出通过 `OctaveOutputSpec` 支持，真实 smoke gated |
-| 长时间任务阻塞 | 中 | `OctaveAsyncExecutor` + dry-run scheduler seam；真实集群执行 gated |
+| 长时间任务阻塞 | 中 | `OctaveAsyncExecutor` + dry-run 默认 scheduler seam；真实集群执行需显式启用 |
 | 数值结果平台差异 | 中 | 容差、BLAS/LAPACK facts、seed、environment evidence |
 
 开放问题：
 
 - Live Workspace 是否应作为 Octave extension 内部能力，还是作为更上层 MHE scientific workspace service？
-- 真实 HPC/SLURM 执行如何在本地 dry-run scheduler contract 基础上进行 gated submit/poll/collect？
+- 真实集群环境中的 workspace 同步、队列配额、日志回收策略如何按站点配置？
 - Scientific Context Engine 是否需要引入真实 pint/uncertainties 依赖，还是继续保持轻量内置检查？
 
 ---

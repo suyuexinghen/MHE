@@ -130,6 +130,17 @@ Key capabilities:
   octave.execute.run
   octave.validate.report
   octave.evidence.bundle
+  octave.execute.async
+  octave.scheduler.dryrun
+  octave.artifact.discover
+  octave.optimizer.propose
+  octave.security.scan
 ```
+
+V2 production-gated seams:
+
+- `OctaveSchedulerAdapter` defaults to dry-run but can route real-mode SLURM/K8s submit/poll/cancel/collect through injected clients.
+- `OctaveDomainBrainProvider` supports deterministic, injected Bayesian, and injected LLM-guided proposal strategies while preserving typed whitelist mutation only.
+- Real `octave-cli` smoke coverage is opt-in through the `octave` marker, `MHE_RUN_REAL_OCTAVE=1`, and local binary detection.
 
 ConnectionEngine 基于 contracts 连通组件：gateway 输出 spec → environment probe 输出 report → compiler 输出 plan → executor 输出 artifact → validator 输出 report → evidence bundle。

@@ -13,6 +13,9 @@ dev = [
     "pytest>=9.0.0,<10.0.0",
     "ruff==0.15.6",
 ]
+k8s = [
+    "kubernetes>=34.1.0,<35.0.0",
+]
 
 [project.scripts]
 metaharness = "metaharness.cli:main"
@@ -41,5 +44,5 @@ markers = [
     "nektar: requires local Nektar++ installation",
     "quafu: requires Qcompute_Token and quarkstudio for real Quafu hardware",
     "integration: integration tests requiring external dependencies (qiskit-aer, pennylane)",
-    "octave: requires octave-cli for real smoke tests",
+    "octave: opt-in tests requiring MHE_RUN_REAL_OCTAVE=1 and octave-cli",
 ]

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import hashlib
-from typing import Any
+import json
+from collections.abc import Callable, Sequence
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -13,6 +15,11 @@ from metaharness.core.models import (
 )
 from metaharness.core.mutation import MutationProposal
 from metaharness_ext.octave.contracts import OctaveStudyAxis, OctaveStudyReport
+
+OctaveOptimizerStrategy = Literal["deterministic", "bayesian", "llm_guided"]
+OctaveSnapshotOptimizer = Callable[
+    [Sequence[dict[str, Any]], Sequence["OctaveStudyObservation"]], Sequence[dict[str, Any]]
+]
 
 
 class OctaveStudyObservation(BaseModel):
@@ -30,8 +37,18 @@ class OctaveProposalEvaluation(BaseModel):
 
 
 class OctaveDomainBrainProvider:
-    def __init__(self, *, proposer_id: str = "octave_domain_brain") -> None:
+    def __init__(
+        self,
+        *,
+        proposer_id: str = "octave_domain_brain",
+        strategy: OctaveOptimizerStrategy = "deterministic",
+        bayesian_optimizer: OctaveSnapshotOptimizer | None = None,
+        llm_guided_optimizer: OctaveSnapshotOptimizer | None = None,
+    ) -> None:
         self.proposer_id = proposer_id
+        self.strategy = strategy
+        self.bayesian_optimizer = bayesian_optimizer
+        self.llm_guided_optimizer = llm_guided_optimizer
 
     def observations_from_study(self, report: OctaveStudyReport) -> list[OctaveStudyObservation]:
         return [
@@ -50,16 +67,25 @@ class OctaveDomainBrainProvider:
         observations: list[OctaveStudyObservation],
         *,
         max_proposals: int = 1,
+        strategy: OctaveOptimizerStrategy | None = None,
     ) -> list[MutationProposal]:
+        selected_strategy = strategy or self.strategy
         allowed_paths = {axis.path for axis in axes}
-        tried = {tuple(sorted(observation.parameters.items())) for observation in observations}
+        tried = {_snapshot_key(observation.parameters) for observation in observations}
+        candidates = [
+            snapshot
+            for snapshot in _candidate_snapshots(axes)
+            if _is_allowed_snapshot(snapshot, allowed_paths)
+            and _snapshot_key(snapshot) not in tried
+        ]
+        ordered = self._ordered_candidates(selected_strategy, candidates, observations)
         proposals: list[MutationProposal] = []
-        for snapshot in _candidate_snapshots(axes):
-            if any(path not in allowed_paths for path in snapshot):
+        for snapshot in ordered:
+            sanitized = _sanitize_snapshot(snapshot, allowed_paths, candidates, tried)
+            if sanitized is None:
                 continue
-            if tuple(sorted(snapshot.items())) in tried:
-                continue
-            proposals.append(self._proposal(snapshot))
+            proposals.append(self._proposal(sanitized, strategy=selected_strategy))
+            tried.add(_snapshot_key(sanitized))
             if len(proposals) >= max_proposals:
                 break
         return proposals
@@ -106,7 +132,27 @@ class OctaveDomainBrainProvider:
             evidence=evidence,
         )
 
-    def _proposal(self, snapshot: dict[str, Any]) -> MutationProposal:
+    def _ordered_candidates(
+        self,
+        strategy: OctaveOptimizerStrategy,
+        candidates: list[dict[str, Any]],
+        observations: list[OctaveStudyObservation],
+    ) -> list[dict[str, Any]]:
+        if strategy == "deterministic":
+            return candidates
+        if strategy == "bayesian":
+            if self.bayesian_optimizer is None:
+                return candidates
+            return [*self.bayesian_optimizer(candidates, observations), *candidates]
+        if strategy == "llm_guided":
+            if self.llm_guided_optimizer is None:
+                return []
+            return [*self.llm_guided_optimizer(candidates, observations), *candidates]
+        raise ValueError(f"Unsupported Octave optimizer strategy: {strategy}")
+
+    def _proposal(
+        self, snapshot: dict[str, Any], *, strategy: OctaveOptimizerStrategy
+    ) -> MutationProposal:
         digest = hashlib.sha256(repr(sorted(snapshot.items())).encode()).hexdigest()[:10]
         return MutationProposal(
             proposal_id=f"octave-param-{digest}",
@@ -115,9 +161,10 @@ class OctaveDomainBrainProvider:
             proposer_id=self.proposer_id,
             domain_payload={
                 "octave_parameter_proposal": True,
+                "strategy": strategy,
                 "parameters": snapshot,
                 "whitelist_paths": sorted(snapshot),
-                "justification": "deterministic untried Octave study parameter candidate",
+                "justification": f"{strategy} untried Octave study parameter candidate",
             },
         )
 
@@ -128,6 +175,31 @@ def _candidate_snapshots(axes: list[OctaveStudyAxis]) -> list[dict[str, Any]]:
         values = _axis_values(axis)
         snapshots = [{**snapshot, axis.path: value} for snapshot in snapshots for value in values]
     return snapshots
+
+
+def _sanitize_snapshot(
+    snapshot: dict[str, Any],
+    allowed_paths: set[str],
+    candidates: list[dict[str, Any]],
+    tried: set[str],
+) -> dict[str, Any] | None:
+    candidate_keys = {_snapshot_key(candidate) for candidate in candidates}
+    key = _snapshot_key(snapshot)
+    if (
+        key not in candidate_keys
+        or key in tried
+        or not _is_allowed_snapshot(snapshot, allowed_paths)
+    ):
+        return None
+    return dict(snapshot)
+
+
+def _is_allowed_snapshot(snapshot: dict[str, Any], allowed_paths: set[str]) -> bool:
+    return bool(snapshot) and all(path in allowed_paths for path in snapshot)
+
+
+def _snapshot_key(snapshot: dict[str, Any]) -> str:
+    return json.dumps(snapshot, sort_keys=True, separators=(",", ":"), default=repr)
 
 
 def _axis_values(axis: OctaveStudyAxis) -> list[Any]:
