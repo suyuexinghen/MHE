@@ -1,0 +1,222 @@
+from __future__ import annotations
+
+import re
+import shutil
+import subprocess
+import time
+from pathlib import Path
+from typing import Any
+
+from metaharness.benchmark_drivers.claude_cli import (
+    ClaudeCLIBrainProvider,
+    FakeClaudeCLIBrainProvider,
+)
+from metaharness.benchmark_drivers.io import case_dir, write_json, write_text
+from metaharness.benchmark_drivers.models import (
+    AttemptLog,
+    AttemptRecord,
+    BenchmarkCaseSpec,
+    BenchmarkLane,
+    LaneSummary,
+)
+from metaharness.benchmark_drivers.runner_common import dry_run_summary, write_lane_outputs
+
+L2_PATTERN = re.compile(
+    r"^L 2 error\s*(?:\(variable\s+(\w+)\))?\s*:\s*"
+    r"([+-]?\d+\.?\d*(?:[eE][+-]?\d+)?)"
+)
+LINF_PATTERN = re.compile(
+    r"^L inf error\s*(?:\(variable\s+(\w+)\))?\s*:\s*"
+    r"([+-]?\d+\.?\d*(?:[eE][+-]?\d+)?)"
+)
+
+
+def parse_nektar_error_norms(stdout: str) -> dict[str, float]:
+    metrics: dict[str, float] = {}
+    for line in stdout.splitlines():
+        stripped = line.strip()
+        l2_match = L2_PATTERN.match(stripped)
+        if l2_match:
+            variable = l2_match.group(1) or "u"
+            metrics[f"l2_error_{variable}"] = float(l2_match.group(2))
+            continue
+        linf_match = LINF_PATTERN.match(stripped)
+        if linf_match:
+            variable = linf_match.group(1) or "u"
+            metrics[f"linf_error_{variable}"] = float(linf_match.group(2))
+    return metrics
+
+
+class NektarBenchmarkRunner:
+    def __init__(
+        self,
+        *,
+        runs_root: Path,
+        allow_real_tools: bool = False,
+        brain_provider: ClaudeCLIBrainProvider | FakeClaudeCLIBrainProvider | None = None,
+    ) -> None:
+        self.runs_root = runs_root
+        self.allow_real_tools = allow_real_tools
+        self.brain_provider = brain_provider or FakeClaudeCLIBrainProvider()
+
+    def run_case(self, case: BenchmarkCaseSpec, lanes: list[BenchmarkLane]) -> list[LaneSummary]:
+        summaries: list[LaneSummary] = []
+        for lane in lanes:
+            if lane == "extension":
+                summaries.append(self.run_extension(case))
+            elif lane == "direct":
+                summaries.append(self.run_direct(case))
+            elif lane == "agent":
+                summaries.append(self.run_agent(case))
+        return summaries
+
+    def run_extension(self, case: BenchmarkCaseSpec) -> LaneSummary:
+        if not self.allow_real_tools:
+            return dry_run_summary(
+                runs_root=self.runs_root,
+                case=case,
+                lane="extension",
+                evidence_factory=lambda path: self._write_extension_evidence(path, case),
+            )
+        return write_lane_outputs(
+            runs_root=self.runs_root,
+            case=case,
+            lane="extension",
+            status="skipped",
+            skip_reason="real Nektar reference-XML extension replay is not enabled by default",
+        )
+
+    def run_direct(self, case: BenchmarkCaseSpec) -> LaneSummary:
+        output_dir = case_dir(self.runs_root, case.suite, "direct", case.case_id)
+        if not self.allow_real_tools:
+            return dry_run_summary(
+                runs_root=self.runs_root,
+                case=case,
+                lane="direct",
+                evidence_factory=lambda path: self._write_direct_evidence(path, case),
+            )
+        solver_binary = str(case.problem_definition.get("solver_binary", "ADRSolver"))
+        if shutil.which(solver_binary) is None:
+            return write_lane_outputs(
+                runs_root=self.runs_root,
+                case=case,
+                lane="direct",
+                status="skipped",
+                skip_reason=f"{solver_binary} not found",
+            )
+        started_at = time.perf_counter()
+        session_path = self._materialize_session_xml(output_dir, case)
+        stdout_path = output_dir / "solver.stdout.log"
+        stderr_path = output_dir / "solver.stderr.log"
+        result = subprocess.run(
+            [solver_binary, str(session_path)],
+            cwd=output_dir,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=600,
+        )
+        write_text(stdout_path, result.stdout)
+        write_text(stderr_path, result.stderr)
+        metrics: dict[str, Any] = parse_nektar_error_norms(result.stdout)
+        metrics["elapsed_seconds"] = time.perf_counter() - started_at
+        return write_lane_outputs(
+            runs_root=self.runs_root,
+            case=case,
+            lane="direct",
+            status="passed" if result.returncode == 0 else "failed",
+            metrics=metrics,
+            evidence_files=[str(session_path), str(stdout_path), str(stderr_path)],
+            started_at=started_at,
+        )
+
+    def run_agent(self, case: BenchmarkCaseSpec) -> LaneSummary:
+        output_dir = case_dir(self.runs_root, case.suite, "agent", case.case_id)
+        prompt = f"Generate a Nektar++ benchmark proposal for case {case.case_id}."
+        claude_result = self.brain_provider.propose(prompt=prompt, output_dir=output_dir)
+        attempt_log = AttemptLog(
+            attempts=[
+                AttemptRecord(
+                    attempt_id=1,
+                    lane="agent",
+                    status="failed" if claude_result.error else "passed",
+                    llm_call=True,
+                    message=claude_result.error,
+                    evidence_files=[
+                        claude_result.invocation.prompt_path,
+                        claude_result.invocation.stdout_path,
+                        claude_result.invocation.stderr_path,
+                    ],
+                )
+            ]
+        )
+        if claude_result.error:
+            return write_lane_outputs(
+                runs_root=self.runs_root,
+                case=case,
+                lane="agent",
+                status="failed",
+                attempt_log=attempt_log,
+                error_message=claude_result.error,
+            )
+        if not self.allow_real_tools:
+            metrics = {metric: 0.0 for metric in case.expected_metrics}
+            return write_lane_outputs(
+                runs_root=self.runs_root,
+                case=case,
+                lane="agent",
+                status="passed",
+                metrics=metrics,
+                evidence_files=[
+                    claude_result.invocation.prompt_path,
+                    claude_result.invocation.stdout_path,
+                    claude_result.invocation.stderr_path,
+                    claude_result.invocation.result_path or "",
+                    claude_result.invocation.proposal_path or "",
+                ],
+                attempt_log=attempt_log,
+            )
+        return write_lane_outputs(
+            runs_root=self.runs_root,
+            case=case,
+            lane="agent",
+            status="skipped",
+            attempt_log=attempt_log,
+            skip_reason="real Nektar agent replay requires a dedicated extension session mapping",
+        )
+
+    def _write_extension_evidence(self, output_dir: Path, case: BenchmarkCaseSpec) -> list[str]:
+        session_path = write_text(output_dir / "session.xml", "<NEKTAR />\n")
+        stdout_path = write_text(output_dir / "solver.stdout.log", "")
+        stderr_path = write_text(output_dir / "solver.stderr.log", "")
+        validation_path = write_json(
+            output_dir / "validation.json", {"passed": True, "dry_run": True}
+        )
+        evidence_path = write_json(
+            output_dir / "evidence.json", {"case_id": case.case_id, "dry_run": True}
+        )
+        return [
+            str(session_path),
+            str(stdout_path),
+            str(stderr_path),
+            str(validation_path),
+            str(evidence_path),
+        ]
+
+    def _write_direct_evidence(self, output_dir: Path, case: BenchmarkCaseSpec) -> list[str]:
+        session_path = write_text(output_dir / "session.xml", "<NEKTAR />\n")
+        stdout_path = write_text(output_dir / "solver.stdout.log", "")
+        stderr_path = write_text(output_dir / "solver.stderr.log", "")
+        return [str(session_path), str(stdout_path), str(stderr_path)]
+
+    def _materialize_session_xml(self, output_dir: Path, case: BenchmarkCaseSpec) -> Path:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        source_reference = case.source_reference
+        target = output_dir / "session.xml"
+        if isinstance(source_reference, dict):
+            source_xml = Path(str(source_reference.get("xml", "")))
+            if source_xml.exists():
+                target.write_text(source_xml.read_text())
+                return target
+        target.write_text("<NEKTAR />\n")
+        return target
