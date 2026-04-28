@@ -16,6 +16,7 @@ from metaharness.benchmark_drivers.io import (
 )
 from metaharness.benchmark_drivers.manifests import build_run_manifest
 from metaharness.benchmark_drivers.models import (
+    BenchmarkLane,
     BenchmarkSuite,
     ComparisonRow,
     LaneSummary,
@@ -120,9 +121,11 @@ def write_comparison_outputs(
     runs_root: Path,
     suite: BenchmarkSuite,
     cases: list[str] | None = None,
+    lanes: list[BenchmarkLane] | None = None,
     claude_binary: str = "claude",
 ) -> list[ComparisonRow]:
     rows = compare_suite(runs_root, suite)
+    manifest_lanes = lanes or _observed_lanes(runs_root, suite)
     comp_dir = comparison_dir(runs_root, suite)
     report_dir = reports_dir(runs_root, suite)
     row_payloads = [row.model_dump(mode="json") for row in rows]
@@ -132,7 +135,7 @@ def write_comparison_outputs(
         comp_dir / "run_manifest.json",
         build_run_manifest(
             suite=suite,
-            lanes=["extension", "direct", "agent"],
+            lanes=manifest_lanes,
             cases=cases or [row.case_id for row in rows],
             runs_root=runs_root,
             claude_binary=claude_binary,
@@ -142,6 +145,12 @@ def write_comparison_outputs(
     write_text(report_dir / f"{suite}-analysis-report.md", _analysis_markdown(suite, rows))
     write_text(report_dir / f"{suite}-backlog.md", _backlog_markdown(suite, rows))
     return rows
+
+
+def _observed_lanes(runs_root: Path, suite: BenchmarkSuite) -> list[BenchmarkLane]:
+    root = suite_root(runs_root, suite)
+    known_lanes: list[BenchmarkLane] = ["extension", "direct", "agent"]
+    return [lane for lane in known_lanes if (root / lane).exists()]
 
 
 def _verdict(

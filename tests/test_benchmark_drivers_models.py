@@ -78,17 +78,28 @@ def test_claude_cli_provider_writes_command_evidence(tmp_path: Path) -> None:
     assert (tmp_path / "proposal.json").exists()
 
 
-def _write_passing_lane_summary(tmp_path: Path, case: BenchmarkCaseSpec, lane: str) -> None:
+def _write_lane_summary(
+    tmp_path: Path,
+    case: BenchmarkCaseSpec,
+    lane: str,
+    *,
+    status: str = "passed",
+    passed: bool = True,
+) -> None:
     summary = LaneSummary(
         case_id=case.case_id,
         suite=case.suite,
         lane=lane,  # type: ignore[arg-type]
-        status="passed",
-        passed=True,
+        status=status,  # type: ignore[arg-type]
+        passed=passed,
         metrics={"error": 0.0},
         evidence_files=["evidence.txt"],
     )
     write_json(case_dir(tmp_path, case.suite, lane, case.case_id) / "summary.json", summary)
+
+
+def _write_passing_lane_summary(tmp_path: Path, case: BenchmarkCaseSpec, lane: str) -> None:
+    _write_lane_summary(tmp_path, case, lane)
 
 
 def test_comparator_writes_reports_from_synthetic_summaries(tmp_path: Path) -> None:
@@ -136,3 +147,44 @@ def test_comparator_records_schema_failed_summary(tmp_path: Path) -> None:
     assert rows[0].direct_status == "schema_failed"
     assert rows[0].verdict == "schema_failed"
     assert (broken_dir / "schema_validation.json").exists()
+
+
+def test_comparator_records_incomplete_when_lane_missing(tmp_path: Path) -> None:
+    case = BenchmarkCaseSpec(
+        case_id="partial",
+        suite="octave-native",
+        task_family="demo",
+        description="partial summary case",
+        required_capabilities=["octave-cli"],
+        source_reference="source.m:1",
+        expected_metrics=["error"],
+        reference_metrics={"error": MetricReference(value=0.0, tolerance=1e-9)},
+    )
+    _write_passing_lane_summary(tmp_path, case, "extension")
+    _write_passing_lane_summary(tmp_path, case, "direct")
+
+    rows = write_comparison_outputs(runs_root=tmp_path, suite="octave-native")
+
+    assert rows[0].agent_status is None
+    assert rows[0].verdict == "incomplete"
+
+
+def test_comparator_records_capability_skip(tmp_path: Path) -> None:
+    case = BenchmarkCaseSpec(
+        case_id="gated",
+        suite="nektar-pde",
+        task_family="demo",
+        description="capability-gated summary case",
+        required_capabilities=["nektar_diffusion_solver"],
+        source_reference="source.tst:1",
+        expected_metrics=["error"],
+        reference_metrics={"error": MetricReference(value=0.0, tolerance=1e-9)},
+    )
+    _write_lane_summary(tmp_path, case, "extension", status="skipped", passed=False)
+    _write_passing_lane_summary(tmp_path, case, "direct")
+    _write_passing_lane_summary(tmp_path, case, "agent")
+
+    rows = write_comparison_outputs(runs_root=tmp_path, suite="nektar-pde")
+
+    assert rows[0].extension_status == "skipped"
+    assert rows[0].verdict == "capability_skip"

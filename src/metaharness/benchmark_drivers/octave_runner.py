@@ -19,6 +19,7 @@ from metaharness.benchmark_drivers.models import (
     BenchmarkLane,
     LaneSummary,
 )
+from metaharness.benchmark_drivers.octave_scripts import build_octave_case_script
 from metaharness.benchmark_drivers.runner_common import dry_run_summary, write_lane_outputs
 from metaharness_ext.octave.contracts import (
     OctaveExperimentSpec,
@@ -78,9 +79,20 @@ class OctaveBenchmarkRunner:
             spec = self._build_extension_spec(case, output_dir)
             plan = OctaveScriptCompilerComponent().build_plan(spec)
             artifact = OctaveExecutorComponent().execute_plan(plan)
+            artifact = artifact.model_copy(
+                update={
+                    "parsed_outputs": self._read_metric_output_files(
+                        Path(artifact.working_directory)
+                    )
+                }
+            )
             validation = OctaveValidatorComponent().validate_run(artifact, plan)
             evidence = build_evidence_bundle(artifact, validation, plan=plan)
-            metrics = {**artifact.summary_metrics, **validation.numeric_metrics}
+            metrics = {
+                **artifact.summary_metrics,
+                **artifact.parsed_outputs,
+                **validation.numeric_metrics,
+            }
             write_json(output_dir / "validation.json", validation)
             write_json(output_dir / "evidence.json", evidence)
             return write_lane_outputs(
@@ -247,20 +259,29 @@ class OctaveBenchmarkRunner:
     def _build_extension_spec(
         self, case: BenchmarkCaseSpec, output_dir: Path
     ) -> OctaveExperimentSpec:
-        metric_name = case.expected_metrics[0]
         return OctaveExperimentSpec(
             task_id=case.case_id,
             script=OctaveScriptSpec(
                 mode="inline",
-                inline_source=f"{metric_name} = 0; elapsed_seconds = 0;",
+                inline_source=build_octave_case_script(case),
             ),
             workspace=OctaveWorkspaceSpec(working_directory=str(output_dir / "workspace")),
             expected_outputs=[
                 OctaveOutputSpec(
-                    name=metric_name,
-                    variable_name=metric_name,
-                    tolerance=OctaveToleranceSpec(expected_value=0.0),
+                    name=metric,
+                    variable_name=metric,
+                    tolerance=OctaveToleranceSpec(
+                        expected_value=float(reference.value)
+                        if (reference := case.metric_references.get(metric)) is not None
+                        and isinstance(reference.value, int | float)
+                        else 0.0,
+                        atol=reference.tolerance
+                        if reference is not None
+                        else case.tolerance.get(metric, 1e-8),
+                        rtol=0.0,
+                    ),
                 )
+                for metric in case.expected_metrics
             ],
         )
 
@@ -282,19 +303,25 @@ class OctaveBenchmarkRunner:
         return [str(script_path), str(stdout_path), str(stderr_path)]
 
     def _write_direct_script(self, script_path: Path, case: BenchmarkCaseSpec) -> None:
-        metrics = {
-            metric: float(reference.value)
-            if (reference := case.metric_references.get(metric)) is not None
-            and isinstance(reference.value, int | float)
-            else 0.0
-            for metric in case.expected_metrics
-        }
+        metric_fields = ", ".join(f"'{metric}', {metric}" for metric in case.expected_metrics)
         content = (
-            "more off;\nmetrics = "
-            + json.dumps(metrics)
-            + ";\nfid = fopen('metrics.json', 'w');\nfputs(fid, jsonencode(metrics));\nfclose(fid);\n"
+            "more off;\n"
+            "warning('on', 'all');\n"
+            + build_octave_case_script(case)
+            + "\nmetrics = struct("
+            + metric_fields
+            + ");\nfid = fopen('metrics.json', 'w');\nfputs(fid, jsonencode(metrics));\nfclose(fid);\n"
         )
         write_text(script_path, content)
+
+    def _read_metric_output_files(self, output_dir: Path) -> dict[str, float]:
+        metrics: dict[str, float] = {}
+        for path in sorted((output_dir / "outputs").glob("*.txt")):
+            try:
+                metrics[path.stem] = float(path.read_text().split()[-1])
+            except (IndexError, ValueError, OSError):
+                continue
+        return metrics
 
     def _read_metrics(self, output_dir: Path) -> dict[str, Any]:
         metrics_path = output_dir / "metrics.json"

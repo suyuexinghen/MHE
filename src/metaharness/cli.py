@@ -124,6 +124,9 @@ def _parse_csv(value: str) -> list[str]:
 def _cmd_benchmark_run(args: argparse.Namespace) -> int:
     suite: BenchmarkSuite = args.suite
     raw_lanes = _parse_csv(args.lanes)
+    if not raw_lanes:
+        print("at least one benchmark lane is required", file=sys.stderr)
+        return 2
     allowed_lanes = {"extension", "direct", "agent"}
     invalid_lanes = sorted(set(raw_lanes) - allowed_lanes)
     if invalid_lanes:
@@ -137,20 +140,24 @@ def _cmd_benchmark_run(args: argparse.Namespace) -> int:
         if args.allow_real_tools
         else None
     )
-    if suite == "octave-native":
-        cases = get_octave_cases(case_ids)
-        runner = OctaveBenchmarkRunner(
-            runs_root=runs_root,
-            allow_real_tools=args.allow_real_tools,
-            brain_provider=brain_provider,
-        )
-    else:
-        cases = get_nektar_cases(case_ids)
-        runner = NektarBenchmarkRunner(
-            runs_root=runs_root,
-            allow_real_tools=args.allow_real_tools,
-            brain_provider=brain_provider,
-        )
+    try:
+        if suite == "octave-native":
+            cases = get_octave_cases(case_ids)
+            runner = OctaveBenchmarkRunner(
+                runs_root=runs_root,
+                allow_real_tools=args.allow_real_tools,
+                brain_provider=brain_provider,
+            )
+        else:
+            cases = get_nektar_cases(case_ids)
+            runner = NektarBenchmarkRunner(
+                runs_root=runs_root,
+                allow_real_tools=args.allow_real_tools,
+                brain_provider=brain_provider,
+            )
+    except KeyError as exc:
+        print(f"unknown benchmark case: {exc.args[0]}", file=sys.stderr)
+        return 2
 
     summaries = []
     for case in cases:
