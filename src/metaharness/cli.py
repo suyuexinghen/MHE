@@ -17,6 +17,8 @@ from metaharness.benchmark_drivers.nektar_cases import get_nektar_cases
 from metaharness.benchmark_drivers.nektar_runner import NektarBenchmarkRunner
 from metaharness.benchmark_drivers.octave_cases import get_octave_cases
 from metaharness.benchmark_drivers.octave_runner import OctaveBenchmarkRunner
+from metaharness.benchmark_drivers.qcompute_abacus_cases import get_qcompute_abacus_cases
+from metaharness.benchmark_drivers.qcompute_abacus_runner import QComputeAbacusBenchmarkRunner
 from metaharness.config.xml_parser import parse_graph_xml
 from metaharness.config.xsd_validator import XmlStructuralError, validate_harness_xml
 from metaharness.core.connection_engine import ConnectionEngine
@@ -148,9 +150,16 @@ def _cmd_benchmark_run(args: argparse.Namespace) -> int:
                 allow_real_tools=args.allow_real_tools,
                 brain_provider=brain_provider,
             )
-        else:
+        elif suite == "nektar-pde":
             cases = get_nektar_cases(case_ids)
             runner = NektarBenchmarkRunner(
+                runs_root=runs_root,
+                allow_real_tools=args.allow_real_tools,
+                brain_provider=brain_provider,
+            )
+        else:
+            cases = get_qcompute_abacus_cases(case_ids)
+            runner = QComputeAbacusBenchmarkRunner(
                 runs_root=runs_root,
                 allow_real_tools=args.allow_real_tools,
                 brain_provider=brain_provider,
@@ -228,7 +237,9 @@ def build_parser() -> argparse.ArgumentParser:
     benchmark_run = subparsers.add_parser(
         "benchmark-run", help="Run scientific workflow benchmark lanes"
     )
-    benchmark_run.add_argument("--suite", choices=["octave-native", "nektar-pde"], required=True)
+    benchmark_run.add_argument(
+        "--suite", choices=["octave-native", "nektar-pde", "qcompute-abacus"], required=True
+    )
     benchmark_run.add_argument("--lanes", default="extension,direct,agent")
     benchmark_run.add_argument("--cases", default="")
     benchmark_run.add_argument("--runs-root", default=".runs")
@@ -241,7 +252,7 @@ def build_parser() -> argparse.ArgumentParser:
         "benchmark-compare", help="Compare saved scientific workflow benchmark summaries"
     )
     benchmark_compare.add_argument(
-        "--suite", choices=["octave-native", "nektar-pde"], required=True
+        "--suite", choices=["octave-native", "nektar-pde", "qcompute-abacus"], required=True
     )
     benchmark_compare.add_argument("--runs-root", default=".runs")
     benchmark_compare.add_argument("--claude-binary", default="claude")

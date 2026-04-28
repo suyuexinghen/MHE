@@ -87,6 +87,35 @@ def test_benchmark_run_cli_rejects_unknown_case(tmp_path: Path, capsys) -> None:
     assert "unknown benchmark case: missing-case" in capsys.readouterr().err
 
 
+def test_qcompute_abacus_benchmark_run_cli_writes_dry_run_outputs(tmp_path: Path) -> None:
+    status = main(
+        [
+            "benchmark-run",
+            "--suite",
+            "qcompute-abacus",
+            "--lanes",
+            "extension,direct,agent",
+            "--cases",
+            "h2-fcidump-vqe-proxy",
+            "--runs-root",
+            str(tmp_path),
+        ]
+    )
+
+    assert status == 0
+    assert (tmp_path / "qcompute-abacus-benchmark" / "specs" / "h2-fcidump-vqe-proxy.json").exists()
+    assert (
+        tmp_path
+        / "qcompute-abacus-benchmark"
+        / "extension"
+        / "h2-fcidump-vqe-proxy"
+        / "hamiltonian.fcidump"
+    ).exists()
+    assert (
+        tmp_path / "qcompute-abacus-benchmark" / "agent" / "h2-fcidump-vqe-proxy" / "proposal.json"
+    ).exists()
+
+
 def test_nektar_benchmark_run_cli_writes_dry_run_outputs(tmp_path: Path) -> None:
     status = main(
         [
@@ -104,6 +133,9 @@ def test_nektar_benchmark_run_cli_writes_dry_run_outputs(tmp_path: Path) -> None
 
     assert status == 0
     assert (tmp_path / "nektar-pde-benchmark" / "specs" / "advdiff-2d.json").exists()
+    assert (
+        tmp_path / "nektar-pde-benchmark" / "preflight" / "advdiff-2d" / "tester_summary.json"
+    ).exists()
     assert (
         tmp_path / "nektar-pde-benchmark" / "direct" / "advdiff-2d" / "claude_prompt.txt"
     ).exists()
@@ -176,3 +208,35 @@ def test_benchmark_compare_manifest_records_observed_lanes(tmp_path: Path) -> No
     manifest_path = tmp_path / "octave-native-benchmark" / "comparison" / "run_manifest.json"
     manifest = json.loads(manifest_path.read_text())
     assert manifest["lanes"] == ["extension"]
+
+
+def test_qcompute_abacus_benchmark_compare_cli_writes_reports(tmp_path: Path) -> None:
+    assert (
+        main(
+            [
+                "benchmark-run",
+                "--suite",
+                "qcompute-abacus",
+                "--lanes",
+                "extension,direct,agent",
+                "--cases",
+                "h2-fcidump-vqe-proxy",
+                "--runs-root",
+                str(tmp_path),
+            ]
+        )
+        == 0
+    )
+
+    status = main(
+        [
+            "benchmark-compare",
+            "--suite",
+            "qcompute-abacus",
+            "--runs-root",
+            str(tmp_path),
+        ]
+    )
+
+    assert status == 0
+    assert (tmp_path / "qcompute-abacus-benchmark" / "comparison" / "result_bundle.json").exists()

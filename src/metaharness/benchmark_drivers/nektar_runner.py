@@ -4,6 +4,8 @@ import re
 import shutil
 import subprocess
 import time
+import xml.etree.ElementTree as ET
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -11,7 +13,7 @@ from metaharness.benchmark_drivers.claude_cli import (
     ClaudeCLIBrainProvider,
     FakeClaudeCLIBrainProvider,
 )
-from metaharness.benchmark_drivers.io import case_dir, write_json, write_text
+from metaharness.benchmark_drivers.io import case_dir, suite_root, write_json, write_text
 from metaharness.benchmark_drivers.models import (
     AttemptLog,
     AttemptRecord,
@@ -29,6 +31,44 @@ LINF_PATTERN = re.compile(
     r"^L inf error\s*(?:\(variable\s+(\w+)\))?\s*:\s*"
     r"([+-]?\d+\.?\d*(?:[eE][+-]?\d+)?)"
 )
+
+
+@dataclass(frozen=True)
+class NektarTestSpec:
+    executable: str | None = None
+    parameters: list[str] = field(default_factory=list)
+    reference_metrics: dict[str, tuple[float, float]] = field(default_factory=dict)
+
+
+def parse_nektar_tst(path: Path) -> NektarTestSpec:
+    root = ET.fromstring(path.read_text())
+    executable = _element_text(root, "executable")
+    parameters = [element.text.strip() for element in root.findall(".//parameters") if element.text]
+    reference_metrics: dict[str, tuple[float, float]] = {}
+    for metric in root.findall(".//metric"):
+        metric_type = (metric.get("type") or "").lower()
+        if metric_type not in {"l2", "linf"}:
+            continue
+        prefix = "l2_error" if metric_type == "l2" else "linf_error"
+        for value in metric.findall(".//value"):
+            variable = value.get("variable") or "u"
+            if value.text is None:
+                continue
+            tolerance = float(value.get("tolerance", "0"))
+            reference_metrics[f"{prefix}_{variable}"] = (float(value.text.strip()), tolerance)
+    return NektarTestSpec(
+        executable=executable,
+        parameters=parameters,
+        reference_metrics=reference_metrics,
+    )
+
+
+def _element_text(root: ET.Element, name: str) -> str | None:
+    element = root.find(f".//{name}")
+    if element is None or element.text is None:
+        return None
+    stripped = element.text.strip()
+    return stripped or None
 
 
 def parse_nektar_error_norms(stdout: str) -> dict[str, float]:
@@ -60,6 +100,7 @@ class NektarBenchmarkRunner:
         self.brain_provider = brain_provider or FakeClaudeCLIBrainProvider()
 
     def run_case(self, case: BenchmarkCaseSpec, lanes: list[BenchmarkLane]) -> list[LaneSummary]:
+        self._write_preflight(case)
         summaries: list[LaneSummary] = []
         for lane in lanes:
             if lane == "extension":
@@ -124,7 +165,10 @@ class NektarBenchmarkRunner:
                 ],
                 attempt_log=attempt_log,
             )
-        solver_binary = str(case.problem_definition.get("solver_binary", "ADRSolver"))
+        test_spec = self._load_test_spec(case)
+        solver_binary = test_spec.executable or str(
+            case.problem_definition.get("solver_binary", "ADRSolver")
+        )
         if shutil.which(solver_binary) is None:
             return write_lane_outputs(
                 runs_root=self.runs_root,
@@ -142,7 +186,7 @@ class NektarBenchmarkRunner:
                 skip_reason=f"{solver_binary} not found",
             )
         started_at = time.perf_counter()
-        session_path = self._materialize_session_xml(output_dir, case)
+        session_path = self._materialize_session_xml(output_dir, case, test_spec)
         stdout_path = output_dir / "solver.stdout.log"
         stderr_path = output_dir / "solver.stderr.log"
         result = subprocess.run(
@@ -157,6 +201,7 @@ class NektarBenchmarkRunner:
         write_text(stderr_path, result.stderr)
         metrics: dict[str, Any] = parse_nektar_error_norms(result.stdout)
         metrics["elapsed_seconds"] = time.perf_counter() - started_at
+        self._write_nektar_reference_metrics(output_dir, test_spec)
         return write_lane_outputs(
             runs_root=self.runs_root,
             case=case,
@@ -223,6 +268,33 @@ class NektarBenchmarkRunner:
             skip_reason="real Nektar agent replay requires a dedicated extension session mapping",
         )
 
+    def _write_preflight(self, case: BenchmarkCaseSpec) -> None:
+        output_dir = suite_root(self.runs_root, case.suite) / "preflight" / case.case_id
+        source_reference = case.source_reference if isinstance(case.source_reference, dict) else {}
+        raw_tst_path = str(source_reference.get("tst", ""))
+        tst_path = Path(raw_tst_path) if raw_tst_path else None
+        test_spec = self._load_test_spec(case)
+        tester_available = shutil.which("Tester") is not None
+        solver_binary = test_spec.executable or str(
+            case.problem_definition.get("solver_binary", "ADRSolver")
+        )
+        solver_available = shutil.which(solver_binary) is not None
+        summary = {
+            "case_id": case.case_id,
+            "tester_available": tester_available,
+            "alternative_validation": "solver_binary_probe" if not tester_available else None,
+            "solver_binary": solver_binary,
+            "solver_available": solver_available,
+            "tst_path": raw_tst_path or None,
+            "tst_available": tst_path.exists() if tst_path is not None else False,
+            "reference_metric_count": len(test_spec.reference_metrics),
+            "real_tools_allowed": self.allow_real_tools,
+            "status": "available" if tester_available or solver_available else "unavailable",
+        }
+        write_text(output_dir / "tester.stdout.log", "")
+        write_text(output_dir / "tester.stderr.log", "")
+        write_json(output_dir / "tester_summary.json", summary)
+
     def _claude_attempt_log(self, error: str | None, lane: BenchmarkLane) -> AttemptLog:
         return AttemptLog(
             attempts=[
@@ -260,14 +332,60 @@ class NektarBenchmarkRunner:
         stderr_path = write_text(output_dir / "solver.stderr.log", "")
         return [str(session_path), str(stdout_path), str(stderr_path)]
 
-    def _materialize_session_xml(self, output_dir: Path, case: BenchmarkCaseSpec) -> Path:
+    def _load_test_spec(self, case: BenchmarkCaseSpec) -> NektarTestSpec:
+        source_reference = case.source_reference
+        if not isinstance(source_reference, dict):
+            return NektarTestSpec()
+        tst_path = Path(str(source_reference.get("tst", "")))
+        if not tst_path.exists():
+            return NektarTestSpec()
+        return parse_nektar_tst(tst_path)
+
+    def _materialize_session_xml(
+        self,
+        output_dir: Path,
+        case: BenchmarkCaseSpec,
+        test_spec: NektarTestSpec | None = None,
+    ) -> Path:
         output_dir.mkdir(parents=True, exist_ok=True)
         source_reference = case.source_reference
         target = output_dir / "session.xml"
         if isinstance(source_reference, dict):
-            source_xml = Path(str(source_reference.get("xml", "")))
-            if source_xml.exists():
-                target.write_text(source_xml.read_text())
+            source_tst = Path(str(source_reference.get("tst", "")))
+            source_xml = self._source_xml_from_test_spec(source_reference, source_tst, test_spec)
+            if source_xml is not None and source_xml.exists():
+                shutil.copy2(source_xml, target)
                 return target
         target.write_text("<NEKTAR />\n")
         return target
+
+    def _source_xml_from_test_spec(
+        self,
+        source_reference: dict[str, Any],
+        source_tst: Path,
+        test_spec: NektarTestSpec | None,
+    ) -> Path | None:
+        if test_spec is not None and test_spec.parameters:
+            parameter_path = Path(test_spec.parameters[0])
+            return (
+                parameter_path
+                if parameter_path.is_absolute()
+                else source_tst.parent / parameter_path
+            )
+        source_xml = Path(str(source_reference.get("xml", "")))
+        return source_xml if str(source_xml) else None
+
+    def _write_nektar_reference_metrics(
+        self,
+        output_dir: Path,
+        test_spec: NektarTestSpec,
+    ) -> None:
+        if not test_spec.reference_metrics:
+            return
+        write_json(
+            output_dir / "reference_metrics.json",
+            {
+                key: {"value": value, "tolerance": tolerance}
+                for key, (value, tolerance) in sorted(test_spec.reference_metrics.items())
+            },
+        )

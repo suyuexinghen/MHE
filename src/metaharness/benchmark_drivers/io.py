@@ -12,6 +12,7 @@ from metaharness.benchmark_drivers.models import BenchmarkLane, BenchmarkSuite
 SUITE_DIRS: dict[BenchmarkSuite, str] = {
     "octave-native": "octave-native-benchmark",
     "nektar-pde": "nektar-pde-benchmark",
+    "qcompute-abacus": "qcompute-abacus-benchmark",
 }
 
 

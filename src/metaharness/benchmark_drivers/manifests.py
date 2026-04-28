@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import platform
 import shutil
 import subprocess
@@ -43,6 +44,10 @@ def _version(binary: str) -> str | None:
     return output.splitlines()[0] if output else None
 
 
+def _module_available(module: str) -> bool:
+    return importlib.util.find_spec(module) is not None
+
+
 def build_run_manifest(
     *,
     suite: BenchmarkSuite,
@@ -67,5 +72,9 @@ def build_run_manifest(
             "IncNavierStokesSolver": _version("IncNavierStokesSolver"),
             "DiffusionSolver": _version("DiffusionSolver"),
             "CompressibleFlowSolver": _version("CompressibleFlowSolver"),
+            "abacus": _version("abacus"),
+            "qiskit": {"available": _module_available("qiskit")},
+            "qiskit_aer": {"available": _module_available("qiskit_aer")},
+            "pennylane": {"available": _module_available("pennylane")},
         },
     )

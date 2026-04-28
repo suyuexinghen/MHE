@@ -74,45 +74,11 @@ class OctaveBenchmarkRunner:
                 status="skipped",
                 skip_reason="octave-cli not found",
             )
-        started_at = time.perf_counter()
-        try:
-            spec = self._build_extension_spec(case, output_dir)
-            plan = OctaveScriptCompilerComponent().build_plan(spec)
-            artifact = OctaveExecutorComponent().execute_plan(plan)
-            artifact = artifact.model_copy(
-                update={
-                    "parsed_outputs": self._read_metric_output_files(
-                        Path(artifact.working_directory)
-                    )
-                }
-            )
-            validation = OctaveValidatorComponent().validate_run(artifact, plan)
-            evidence = build_evidence_bundle(artifact, validation, plan=plan)
-            metrics = {
-                **artifact.summary_metrics,
-                **artifact.parsed_outputs,
-                **validation.numeric_metrics,
-            }
-            write_json(output_dir / "validation.json", validation)
-            write_json(output_dir / "evidence.json", evidence)
-            return write_lane_outputs(
-                runs_root=self.runs_root,
-                case=case,
-                lane="extension",
-                status="passed" if validation.passed else "failed",
-                metrics=metrics,
-                evidence_files=evidence.evidence_files,
-                started_at=started_at,
-            )
-        except Exception as exc:
-            return write_lane_outputs(
-                runs_root=self.runs_root,
-                case=case,
-                lane="extension",
-                status="failed",
-                error_message=str(exc),
-                started_at=started_at,
-            )
+        return self._run_extension_pipeline_lane(
+            case=case,
+            lane="extension",
+            output_dir=output_dir,
+        )
 
     def run_direct(self, case: BenchmarkCaseSpec) -> LaneSummary:
         output_dir = case_dir(self.runs_root, case.suite, "direct", case.case_id)
@@ -168,40 +134,12 @@ class OctaveBenchmarkRunner:
                 ],
                 skip_reason="octave-cli not found",
             )
-        started_at = time.perf_counter()
-        script_path = output_dir / "solve.m"
-        self._write_direct_script(script_path, case)
-        stdout_path = output_dir / "stdout.txt"
-        stderr_path = output_dir / "stderr.txt"
-        result = subprocess.run(
-            ["octave-cli", "--no-gui", "--quiet", "--no-init-file", str(script_path)],
-            cwd=output_dir,
-            text=True,
-            capture_output=True,
-            check=False,
-            timeout=300,
-        )
-        write_text(stdout_path, result.stdout)
-        write_text(stderr_path, result.stderr)
-        metrics = self._read_metrics(output_dir)
-        return write_lane_outputs(
-            runs_root=self.runs_root,
+        return self._run_direct_script_lane(
             case=case,
             lane="direct",
-            status="passed" if result.returncode == 0 else "failed",
-            metrics=metrics,
-            evidence_files=[
-                claude_result.invocation.prompt_path,
-                claude_result.invocation.stdout_path,
-                claude_result.invocation.stderr_path,
-                claude_result.invocation.result_path or "",
-                claude_result.invocation.proposal_path or "",
-                str(script_path),
-                str(stdout_path),
-                str(stderr_path),
-            ],
+            output_dir=output_dir,
+            claude_result=claude_result,
             attempt_log=attempt_log,
-            started_at=started_at,
         )
 
     def run_agent(self, case: BenchmarkCaseSpec) -> LaneSummary:
@@ -241,7 +179,160 @@ class OctaveBenchmarkRunner:
                 ],
                 attempt_log=attempt_log,
             )
-        return self.run_extension(case).model_copy(update={"lane": "agent", "llm_calls": 1})
+        if shutil.which("octave-cli") is None:
+            return write_lane_outputs(
+                runs_root=self.runs_root,
+                case=case,
+                lane="agent",
+                status="skipped",
+                attempt_log=attempt_log,
+                evidence_files=[
+                    claude_result.invocation.prompt_path,
+                    claude_result.invocation.stdout_path,
+                    claude_result.invocation.stderr_path,
+                    claude_result.invocation.result_path or "",
+                    claude_result.invocation.proposal_path or "",
+                ],
+                skip_reason="octave-cli not found",
+            )
+        return self._run_extension_pipeline_lane(
+            case=case,
+            lane="agent",
+            output_dir=output_dir,
+            attempt_log=attempt_log,
+            evidence_files=[
+                claude_result.invocation.prompt_path,
+                claude_result.invocation.stdout_path,
+                claude_result.invocation.stderr_path,
+                claude_result.invocation.result_path or "",
+                claude_result.invocation.proposal_path or "",
+            ],
+        )
+
+    def _run_extension_pipeline_lane(
+        self,
+        *,
+        case: BenchmarkCaseSpec,
+        lane: BenchmarkLane,
+        output_dir: Path,
+        attempt_log: AttemptLog | None = None,
+        evidence_files: list[str] | None = None,
+    ) -> LaneSummary:
+        started_at = time.perf_counter()
+        try:
+            spec = self._build_extension_spec(case, output_dir)
+            plan = OctaveScriptCompilerComponent().build_plan(spec)
+            artifact = OctaveExecutorComponent().execute_plan(plan)
+            artifact = artifact.model_copy(
+                update={
+                    "parsed_outputs": self._read_metric_output_files(
+                        Path(artifact.working_directory)
+                    )
+                }
+            )
+            validation = OctaveValidatorComponent().validate_run(artifact, plan)
+            evidence = build_evidence_bundle(artifact, validation, plan=plan)
+            metrics = {
+                **artifact.summary_metrics,
+                **artifact.parsed_outputs,
+                **validation.numeric_metrics,
+            }
+            write_json(output_dir / "validation.json", validation)
+            write_json(output_dir / "evidence.json", evidence)
+            return write_lane_outputs(
+                runs_root=self.runs_root,
+                case=case,
+                lane=lane,
+                status="passed" if validation.passed else "failed",
+                metrics=metrics,
+                evidence_files=[*(evidence_files or []), *evidence.evidence_files],
+                attempt_log=attempt_log,
+                started_at=started_at,
+            )
+        except Exception as exc:
+            return write_lane_outputs(
+                runs_root=self.runs_root,
+                case=case,
+                lane=lane,
+                status="failed",
+                attempt_log=attempt_log,
+                evidence_files=evidence_files,
+                error_message=str(exc),
+                started_at=started_at,
+            )
+
+    def _run_direct_script_lane(
+        self,
+        *,
+        case: BenchmarkCaseSpec,
+        lane: BenchmarkLane,
+        output_dir: Path,
+        claude_result,
+        attempt_log: AttemptLog,
+    ) -> LaneSummary:
+        started_at = time.perf_counter()
+        script_path = output_dir / "solve.m"
+        self._write_direct_script(script_path, case, claude_result.proposal)
+        stdout_path = output_dir / "stdout.txt"
+        stderr_path = output_dir / "stderr.txt"
+        evidence_files = [
+            claude_result.invocation.prompt_path,
+            claude_result.invocation.stdout_path,
+            claude_result.invocation.stderr_path,
+            claude_result.invocation.result_path or "",
+            claude_result.invocation.proposal_path or "",
+            str(script_path),
+            str(stdout_path),
+            str(stderr_path),
+        ]
+        try:
+            result = subprocess.run(
+                ["octave-cli", "--no-gui", "--quiet", "--no-init-file", str(script_path)],
+                cwd=output_dir,
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=300,
+            )
+        except subprocess.TimeoutExpired as exc:
+            write_text(stdout_path, self._process_output_text(exc.stdout))
+            write_text(stderr_path, self._process_output_text(exc.stderr))
+            return write_lane_outputs(
+                runs_root=self.runs_root,
+                case=case,
+                lane=lane,
+                status="failed",
+                evidence_files=evidence_files,
+                attempt_log=attempt_log,
+                error_message=f"octave-cli timed out after {exc.timeout} seconds",
+                started_at=started_at,
+            )
+        except OSError as exc:
+            write_text(stdout_path, "")
+            write_text(stderr_path, str(exc))
+            return write_lane_outputs(
+                runs_root=self.runs_root,
+                case=case,
+                lane=lane,
+                status="failed",
+                evidence_files=evidence_files,
+                attempt_log=attempt_log,
+                error_message=str(exc),
+                started_at=started_at,
+            )
+        write_text(stdout_path, result.stdout)
+        write_text(stderr_path, result.stderr)
+        metrics = self._read_metrics(output_dir)
+        return write_lane_outputs(
+            runs_root=self.runs_root,
+            case=case,
+            lane=lane,
+            status="passed" if result.returncode == 0 else "failed",
+            metrics=metrics,
+            evidence_files=evidence_files,
+            attempt_log=attempt_log,
+            started_at=started_at,
+        )
 
     def _claude_attempt_log(self, error: str | None, lane: BenchmarkLane) -> AttemptLog:
         return AttemptLog(
@@ -302,9 +393,21 @@ class OctaveBenchmarkRunner:
         stderr_path = write_text(output_dir / "stderr.txt", "")
         return [str(script_path), str(stdout_path), str(stderr_path)]
 
-    def _write_direct_script(self, script_path: Path, case: BenchmarkCaseSpec) -> None:
-        metric_fields = ", ".join(f"'{metric}', {metric}" for metric in case.expected_metrics)
+    def _write_direct_script(
+        self,
+        script_path: Path,
+        case: BenchmarkCaseSpec,
+        proposal: dict[str, Any] | None = None,
+    ) -> None:
+        proposal_script = self._proposal_script(proposal or {})
         content = (
+            proposal_script if proposal_script is not None else self._default_direct_script(case)
+        )
+        write_text(script_path, content)
+
+    def _default_direct_script(self, case: BenchmarkCaseSpec) -> str:
+        metric_fields = ", ".join(f"'{metric}', {metric}" for metric in case.expected_metrics)
+        return (
             "more off;\n"
             "warning('on', 'all');\n"
             + build_octave_case_script(case)
@@ -312,7 +415,20 @@ class OctaveBenchmarkRunner:
             + metric_fields
             + ");\nfid = fopen('metrics.json', 'w');\nfputs(fid, jsonencode(metrics));\nfclose(fid);\n"
         )
-        write_text(script_path, content)
+
+    def _proposal_script(self, proposal: dict[str, Any]) -> str | None:
+        for key in ["solve_m", "script", "octave_script"]:
+            value = proposal.get(key)
+            if isinstance(value, str) and value.strip():
+                return value
+        return None
+
+    def _process_output_text(self, value: bytes | str | None) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, bytes):
+            return value.decode("utf-8", errors="replace")
+        return value
 
     def _read_metric_output_files(self, output_dir: Path) -> dict[str, float]:
         metrics: dict[str, float] = {}

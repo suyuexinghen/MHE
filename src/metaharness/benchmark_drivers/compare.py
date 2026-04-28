@@ -190,15 +190,59 @@ def _comparison_markdown(suite: BenchmarkSuite, rows: list[ComparisonRow]) -> st
 
 def _analysis_markdown(suite: BenchmarkSuite, rows: list[ComparisonRow]) -> str:
     passed = sum(1 for row in rows if row.verdict == "all_passed")
+    capability_skips = sum(1 for row in rows if row.verdict == "capability_skip")
+    schema_failures = sum(1 for row in rows if row.verdict == "schema_failed")
+    total_direct_llm_calls = sum(row.direct_llm_calls or 0 for row in rows)
+    total_agent_llm_calls = sum(row.agent_llm_calls or 0 for row in rows)
     lines = [
         f"# {suite} analysis report",
         "",
+        "## Scope",
+        "",
         f"- Cases compared: {len(rows)}",
         f"- Fully passed cases: {passed}",
-        "- Interpret solver time separately from driver/pipeline overhead.",
-        "- Treat evidence completeness as reproducibility support, not numerical superiority.",
+        f"- Capability skips: {capability_skips}",
+        f"- Schema failures: {schema_failures}",
         "",
+        "## Workflow quality",
+        "",
+        f"- Direct Claude CLI calls: {total_direct_llm_calls}",
+        f"- Agent Claude CLI calls: {total_agent_llm_calls}",
+        "- Evidence counts measure reproducibility support, not numerical superiority.",
+        "- Driver time and solver elapsed time should be interpreted separately.",
+        "",
+        "## Case verdicts",
+        "",
+        "| Case | Extension | Direct | Agent | Verdict |",
+        "|---|---|---|---|---|",
     ]
+    for row in rows:
+        lines.append(
+            f"| {row.case_id} | {row.extension_status} | {row.direct_status} | {row.agent_status} | {row.verdict} |"
+        )
+    lines.extend(["", "## Limitations", ""])
+    if suite == "nektar-pde":
+        lines.extend(
+            [
+                "- Dry-run summaries do not prove local Nektar++ solver availability.",
+                "- Agent workflow quality is measured through lane evidence, not improved PDE accuracy.",
+            ]
+        )
+    elif suite == "qcompute-abacus":
+        lines.extend(
+            [
+                "- Dry-run summaries validate Hamiltonian proxy workflow layout, not real QPU or ABACUS execution.",
+                "- The ABACUS H/S bridge sentinel must remain skipped until a converter is implemented.",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "- Dry-run summaries validate harness layout and comparison logic, not Octave numerical runtime.",
+                "- Direct and agent lanes should use the same Claude CLI binary, model, and turn budget in real runs.",
+            ]
+        )
+    lines.append("")
     return "\n".join(lines)
 
 

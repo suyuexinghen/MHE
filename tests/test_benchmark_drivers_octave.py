@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 from metaharness.benchmark_drivers.claude_cli import FakeClaudeCLIBrainProvider
@@ -41,6 +42,93 @@ def test_octave_direct_real_mode_skips_when_binary_missing(tmp_path: Path, monke
 
     assert summary.status == "skipped"
     assert summary.skip_reason == "octave-cli not found"
+
+
+def test_octave_direct_real_mode_uses_proposal_script(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "metaharness.benchmark_drivers.octave_runner.shutil.which", lambda _: "octave-cli"
+    )
+
+    def fake_run(command, **kwargs):
+        output_dir = Path(kwargs["cwd"])
+        (output_dir / "metrics.json").write_text('{"max_abs_error": 0, "elapsed_seconds": 0}')
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr("metaharness.benchmark_drivers.octave_runner.subprocess.run", fake_run)
+    case = octave_case_catalog()["sinc-values"]
+    runner = OctaveBenchmarkRunner(
+        runs_root=tmp_path,
+        allow_real_tools=True,
+        brain_provider=FakeClaudeCLIBrainProvider(
+            {
+                "script": "custom_metric = 1;\nmetrics = struct('max_abs_error', 0, 'elapsed_seconds', 0);"
+            }
+        ),
+    )
+
+    summary = runner.run_direct(case)
+
+    script = (
+        tmp_path / "octave-native-benchmark" / "direct" / "sinc-values" / "solve.m"
+    ).read_text()
+    assert summary.status == "passed"
+    assert "custom_metric = 1" in script
+
+
+def test_octave_direct_real_mode_records_timeout_summary(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "metaharness.benchmark_drivers.octave_runner.shutil.which", lambda _: "octave-cli"
+    )
+
+    def fake_run(command, **kwargs):
+        raise subprocess.TimeoutExpired(command, timeout=300, output="partial", stderr="timeout")
+
+    monkeypatch.setattr("metaharness.benchmark_drivers.octave_runner.subprocess.run", fake_run)
+    case = octave_case_catalog()["sinc-values"]
+    runner = OctaveBenchmarkRunner(
+        runs_root=tmp_path,
+        allow_real_tools=True,
+        brain_provider=FakeClaudeCLIBrainProvider(
+            {"script": "max_abs_error = 0; elapsed_seconds = 0;"}
+        ),
+    )
+
+    summary = runner.run_direct(case)
+
+    output_dir = tmp_path / "octave-native-benchmark" / "direct" / "sinc-values"
+    assert summary.status == "failed"
+    assert "timed out" in (summary.error_message or "")
+    assert (output_dir / "summary.json").exists()
+    assert (output_dir / "stdout.txt").read_text() == "partial"
+
+
+def test_octave_agent_real_mode_writes_agent_summary(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "metaharness.benchmark_drivers.octave_runner.shutil.which", lambda _: "octave-cli"
+    )
+
+    def fake_run(command, **kwargs):
+        output_dir = Path(kwargs["cwd"])
+        outputs = output_dir / "outputs"
+        outputs.mkdir(exist_ok=True)
+        (outputs / "max_abs_error.txt").write_text("# name: max_abs_error\n# type: scalar\n0\n")
+        (outputs / "elapsed_seconds.txt").write_text("# name: elapsed_seconds\n# type: scalar\n0\n")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr("metaharness_ext.octave.executor.subprocess.run", fake_run)
+    case = octave_case_catalog()["sinc-values"]
+    runner = OctaveBenchmarkRunner(
+        runs_root=tmp_path,
+        allow_real_tools=True,
+        brain_provider=FakeClaudeCLIBrainProvider({"script": "ignored"}),
+    )
+
+    summary = runner.run_agent(case)
+
+    base = tmp_path / "octave-native-benchmark"
+    assert summary.lane == "agent"
+    assert (base / "agent" / "sinc-values" / "summary.json").exists()
+    assert not (base / "extension" / "sinc-values" / "summary.json").exists()
 
 
 def test_octave_script_builder_emits_expected_metrics() -> None:
