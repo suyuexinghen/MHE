@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from metaharness import __version__
+from metaharness.benchmark_drivers.claude_cli import ClaudeCLIBrainProvider, ClaudeCLIConfig
 from metaharness.benchmark_drivers.compare import write_comparison_outputs
 from metaharness.benchmark_drivers.io import specs_dir, write_json
 from metaharness.benchmark_drivers.models import BenchmarkLane, BenchmarkSuite
@@ -122,15 +123,34 @@ def _parse_csv(value: str) -> list[str]:
 
 def _cmd_benchmark_run(args: argparse.Namespace) -> int:
     suite: BenchmarkSuite = args.suite
-    lanes: list[BenchmarkLane] = _parse_csv(args.lanes)  # type: ignore[assignment]
+    raw_lanes = _parse_csv(args.lanes)
+    allowed_lanes = {"extension", "direct", "agent"}
+    invalid_lanes = sorted(set(raw_lanes) - allowed_lanes)
+    if invalid_lanes:
+        print(f"invalid benchmark lanes: {', '.join(invalid_lanes)}", file=sys.stderr)
+        return 2
+    lanes: list[BenchmarkLane] = raw_lanes  # type: ignore[assignment]
     case_ids = _parse_csv(args.cases) if args.cases else None
     runs_root = Path(args.runs_root)
+    brain_provider = (
+        ClaudeCLIBrainProvider(ClaudeCLIConfig(binary=args.claude_binary, model=args.claude_model))
+        if args.allow_real_tools
+        else None
+    )
     if suite == "octave-native":
         cases = get_octave_cases(case_ids)
-        runner = OctaveBenchmarkRunner(runs_root=runs_root, allow_real_tools=args.allow_real_tools)
+        runner = OctaveBenchmarkRunner(
+            runs_root=runs_root,
+            allow_real_tools=args.allow_real_tools,
+            brain_provider=brain_provider,
+        )
     else:
         cases = get_nektar_cases(case_ids)
-        runner = NektarBenchmarkRunner(runs_root=runs_root, allow_real_tools=args.allow_real_tools)
+        runner = NektarBenchmarkRunner(
+            runs_root=runs_root,
+            allow_real_tools=args.allow_real_tools,
+            brain_provider=brain_provider,
+        )
 
     summaries = []
     for case in cases:
@@ -206,6 +226,7 @@ def build_parser() -> argparse.ArgumentParser:
     benchmark_run.add_argument("--cases", default="")
     benchmark_run.add_argument("--runs-root", default=".runs")
     benchmark_run.add_argument("--claude-binary", default="claude")
+    benchmark_run.add_argument("--claude-model", default=None)
     benchmark_run.add_argument("--allow-real-tools", action="store_true")
     benchmark_run.set_defaults(func=_cmd_benchmark_run)
 

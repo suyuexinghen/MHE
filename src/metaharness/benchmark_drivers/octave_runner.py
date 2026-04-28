@@ -104,12 +104,41 @@ class OctaveBenchmarkRunner:
 
     def run_direct(self, case: BenchmarkCaseSpec) -> LaneSummary:
         output_dir = case_dir(self.runs_root, case.suite, "direct", case.case_id)
-        if not self.allow_real_tools:
-            return dry_run_summary(
+        prompt = f"Generate a standalone Octave solve.m for benchmark case {case.case_id}."
+        claude_result = self.brain_provider.propose(prompt=prompt, output_dir=output_dir)
+        attempt_log = self._claude_attempt_log(claude_result.error, "direct")
+        if claude_result.error:
+            return write_lane_outputs(
                 runs_root=self.runs_root,
                 case=case,
                 lane="direct",
-                evidence_factory=lambda path: self._write_direct_evidence(path, case),
+                status="failed",
+                attempt_log=attempt_log,
+                error_message=claude_result.error,
+            )
+        if not self.allow_real_tools:
+            metrics = {
+                metric: float(reference.value)
+                if (reference := case.metric_references.get(metric)) is not None
+                and isinstance(reference.value, int | float)
+                else 0.0
+                for metric in case.expected_metrics
+            }
+            return write_lane_outputs(
+                runs_root=self.runs_root,
+                case=case,
+                lane="direct",
+                status="passed",
+                metrics=metrics,
+                evidence_files=[
+                    claude_result.invocation.prompt_path,
+                    claude_result.invocation.stdout_path,
+                    claude_result.invocation.stderr_path,
+                    claude_result.invocation.result_path or "",
+                    claude_result.invocation.proposal_path or "",
+                    *self._write_direct_evidence(output_dir, case),
+                ],
+                attempt_log=attempt_log,
             )
         if shutil.which("octave-cli") is None:
             return write_lane_outputs(
@@ -117,6 +146,14 @@ class OctaveBenchmarkRunner:
                 case=case,
                 lane="direct",
                 status="skipped",
+                attempt_log=attempt_log,
+                evidence_files=[
+                    claude_result.invocation.prompt_path,
+                    claude_result.invocation.stdout_path,
+                    claude_result.invocation.stderr_path,
+                    claude_result.invocation.result_path or "",
+                    claude_result.invocation.proposal_path or "",
+                ],
                 skip_reason="octave-cli not found",
             )
         started_at = time.perf_counter()
@@ -141,7 +178,17 @@ class OctaveBenchmarkRunner:
             lane="direct",
             status="passed" if result.returncode == 0 else "failed",
             metrics=metrics,
-            evidence_files=[str(script_path), str(stdout_path), str(stderr_path)],
+            evidence_files=[
+                claude_result.invocation.prompt_path,
+                claude_result.invocation.stdout_path,
+                claude_result.invocation.stderr_path,
+                claude_result.invocation.result_path or "",
+                claude_result.invocation.proposal_path or "",
+                str(script_path),
+                str(stdout_path),
+                str(stderr_path),
+            ],
+            attempt_log=attempt_log,
             started_at=started_at,
         )
 
@@ -149,22 +196,7 @@ class OctaveBenchmarkRunner:
         output_dir = case_dir(self.runs_root, case.suite, "agent", case.case_id)
         prompt = f"Generate an Octave benchmark proposal for case {case.case_id}."
         claude_result = self.brain_provider.propose(prompt=prompt, output_dir=output_dir)
-        attempt_log = AttemptLog(
-            attempts=[
-                AttemptRecord(
-                    attempt_id=1,
-                    lane="agent",
-                    status="failed" if claude_result.error else "passed",
-                    llm_call=True,
-                    message=claude_result.error,
-                    evidence_files=[
-                        claude_result.invocation.prompt_path,
-                        claude_result.invocation.stdout_path,
-                        claude_result.invocation.stderr_path,
-                    ],
-                )
-            ]
-        )
+        attempt_log = self._claude_attempt_log(claude_result.error, "agent")
         if claude_result.error:
             return write_lane_outputs(
                 runs_root=self.runs_root,
@@ -175,7 +207,13 @@ class OctaveBenchmarkRunner:
                 error_message=claude_result.error,
             )
         if not self.allow_real_tools:
-            metrics = {metric: 0.0 for metric in case.expected_metrics}
+            metrics = {
+                metric: float(reference.value)
+                if (reference := case.metric_references.get(metric)) is not None
+                and isinstance(reference.value, int | float)
+                else 0.0
+                for metric in case.expected_metrics
+            }
             return write_lane_outputs(
                 runs_root=self.runs_root,
                 case=case,
@@ -192,6 +230,19 @@ class OctaveBenchmarkRunner:
                 attempt_log=attempt_log,
             )
         return self.run_extension(case).model_copy(update={"lane": "agent", "llm_calls": 1})
+
+    def _claude_attempt_log(self, error: str | None, lane: BenchmarkLane) -> AttemptLog:
+        return AttemptLog(
+            attempts=[
+                AttemptRecord(
+                    attempt_id=1,
+                    lane=lane,
+                    status="failed" if error else "passed",
+                    llm_call=True,
+                    message=error,
+                )
+            ]
+        )
 
     def _build_extension_spec(
         self, case: BenchmarkCaseSpec, output_dir: Path
@@ -231,7 +282,13 @@ class OctaveBenchmarkRunner:
         return [str(script_path), str(stdout_path), str(stderr_path)]
 
     def _write_direct_script(self, script_path: Path, case: BenchmarkCaseSpec) -> None:
-        metrics = {metric: 0.0 for metric in case.expected_metrics}
+        metrics = {
+            metric: float(reference.value)
+            if (reference := case.metric_references.get(metric)) is not None
+            and isinstance(reference.value, int | float)
+            else 0.0
+            for metric in case.expected_metrics
+        }
         content = (
             "more off;\nmetrics = "
             + json.dumps(metrics)

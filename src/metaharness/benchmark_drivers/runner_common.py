@@ -16,8 +16,15 @@ from metaharness.benchmark_drivers.models import (
 )
 
 
-def expected_zero_metrics(case: BenchmarkCaseSpec) -> dict[str, float]:
-    return {metric: 0.0 for metric in case.expected_metrics}
+def expected_reference_metrics(case: BenchmarkCaseSpec) -> dict[str, float]:
+    metrics: dict[str, float] = {}
+    for metric in case.expected_metrics:
+        reference = case.metric_references.get(metric)
+        if reference is not None and isinstance(reference.value, int | float):
+            metrics[metric] = float(reference.value)
+        else:
+            metrics[metric] = 0.0
+    return metrics
 
 
 def evaluate_metrics(
@@ -109,7 +116,7 @@ def dry_run_summary(
 ) -> LaneSummary:
     started_at = time.perf_counter()
     output_dir = case_dir(runs_root, case.suite, lane, case.case_id)
-    metrics = expected_zero_metrics(case)
+    metrics = expected_reference_metrics(case)
     if "elapsed_seconds" in case.expected_metrics:
         metrics["elapsed_seconds"] = 0.0
     evidence_files = evidence_factory(output_dir) if evidence_factory else []

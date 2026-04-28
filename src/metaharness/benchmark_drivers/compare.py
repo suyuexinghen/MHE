@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from json import JSONDecodeError
 from pathlib import Path
+
+from pydantic import ValidationError
 
 from metaharness.benchmark_drivers.io import (
     comparison_dir,
@@ -50,9 +53,33 @@ def load_lane_summaries(
         if not lane_root.exists():
             continue
         for summary_path in lane_root.glob("*/summary.json"):
-            summary = LaneSummary.model_validate(read_json(summary_path))
+            summary = _load_summary_or_schema_failure(summary_path, suite, lane)
             grouped.setdefault(summary.case_id, {})[lane] = summary
     return grouped
+
+
+def _load_summary_or_schema_failure(
+    summary_path: Path, suite: BenchmarkSuite, lane: str
+) -> LaneSummary:
+    try:
+        return LaneSummary.model_validate(read_json(summary_path))
+    except (JSONDecodeError, ValidationError, OSError) as exc:
+        schema_report = {
+            "path": str(summary_path),
+            "valid": False,
+            "error": str(exc),
+        }
+        write_json(summary_path.parent / "schema_validation.json", schema_report)
+        return LaneSummary(
+            case_id=summary_path.parent.name,
+            suite=suite,
+            lane=lane,  # type: ignore[arg-type]
+            status="schema_failed",
+            passed=False,
+            error_message=str(exc),
+            evidence_files=[str(summary_path), str(summary_path.parent / "schema_validation.json")],
+            flags=["schema_failed"],
+        )
 
 
 def compare_suite(runs_root: Path, suite: BenchmarkSuite) -> list[ComparisonRow]:

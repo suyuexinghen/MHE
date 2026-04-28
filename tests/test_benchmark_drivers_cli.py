@@ -29,6 +29,47 @@ def test_benchmark_run_cli_writes_dry_run_outputs(tmp_path: Path, capsys) -> Non
     ).exists()
 
 
+def test_benchmark_run_cli_rejects_unknown_lane(tmp_path: Path, capsys) -> None:
+    status = main(
+        [
+            "benchmark-run",
+            "--suite",
+            "octave-native",
+            "--lanes",
+            "extension,bogus",
+            "--cases",
+            "sinc-values",
+            "--runs-root",
+            str(tmp_path),
+        ]
+    )
+
+    assert status == 2
+    assert "invalid benchmark lanes: bogus" in capsys.readouterr().err
+
+
+def test_nektar_benchmark_run_cli_writes_dry_run_outputs(tmp_path: Path) -> None:
+    status = main(
+        [
+            "benchmark-run",
+            "--suite",
+            "nektar-pde",
+            "--lanes",
+            "extension,direct,agent",
+            "--cases",
+            "advdiff-2d",
+            "--runs-root",
+            str(tmp_path),
+        ]
+    )
+
+    assert status == 0
+    assert (tmp_path / "nektar-pde-benchmark" / "specs" / "advdiff-2d.json").exists()
+    assert (
+        tmp_path / "nektar-pde-benchmark" / "direct" / "advdiff-2d" / "claude_prompt.txt"
+    ).exists()
+
+
 def test_benchmark_compare_cli_writes_reports(tmp_path: Path) -> None:
     assert (
         main(

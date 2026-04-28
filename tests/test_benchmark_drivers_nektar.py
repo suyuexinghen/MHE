@@ -35,10 +35,12 @@ def test_nektar_runner_dry_run_writes_three_lane_outputs(tmp_path: Path) -> None
 
     assert [summary.lane for summary in summaries] == ["extension", "direct", "agent"]
     assert all(summary.status == "passed" for summary in summaries)
+    assert summaries[1].llm_calls == 1
     assert summaries[2].llm_calls == 1
     base = tmp_path / "nektar-pde-benchmark"
     assert (base / "extension" / "advdiff-2d" / "session.xml").exists()
     assert (base / "direct" / "advdiff-2d" / "solver.stdout.log").exists()
+    assert (base / "direct" / "advdiff-2d" / "claude_prompt.txt").exists()
     assert (base / "agent" / "advdiff-2d" / "proposal.json").exists()
 
 

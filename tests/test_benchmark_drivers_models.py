@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
+from metaharness.benchmark_drivers.claude_cli import ClaudeCLIBrainProvider, ClaudeCLIConfig
 from metaharness.benchmark_drivers.compare import write_comparison_outputs
 from metaharness.benchmark_drivers.io import case_dir, write_json
 from metaharness.benchmark_drivers.models import (
@@ -54,6 +56,41 @@ def test_octave_catalog_contains_documented_cases() -> None:
     assert all(case.required_capabilities for case in catalog.values())
 
 
+def test_claude_cli_provider_writes_command_evidence(tmp_path: Path) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, '{"proposal": {"ok": true}}', "")
+
+    provider = ClaudeCLIBrainProvider(
+        ClaudeCLIConfig(binary="gclaude", model="cc-gpt-5.5", max_turns=3),
+        command_runner=fake_run,
+    )
+
+    result = provider.propose(prompt="hello", output_dir=tmp_path)
+
+    assert result.error is None
+    assert calls[0][:3] == ["gclaude", "-p", "hello"]
+    assert "--model" in calls[0]
+    assert "cc-gpt-5.5" in calls[0]
+    assert (tmp_path / "claude_command.json").exists()
+    assert (tmp_path / "proposal.json").exists()
+
+
+def _write_passing_lane_summary(tmp_path: Path, case: BenchmarkCaseSpec, lane: str) -> None:
+    summary = LaneSummary(
+        case_id=case.case_id,
+        suite=case.suite,
+        lane=lane,  # type: ignore[arg-type]
+        status="passed",
+        passed=True,
+        metrics={"error": 0.0},
+        evidence_files=["evidence.txt"],
+    )
+    write_json(case_dir(tmp_path, case.suite, lane, case.case_id) / "summary.json", summary)
+
+
 def test_comparator_writes_reports_from_synthetic_summaries(tmp_path: Path) -> None:
     case = BenchmarkCaseSpec(
         case_id="demo",
@@ -66,16 +103,7 @@ def test_comparator_writes_reports_from_synthetic_summaries(tmp_path: Path) -> N
         reference_metrics={"error": MetricReference(value=0.0, tolerance=1e-9)},
     )
     for lane in ["extension", "direct", "agent"]:
-        summary = LaneSummary(
-            case_id=case.case_id,
-            suite=case.suite,
-            lane=lane,
-            status="passed",
-            passed=True,
-            metrics={"error": 0.0},
-            evidence_files=["evidence.txt"],
-        )
-        write_json(case_dir(tmp_path, case.suite, lane, case.case_id) / "summary.json", summary)
+        _write_passing_lane_summary(tmp_path, case, lane)
 
     rows = write_comparison_outputs(runs_root=tmp_path, suite="octave-native")
 
@@ -84,3 +112,27 @@ def test_comparator_writes_reports_from_synthetic_summaries(tmp_path: Path) -> N
     assert (
         tmp_path / "octave-native-benchmark" / "reports" / "octave-native-analysis-report.md"
     ).exists()
+
+
+def test_comparator_records_schema_failed_summary(tmp_path: Path) -> None:
+    case = BenchmarkCaseSpec(
+        case_id="broken",
+        suite="octave-native",
+        task_family="demo",
+        description="broken summary case",
+        required_capabilities=["octave-cli"],
+        source_reference="source.m:1",
+        expected_metrics=["error"],
+        reference_metrics={"error": MetricReference(value=0.0, tolerance=1e-9)},
+    )
+    _write_passing_lane_summary(tmp_path, case, "extension")
+    _write_passing_lane_summary(tmp_path, case, "agent")
+    broken_dir = case_dir(tmp_path, case.suite, "direct", case.case_id)
+    broken_dir.mkdir(parents=True, exist_ok=True)
+    (broken_dir / "summary.json").write_text("{not-json")
+
+    rows = write_comparison_outputs(runs_root=tmp_path, suite="octave-native")
+
+    assert rows[0].direct_status == "schema_failed"
+    assert rows[0].verdict == "schema_failed"
+    assert (broken_dir / "schema_validation.json").exists()

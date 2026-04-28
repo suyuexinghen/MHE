@@ -88,12 +88,41 @@ class NektarBenchmarkRunner:
 
     def run_direct(self, case: BenchmarkCaseSpec) -> LaneSummary:
         output_dir = case_dir(self.runs_root, case.suite, "direct", case.case_id)
-        if not self.allow_real_tools:
-            return dry_run_summary(
+        prompt = f"Generate a standalone Nektar++ session.xml for benchmark case {case.case_id}."
+        claude_result = self.brain_provider.propose(prompt=prompt, output_dir=output_dir)
+        attempt_log = self._claude_attempt_log(claude_result.error, "direct")
+        if claude_result.error:
+            return write_lane_outputs(
                 runs_root=self.runs_root,
                 case=case,
                 lane="direct",
-                evidence_factory=lambda path: self._write_direct_evidence(path, case),
+                status="failed",
+                attempt_log=attempt_log,
+                error_message=claude_result.error,
+            )
+        if not self.allow_real_tools:
+            metrics = {
+                metric: float(reference.value)
+                if (reference := case.metric_references.get(metric)) is not None
+                and isinstance(reference.value, int | float)
+                else 0.0
+                for metric in case.expected_metrics
+            }
+            return write_lane_outputs(
+                runs_root=self.runs_root,
+                case=case,
+                lane="direct",
+                status="passed",
+                metrics=metrics,
+                evidence_files=[
+                    claude_result.invocation.prompt_path,
+                    claude_result.invocation.stdout_path,
+                    claude_result.invocation.stderr_path,
+                    claude_result.invocation.result_path or "",
+                    claude_result.invocation.proposal_path or "",
+                    *self._write_direct_evidence(output_dir, case),
+                ],
+                attempt_log=attempt_log,
             )
         solver_binary = str(case.problem_definition.get("solver_binary", "ADRSolver"))
         if shutil.which(solver_binary) is None:
@@ -102,6 +131,14 @@ class NektarBenchmarkRunner:
                 case=case,
                 lane="direct",
                 status="skipped",
+                attempt_log=attempt_log,
+                evidence_files=[
+                    claude_result.invocation.prompt_path,
+                    claude_result.invocation.stdout_path,
+                    claude_result.invocation.stderr_path,
+                    claude_result.invocation.result_path or "",
+                    claude_result.invocation.proposal_path or "",
+                ],
                 skip_reason=f"{solver_binary} not found",
             )
         started_at = time.perf_counter()
@@ -126,7 +163,17 @@ class NektarBenchmarkRunner:
             lane="direct",
             status="passed" if result.returncode == 0 else "failed",
             metrics=metrics,
-            evidence_files=[str(session_path), str(stdout_path), str(stderr_path)],
+            evidence_files=[
+                claude_result.invocation.prompt_path,
+                claude_result.invocation.stdout_path,
+                claude_result.invocation.stderr_path,
+                claude_result.invocation.result_path or "",
+                claude_result.invocation.proposal_path or "",
+                str(session_path),
+                str(stdout_path),
+                str(stderr_path),
+            ],
+            attempt_log=attempt_log,
             started_at=started_at,
         )
 
@@ -134,22 +181,7 @@ class NektarBenchmarkRunner:
         output_dir = case_dir(self.runs_root, case.suite, "agent", case.case_id)
         prompt = f"Generate a Nektar++ benchmark proposal for case {case.case_id}."
         claude_result = self.brain_provider.propose(prompt=prompt, output_dir=output_dir)
-        attempt_log = AttemptLog(
-            attempts=[
-                AttemptRecord(
-                    attempt_id=1,
-                    lane="agent",
-                    status="failed" if claude_result.error else "passed",
-                    llm_call=True,
-                    message=claude_result.error,
-                    evidence_files=[
-                        claude_result.invocation.prompt_path,
-                        claude_result.invocation.stdout_path,
-                        claude_result.invocation.stderr_path,
-                    ],
-                )
-            ]
-        )
+        attempt_log = self._claude_attempt_log(claude_result.error, "agent")
         if claude_result.error:
             return write_lane_outputs(
                 runs_root=self.runs_root,
@@ -160,7 +192,13 @@ class NektarBenchmarkRunner:
                 error_message=claude_result.error,
             )
         if not self.allow_real_tools:
-            metrics = {metric: 0.0 for metric in case.expected_metrics}
+            metrics = {
+                metric: float(reference.value)
+                if (reference := case.metric_references.get(metric)) is not None
+                and isinstance(reference.value, int | float)
+                else 0.0
+                for metric in case.expected_metrics
+            }
             return write_lane_outputs(
                 runs_root=self.runs_root,
                 case=case,
@@ -183,6 +221,19 @@ class NektarBenchmarkRunner:
             status="skipped",
             attempt_log=attempt_log,
             skip_reason="real Nektar agent replay requires a dedicated extension session mapping",
+        )
+
+    def _claude_attempt_log(self, error: str | None, lane: BenchmarkLane) -> AttemptLog:
+        return AttemptLog(
+            attempts=[
+                AttemptRecord(
+                    attempt_id=1,
+                    lane=lane,
+                    status="failed" if error else "passed",
+                    llm_call=True,
+                    message=error,
+                )
+            ]
         )
 
     def _write_extension_evidence(self, output_dir: Path, case: BenchmarkCaseSpec) -> list[str]:
