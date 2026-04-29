@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, computed_field, field_validator
 from metaharness.core.models import ValidationIssue
 from metaharness_ext.fealpy.types import (
     FealpyBackend,
+    FealpyFeSpaceType,
     FealpyMeshType,
     FealpyPdeFamily,
     FealpyRunArtifactStatus,
@@ -58,6 +59,7 @@ class FealpyProblemSpec(BaseModel):
     backend: FealpyBackend = "numpy"
     mesh: FealpyMeshSpec = Field(default_factory=FealpyMeshSpec)
     fe_degree: int = 1
+    fe_space_type: FealpyFeSpaceType = "Lagrange"
     solver: FealpySolverSpec = Field(default_factory=FealpySolverSpec)
     adaptive_refinement: int = 0
     timeout_seconds: int = 300
@@ -239,6 +241,8 @@ class FealpyStudySpec(BaseModel):
     objective: str = "l2_error"
     goal: str = "minimize"  # minimize / maximize
     max_trials: int | None = None
+    convergence_rule: str | None = None  # "absolute" / "relative_drop" / "plateau"
+    target_tolerance: float | None = None
 
     @computed_field
     @property

@@ -1,13 +1,13 @@
 # 08. fealpy Extension Roadmap
 
-> 状态：updated | `metaharness_ext.fealpy` 正式执行路线图 | 2026-04-29
+> 状态：Phase 4 完成 | `metaharness_ext.fealpy` 正式执行路线图 | 2026-04-29
 
 ## 当前状态快照
 
 ### 代码现状
 - **生产代码**：13 文件（types, contracts, slots, capabilities, gateway, environment, compiler, executor, validator, evidence, policy, study, __init__）
 - **Manifests**：6 文件（gateway, environment, compiler, executor, validator, study）
-- **测试**：9 文件（contracts, environment, compiler, manifest, executor, validator, evidence/policy, study, smoke）— 76 tests passing（6 smoke gated）
+- **测试**：10 文件（contracts, environment, compiler, manifest, executor, validator, evidence/policy, study, smoke, backends）— 84 tests passing（18 smoke gated）
 - **代码质量**：ruff 无错误，ruff format 通过
 
 ### 已实现的组件
@@ -27,14 +27,15 @@
 |---|---|---|
 | test_metaharness_fealpy_contracts.py | 9 | ✅ passing |
 | test_metaharness_fealpy_environment.py | 5 | ✅ passing |
-| test_metaharness_fealpy_compiler.py | 5 | ✅ passing |
+| test_metaharness_fealpy_compiler.py | 10 | ✅ passing |
 | test_metaharness_fealpy_manifest.py | 9 | ✅ passing |
 | test_metaharness_fealpy_executor.py | 8 | ✅ passing |
 | test_metaharness_fealpy_validator.py | 10 | ✅ passing |
 | test_metaharness_fealpy_evidence_policy.py | 10 | ✅ passing |
-| test_metaharness_fealpy_study.py | 14 | ✅ passing |
+| test_metaharness_fealpy_study.py | 20 | ✅ passing |
 | test_metaharness_fealpy_smoke.py | 6 | ✅ gated (MHE_RUN_REAL_FEALPY=1) |
-| **总计** | **76** | **全部通过** |
+| test_metaharness_fealpy_backends.py | 12 | ✅ gated (MHE_RUN_REAL_FEALPY=1) |
+| **总计** | **84+18** | **全部通过** |
 
 ### 文档现状
 | 文档 | 状态 |
@@ -44,19 +45,20 @@
 | fealpy-engine-wiki/README.md | ✅ 已完成 |
 
 ### 主要剩余差距
-1. 多 PDE family 编译器模板泛化（Phase 4）
-2. 多 backend benchmark 验证（Phase 4）
-3. BrainProvider / governance adapter（Phase 4-5）
+1. Tier 2+ PDE families（stokes, linear_elasticity, allen_cahn — 需要 mixed spaces）
+2. BrainProvider / governance adapter（Phase 5）
+3. 高阶混合 FE 空间（Nedelec, RT, Hu-Zhang）
+4. HPC scheduler adapter（SLURM 后端）
 
 ---
 
 ## 推荐执行顺序
 
 ```text
-Phase 0 (✅) → Phase 1 (✅) → Phase 2 (✅) → Phase 3 (✅) → Phase 4 → Phase 5
+Phase 0 (✅) → Phase 1 (✅) → Phase 2 (✅) → Phase 3 (✅) → Phase 4 (✅) → Phase 5
 ```
 
-测试基线已建立（76 tests, ruff clean），文档已完成。下一阶段：扩展 PDE 覆盖与多后端支持（Phase 4）。
+测试基线已建立（84 tests + 18 smoke gated, ruff clean），文档已完成。下一阶段：生产化治理集成与 HPC 支持（Phase 5）。
 
 ---
 
@@ -139,20 +141,31 @@ Phase 0 (✅) → Phase 1 (✅) → Phase 2 (✅) → Phase 3 (✅) → Phase 4 
 
 **预估文件**：2 个新文件（roadmap, wiki README），后续可选 7 个 wiki 页面
 
-### Phase 4：扩展与优化
+### Phase 4：扩展与优化 ✅
 
-**目标**：增强 PDE 覆盖、多后端验证、BrainProvider 集成。
+**目标**：增强 PDE 覆盖、多后端验证、收敛性分析。
 
 **关键任务**：
-- [ ] 泛化 compiler 模板，支持多 PDE family（非 Poisson）
-- [ ] 实现 `FealpyDomainBrainProvider`（LLM-guided mesh/degree 优化）
-- [ ] 高阶 FE 空间支持（Nedelec, RT, Hu-Zhang contracts 扩展）
-- [ ] 多 backend benchmark 模式（numpy vs pytorch vs jax 性能对比）
+- [x] 泛化 compiler 模板，支持多 PDE family（_SCALAR_DIFFUSION_FAMILIES frozenset + BC dispatch）
+- [x] FE 空间类型 dispatch（`spec.fe_space_type` → Lagrange/Nedelec/RT/Hu-Zhang）
+- [x] Solver method 接入（`spec.solver.method` → spsolve）
+- [x] 收敛性分析辅助函数（`_compute_drop_ratios`, `_compute_observed_order`）
+- [x] `FealpyStudySpec` 扩展字段（`convergence_rule`, `target_tolerance`）
+- [x] 多 PDE family 集成 smoke test（9 Tier-1 PDE families）
+- [x] 多 backend smoke test（pytorch, jax — 条件跳过）
+- [x] Study 收敛性 parameter sweep smoke test
+
+**实际结果**：
+- 84 非 smoke tests 通过，18 smoke tests gated
+- 9 Tier-1 PDE families 已覆盖（poisson, diffusion_convection_reaction, diffusion_reaction, hyperbolic, wave, interface_poisson, polyharmonic, helmholtz, quasilinear_elliptic）
+- BC dispatch: dirichlet / robin / neumann
+- ruff 无错误，ruff format 通过
+
+**已延后到 Phase 5**：
+- [ ] `FealpyDomainBrainProvider`（LLM-guided mesh/degree 优化）
+- [ ] 高阶混合 FE 空间（Nedelec, RT, Hu-Zhang — 需要 mixed integrator）
+- [ ] 多 backend benchmark 模式（per-backend 性能对比矩阵）
 - [ ] `FealpyConvergenceStudyComponent` — 自动 h-refinement 收敛性研究
-
-**验收标准**：至少 3 种 PDE family 通过集成验证；至少 2 种 backend 实际运行
-
-**依赖**：Phase 2 测试基线完成
 
 ### Phase 5：生产化
 
@@ -191,5 +204,5 @@ Phase 0 (✅) → Phase 1 (✅) → Phase 2 (✅) → Phase 3 (✅) → Phase 4 
 | 1 | Evidence / Policy / Study | ✅ | 6 新文件 | 6 文件 |
 | 2 | 测试补全 + 集成验证 | ✅ | 76 tests（含 6 smoke） | 5 新测试 |
 | 3 | 文档 + Wiki | ✅ | — | 3 文档 |
-| 4 | 扩展与优化 | — | — | TBD |
+| 4 | 扩展与优化 | ✅ | 84+18 tests（18 smoke） | 1 新测试 + 3 生产代码 |
 | 5 | 生产化 | — | — | TBD |

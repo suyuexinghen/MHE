@@ -99,4 +99,18 @@ def test_fealpy_problem_spec_defaults() -> None:
     assert spec.mesh.meshtype == "tri"
     assert spec.mesh.nx == 8
     assert spec.fe_degree == 1
+    assert spec.fe_space_type == "Lagrange"
     assert spec.adaptive_refinement == 0
+
+
+def test_fealpy_study_spec_defaults() -> None:
+    from metaharness_ext.fealpy.contracts import FealpyStudySpec
+
+    spec = FealpyStudySpec(
+        study_id="test-defaults",
+        task_template=FealpyProblemSpec(task_id="minimal"),
+    )
+    assert spec.convergence_rule is None
+    assert spec.target_tolerance is None
+    assert spec.goal == "minimize"
+    assert spec.objective == "l2_error"

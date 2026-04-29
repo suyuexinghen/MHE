@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from metaharness_ext.fealpy.contracts import (
     FealpyMeshSpec,
     FealpyProblemSpec,
@@ -10,6 +12,8 @@ from metaharness_ext.fealpy.contracts import (
 from metaharness_ext.fealpy.study import (
     _build_convergence_analysis,
     _build_summary_metrics,
+    _compute_drop_ratios,
+    _compute_observed_order,
     _generate_parameter_snapshots,
     _mutate_task,
     _recommend_trial,
@@ -193,6 +197,65 @@ def test_convergence_analysis_no_ready() -> None:
 
     assert analysis["ready_count"] == 0
     assert "best_score" not in analysis
+
+
+def test_drop_ratios_decreasing() -> None:
+    """Successive decreasing metric values produce drop ratios < 1."""
+    trials = [
+        _trial("t1", 0.1),
+        _trial("t2", 0.05),
+        _trial("t3", 0.01),
+    ]
+    ratios = _compute_drop_ratios(trials)
+    assert len(ratios) == 2
+    assert ratios[0] == pytest.approx(0.5)  # 0.05 / 0.1
+    assert ratios[1] == pytest.approx(0.2)  # 0.01 / 0.05
+
+
+def test_drop_ratios_too_few_trials() -> None:
+    """Fewer than 2 valid trials produce an empty list."""
+    assert _compute_drop_ratios([]) == []
+    assert _compute_drop_ratios([_trial("t1", 0.1)]) == []
+
+
+def test_drop_ratios_skips_failed() -> None:
+    """Failed trials are excluded from drop ratio computation."""
+    trials = [
+        _trial("t1", 0.1),
+        _trial("t2", 0.01, passed=False),
+        _trial("t3", 0.05),
+    ]
+    ratios = _compute_drop_ratios(trials)
+    assert ratios == [0.5]  # only t1→t3
+
+
+def test_observed_order_from_doubling_mesh() -> None:
+    """Halving element size → expected order ~2 for P1."""
+    trials = [
+        _trial("t1", 0.04),  # h
+        _trial("t2", 0.01),  # h/2 → error drops by 4×
+    ]
+    order = _compute_observed_order(trials)
+    assert order is not None
+    assert 1.5 < order < 2.5
+
+
+def test_observed_order_insufficient() -> None:
+    """Less than 2 valid trials returns None."""
+    assert _compute_observed_order([]) is None
+    assert _compute_observed_order([_trial("t1", 0.1)]) is None
+
+
+def test_convergence_analysis_includes_drop_ratios_and_order() -> None:
+    trials = [
+        _trial("t1", 0.1),
+        _trial("t2", 0.01),
+        _trial("t3", 0.001),
+    ]
+    analysis = _build_convergence_analysis(trials, "l2_error", "minimize")
+    assert "drop_ratios" in analysis
+    assert "observed_order" in analysis
+    assert len(analysis["drop_ratios"]) == 2
 
 
 # ── Summary metrics ────────────────────────────────────────────────────

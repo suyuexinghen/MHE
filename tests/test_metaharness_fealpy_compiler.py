@@ -74,3 +74,60 @@ def test_compiler_rejects_unavailable_environment() -> None:
     )
     with pytest.raises(ValueError, match="unavailable"):
         compiler.compile(_spec(), environment=env)
+
+
+def test_compiler_tier1_pde_families_compile() -> None:
+    """All Tier-1 scalar diffusion families produce valid plans."""
+    from metaharness_ext.fealpy.compiler import _SCALAR_DIFFUSION_FAMILIES
+
+    compiler = FealpyCompilerComponent()
+    for family in sorted(_SCALAR_DIFFUSION_FAMILIES):
+        spec = FealpyProblemSpec(
+            task_id=f"compile-{family}",
+            pde_family=family,  # type: ignore[arg-type]
+            mesh=FealpyMeshSpec(meshtype="tri", nx=4, ny=4),
+        )
+        plan = compiler.compile(spec)
+        assert f"PDEModelManager('{family}')" in plan.script_source
+
+
+def test_compiler_generated_script_has_bc_dispatch() -> None:
+    """Generated script includes runtime BC dispatch for PDE attributes."""
+    compiler = FealpyCompilerComponent()
+    plan = compiler.compile(_spec())
+    source = plan.script_source
+    assert "hasattr(pde, 'dirichlet')" in source
+    assert "hasattr(pde, 'gradient')" in source
+    assert "DirichletBC(space, gd=pde.solution)" in source
+
+
+def test_compiler_solver_method_wired() -> None:
+    """spec.solver.method is wired into spsolve call."""
+    from metaharness_ext.fealpy.contracts import FealpySolverSpec
+
+    spec = _spec()
+    spec.solver = FealpySolverSpec(method="cg")
+    compiler = FealpyCompilerComponent()
+    plan = compiler.compile(spec)
+    assert "spsolve(A, F, solver='cg')" in plan.script_source
+
+
+def test_compiler_fe_space_type_in_script() -> None:
+    """spec.fe_space_type appears in the generated script dispatch."""
+    spec = _spec()
+    spec.fe_space_type = "Lagrange"
+    compiler = FealpyCompilerComponent()
+    plan = compiler.compile(spec)
+    assert 'fe_space_type == "Lagrange"' in plan.script_source
+
+
+def test_compiler_different_pde_family_different_plan_id() -> None:
+    """Different PDE families produce different plan IDs."""
+    compiler = FealpyCompilerComponent()
+    s1 = _spec()
+    s2 = FealpyProblemSpec(
+        task_id="compile-test",
+        pde_family="wave",
+        mesh=FealpyMeshSpec(meshtype="tri", nx=4, ny=4),
+    )
+    assert compiler.compile(s1).plan_id != compiler.compile(s2).plan_id

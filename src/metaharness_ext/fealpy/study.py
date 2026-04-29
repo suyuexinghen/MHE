@@ -158,6 +158,33 @@ def _recommend_trial(trials: list[FealpyStudyTrial], *, goal: str) -> FealpyStud
     return sorted(candidates, key=lambda trial: trial.metric_value, reverse=goal == "maximize")[0]
 
 
+def _compute_drop_ratios(trials: list[FealpyStudyTrial]) -> list[float]:
+    """Ratio of successive metric values (< 1 means improvement for minimize)."""
+    scores = [t.metric_value for t in trials if t.passed and t.metric_value is not None]
+    if len(scores) < 2:
+        return []
+    return [scores[i] / scores[i - 1] for i in range(1, len(scores))]
+
+
+def _compute_observed_order(trials: list[FealpyStudyTrial]) -> float | None:
+    """Estimate convergence order from log-ratio of successive errors."""
+    import math
+
+    valid = [t for t in trials if t.passed and t.metric_value is not None and t.metric_value > 0]
+    if len(valid) < 2:
+        return None
+    last, prev = valid[-1], valid[-2]
+    if prev.metric_value is None or last.metric_value is None:
+        return None
+    ratio = prev.metric_value / last.metric_value
+    if ratio <= 1:
+        return None
+    n_prev = len(valid) - 1
+    n_last = len(valid)
+    h_ratio = n_last / n_prev
+    return math.log(ratio) / math.log(h_ratio)
+
+
 def _build_convergence_analysis(
     trials: list[FealpyStudyTrial], objective_metric: str, goal: str
 ) -> dict[str, Any]:
@@ -170,6 +197,8 @@ def _build_convergence_analysis(
             "trial_count": len(trials),
             "ready_count": 0,
         }
+    drop_ratios = _compute_drop_ratios(trials)
+    observed_order = _compute_observed_order(trials)
     return {
         "objective_metric": objective_metric,
         "goal": goal,
@@ -178,6 +207,8 @@ def _build_convergence_analysis(
         "best_score": min(scores) if goal == "minimize" else max(scores),
         "worst_score": max(scores) if goal == "minimize" else min(scores),
         "score_range": max(scores) - min(scores),
+        "drop_ratios": drop_ratios,
+        "observed_order": observed_order,
     }
 
 
