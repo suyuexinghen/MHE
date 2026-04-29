@@ -121,6 +121,13 @@ def qcompute_abacus_case_catalog() -> dict[str, BenchmarkCaseSpec]:
                 "status": "unsupported_source_format",
             },
             metadata={
+                "bridge_status": "converter_missing",
+                "source_format": "abacus_hs_matrix",
+                "promotion_requirements": [
+                    "parse ABACUS out_mat_hs/out_mat_hs2 fixtures",
+                    "convert H/S metadata to FCIDUMP or QCompute Pauli dictionary",
+                    "validate converted Hamiltonian against a scientific reference",
+                ],
                 "unsupported_reason": "ABACUS H/S-to-FCIDUMP or qubit-Hamiltonian bridge is not implemented.",
             },
             capability_gated=True,

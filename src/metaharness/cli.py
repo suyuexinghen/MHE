@@ -5,8 +5,10 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import statistics
 import sys
 from pathlib import Path
+from typing import Any
 
 from metaharness import __version__
 from metaharness.benchmark_drivers.claude_cli import ClaudeCLIBrainProvider, ClaudeCLIConfig
@@ -123,6 +125,49 @@ def _parse_csv(value: str) -> list[str]:
     return [part.strip() for part in value.split(",") if part.strip()]
 
 
+def _repeat_runs_root(runs_root: Path, repeat_index: int) -> Path:
+    return runs_root if repeat_index == 1 else runs_root / f"repeat-{repeat_index:02d}"
+
+
+def _aggregate_repeated_summaries(summaries: list[Any]) -> dict[str, object]:
+    groups: dict[tuple[str, str], list[Any]] = {}
+    for summary in summaries:
+        groups.setdefault((summary.case_id, summary.lane), []).append(summary)
+    rows = []
+    for (case_id, lane), lane_summaries in sorted(groups.items()):
+        driver_times = [
+            summary.driver_time_seconds
+            for summary in lane_summaries
+            if summary.driver_time_seconds is not None
+        ]
+        solver_times = [
+            float(summary.elapsed_seconds)
+            for summary in lane_summaries
+            if summary.elapsed_seconds is not None
+        ]
+        statuses = [summary.status for summary in lane_summaries]
+        rows.append(
+            {
+                "case_id": case_id,
+                "lane": lane,
+                "run_count": len(lane_summaries),
+                "passed_count": sum(1 for summary in lane_summaries if summary.passed),
+                "failed_count": sum(1 for summary in lane_summaries if summary.status == "failed"),
+                "skipped_count": sum(
+                    1 for summary in lane_summaries if summary.status == "skipped"
+                ),
+                "median_driver_time_seconds": statistics.median(driver_times)
+                if driver_times
+                else None,
+                "median_elapsed_seconds": statistics.median(solver_times) if solver_times else None,
+                "total_llm_calls": sum(summary.llm_calls for summary in lane_summaries),
+                "total_repairs": sum(summary.repair_count for summary in lane_summaries),
+                "flags": ["flaky_status"] if len(set(statuses)) > 1 else [],
+            }
+        )
+    return {"rows": rows}
+
+
 def _cmd_benchmark_run(args: argparse.Namespace) -> int:
     suite: BenchmarkSuite = args.suite
     raw_lanes = _parse_csv(args.lanes)
@@ -137,9 +182,19 @@ def _cmd_benchmark_run(args: argparse.Namespace) -> int:
     lanes: list[BenchmarkLane] = raw_lanes  # type: ignore[assignment]
     case_ids = _parse_csv(args.cases) if args.cases else None
     runs_root = Path(args.runs_root)
+    repeat_count = max(1, int(args.repeat))
+    use_real_claude = args.allow_real_claude or args.allow_real_tools
     brain_provider = (
-        ClaudeCLIBrainProvider(ClaudeCLIConfig(binary=args.claude_binary, model=args.claude_model))
-        if args.allow_real_tools
+        ClaudeCLIBrainProvider(
+            ClaudeCLIConfig(
+                binary=args.claude_binary,
+                model=args.claude_model,
+                max_turns=args.claude_max_turns,
+                permission_mode=args.claude_permission_mode,
+                extra_args=args.claude_extra_arg,
+            )
+        )
+        if use_real_claude
         else None
     )
     try:
@@ -149,6 +204,8 @@ def _cmd_benchmark_run(args: argparse.Namespace) -> int:
                 runs_root=runs_root,
                 allow_real_tools=args.allow_real_tools,
                 brain_provider=brain_provider,
+                adaptive_agent=args.adaptive_agent,
+                max_repair_attempts=args.max_repair_attempts,
             )
         elif suite == "nektar-pde":
             cases = get_nektar_cases(case_ids)
@@ -169,13 +226,25 @@ def _cmd_benchmark_run(args: argparse.Namespace) -> int:
         return 2
 
     summaries = []
-    for case in cases:
-        write_json(specs_dir(runs_root, suite) / f"{case.case_id}.json", case)
-        summaries.extend(runner.run_case(case, lanes))
+    for repeat_index in range(1, repeat_count + 1):
+        repeat_root = _repeat_runs_root(runs_root, repeat_index)
+        if repeat_root != runner.runs_root:
+            runner.runs_root = repeat_root
+        for case in cases:
+            write_json(specs_dir(repeat_root, suite) / f"{case.case_id}.json", case)
+            summaries.extend(runner.run_case(case, lanes))
+    if repeat_count > 1:
+        write_json(
+            runs_root / f"{suite}-benchmark" / "comparison" / "repeat_summary.json",
+            _aggregate_repeated_summaries(summaries),
+        )
     payload = {
         "suite": suite,
         "lanes": lanes,
         "cases": [case.case_id for case in cases],
+        "repeat_count": repeat_count,
+        "real_claude": use_real_claude,
+        "real_tools": bool(args.allow_real_tools),
         "summaries": [summary.model_dump(mode="json") for summary in summaries],
     }
     json.dump(payload, sys.stdout, indent=2, sort_keys=True)
@@ -188,6 +257,13 @@ def _cmd_benchmark_compare(args: argparse.Namespace) -> int:
         runs_root=Path(args.runs_root),
         suite=args.suite,
         claude_binary=args.claude_binary,
+        claude_model=args.claude_model,
+        claude_max_turns=args.claude_max_turns,
+        claude_permission_mode=args.claude_permission_mode,
+        claude_extra_args=args.claude_extra_arg,
+        real_claude=args.allow_real_claude,
+        real_tools=args.allow_real_tools,
+        repeat_count=args.repeat,
     )
     json.dump([row.model_dump(mode="json") for row in rows], sys.stdout, indent=2, sort_keys=True)
     sys.stdout.write("\n")
@@ -245,7 +321,14 @@ def build_parser() -> argparse.ArgumentParser:
     benchmark_run.add_argument("--runs-root", default=".runs")
     benchmark_run.add_argument("--claude-binary", default="claude")
     benchmark_run.add_argument("--claude-model", default=None)
+    benchmark_run.add_argument("--claude-max-turns", type=int, default=5)
+    benchmark_run.add_argument("--claude-permission-mode", default="auto")
+    benchmark_run.add_argument("--claude-extra-arg", action="append", default=[])
     benchmark_run.add_argument("--allow-real-tools", action="store_true")
+    benchmark_run.add_argument("--allow-real-claude", action="store_true")
+    benchmark_run.add_argument("--repeat", type=int, default=1)
+    benchmark_run.add_argument("--adaptive-agent", action="store_true")
+    benchmark_run.add_argument("--max-repair-attempts", type=int, default=1)
     benchmark_run.set_defaults(func=_cmd_benchmark_run)
 
     benchmark_compare = subparsers.add_parser(
@@ -256,6 +339,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     benchmark_compare.add_argument("--runs-root", default=".runs")
     benchmark_compare.add_argument("--claude-binary", default="claude")
+    benchmark_compare.add_argument("--claude-model", default=None)
+    benchmark_compare.add_argument("--claude-max-turns", type=int, default=5)
+    benchmark_compare.add_argument("--claude-permission-mode", default="auto")
+    benchmark_compare.add_argument("--claude-extra-arg", action="append", default=[])
+    benchmark_compare.add_argument("--allow-real-tools", action="store_true")
+    benchmark_compare.add_argument("--allow-real-claude", action="store_true")
+    benchmark_compare.add_argument("--repeat", type=int, default=1)
     benchmark_compare.set_defaults(func=_cmd_benchmark_compare)
 
     version = subparsers.add_parser("version", help="Print the package version")
@@ -264,9 +354,25 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _normalize_claude_extra_args(argv: list[str] | None) -> list[str] | None:
+    if argv is None:
+        return None
+    normalized: list[str] = []
+    index = 0
+    while index < len(argv):
+        value = argv[index]
+        if value == "--claude-extra-arg" and index + 1 < len(argv):
+            normalized.append(f"--claude-extra-arg={argv[index + 1]}")
+            index += 2
+            continue
+        normalized.append(value)
+        index += 1
+    return normalized
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(argv)
+    args = parser.parse_args(_normalize_claude_extra_args(argv))
     return int(args.func(args))
 
 

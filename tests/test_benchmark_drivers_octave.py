@@ -102,6 +102,76 @@ def test_octave_direct_real_mode_records_timeout_summary(tmp_path: Path, monkeyp
     assert (output_dir / "stdout.txt").read_text() == "partial"
 
 
+def test_octave_adaptive_agent_uses_initial_proposal_script(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "metaharness.benchmark_drivers.octave_runner.shutil.which", lambda _: "octave-cli"
+    )
+
+    def fake_run(command, **kwargs):
+        output_dir = Path(kwargs["cwd"])
+        wrapper = (output_dir / "mhe_wrapper.m").read_text()
+        assert "adaptive_marker = 1" in wrapper
+        outputs = output_dir / "outputs"
+        outputs.mkdir(exist_ok=True)
+        (outputs / "max_abs_error.txt").write_text("# name: max_abs_error\n# type: scalar\n0\n")
+        (outputs / "elapsed_seconds.txt").write_text("# name: elapsed_seconds\n# type: scalar\n0\n")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr("metaharness_ext.octave.executor.subprocess.run", fake_run)
+    case = octave_case_catalog()["sinc-values"]
+    runner = OctaveBenchmarkRunner(
+        runs_root=tmp_path,
+        allow_real_tools=True,
+        adaptive_agent=True,
+        brain_provider=FakeClaudeCLIBrainProvider(
+            {"script": "adaptive_marker = 1;\nmax_abs_error = 0;\nelapsed_seconds = 0;"}
+        ),
+    )
+
+    summary = runner.run_agent(case)
+
+    assert summary.status == "passed"
+    assert summary.llm_calls == 1
+
+
+def test_octave_adaptive_agent_records_repair_attempt(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "metaharness.benchmark_drivers.octave_runner.shutil.which", lambda _: "octave-cli"
+    )
+    attempts = {"count": 0}
+
+    def fake_run(command, **kwargs):
+        attempts["count"] += 1
+        output_dir = Path(kwargs["cwd"])
+        outputs = output_dir / "outputs"
+        outputs.mkdir(exist_ok=True)
+        if attempts["count"] > 1:
+            (outputs / "max_abs_error.txt").write_text("# name: max_abs_error\n# type: scalar\n0\n")
+            (outputs / "elapsed_seconds.txt").write_text(
+                "# name: elapsed_seconds\n# type: scalar\n0\n"
+            )
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr("metaharness_ext.octave.executor.subprocess.run", fake_run)
+    case = octave_case_catalog()["sinc-values"]
+    runner = OctaveBenchmarkRunner(
+        runs_root=tmp_path,
+        allow_real_tools=True,
+        adaptive_agent=True,
+        max_repair_attempts=1,
+        brain_provider=FakeClaudeCLIBrainProvider(
+            {"script": "max_abs_error = 0;\nelapsed_seconds = 0;"}
+        ),
+    )
+
+    summary = runner.run_agent(case)
+
+    assert summary.status == "passed"
+    assert summary.repair_count == 1
+    assert summary.llm_calls == 2
+    assert attempts["count"] == 2
+
+
 def test_octave_agent_real_mode_writes_agent_summary(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(
         "metaharness.benchmark_drivers.octave_runner.shutil.which", lambda _: "octave-cli"

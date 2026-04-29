@@ -190,7 +190,7 @@ class NektarBenchmarkRunner:
         stdout_path = output_dir / "solver.stdout.log"
         stderr_path = output_dir / "solver.stderr.log"
         result = subprocess.run(
-            [solver_binary, str(session_path)],
+            [solver_binary, session_path.name],
             cwd=output_dir,
             text=True,
             capture_output=True,

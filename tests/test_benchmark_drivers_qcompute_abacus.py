@@ -60,9 +60,11 @@ def test_qcompute_abacus_bridge_case_is_explicitly_skipped(tmp_path: Path) -> No
 
     assert all(summary.status == "skipped" for summary in summaries)
     assert all("unsupported_source_format" in (summary.skip_reason or "") for summary in summaries)
-    assert (
-        tmp_path / "qcompute-abacus-benchmark" / "extension" / case.case_id / "source_refs.json"
-    ).exists()
+    output_dir = tmp_path / "qcompute-abacus-benchmark" / "extension" / case.case_id
+    assert (output_dir / "source_refs.json").exists()
+    bridge_status = json.loads((output_dir / "bridge_status.json").read_text())
+    assert bridge_status["status"] == "converter_missing"
+    assert bridge_status["promotion_ready"] is False
 
 
 def test_qcompute_abacus_compare_reuses_generic_comparator(tmp_path: Path) -> None:

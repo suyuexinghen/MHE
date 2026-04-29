@@ -21,6 +21,7 @@ from metaharness.benchmark_drivers.models import (
 from metaharness.benchmark_drivers.qcompute_abacus_cases import H2_FCIDUMP
 from metaharness.benchmark_drivers.runner_common import dry_run_summary, write_lane_outputs
 from metaharness.sdk.runtime import ComponentRuntime
+from metaharness_ext.qcompute.abacus_bridge import build_abacus_hs_bridge_status
 from metaharness_ext.qcompute.config_compiler import QComputeConfigCompilerComponent
 from metaharness_ext.qcompute.contracts import (
     QComputeBackendSpec,
@@ -428,25 +429,36 @@ class QComputeAbacusBenchmarkRunner:
         attempt_log: AttemptLog | None = None,
         evidence_files: list[str] | None = None,
     ) -> LaneSummary:
+        reason = case.metadata.get(
+            "unsupported_reason",
+            "ABACUS H/S-to-FCIDUMP bridge is not implemented.",
+        )
+        bridge_status = build_abacus_hs_bridge_status(
+            case_id=case.case_id,
+            source_reference=case.source_reference,
+            reason=reason,
+        )
         source_refs_path = write_json(
             output_dir / "source_refs.json",
             {
                 "case_id": case.case_id,
                 "source_reference": case.source_reference,
                 "status": "unsupported_source_format",
-                "reason": case.metadata.get(
-                    "unsupported_reason",
-                    "ABACUS H/S-to-FCIDUMP bridge is not implemented.",
-                ),
+                "reason": reason,
             },
         )
+        bridge_status_path = write_json(output_dir / "bridge_status.json", bridge_status)
         return write_lane_outputs(
             runs_root=self.runs_root,
             case=case,
             lane=lane,
             status="skipped",
             metrics={"elapsed_seconds": 0.0},
-            evidence_files=[*(evidence_files or []), str(source_refs_path)],
+            evidence_files=[
+                *(evidence_files or []),
+                str(source_refs_path),
+                str(bridge_status_path),
+            ],
             attempt_log=attempt_log,
             skip_reason="unsupported_source_format: ABACUS H/S-to-FCIDUMP bridge is not implemented",
         )

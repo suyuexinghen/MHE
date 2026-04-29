@@ -55,6 +55,13 @@ def build_run_manifest(
     cases: list[str],
     runs_root: Path,
     claude_binary: str = "claude",
+    claude_model: str | None = None,
+    claude_max_turns: int = 5,
+    claude_permission_mode: str = "auto",
+    claude_extra_args: list[str] | None = None,
+    real_claude: bool = False,
+    real_tools: bool = False,
+    repeat_count: int = 1,
     cwd: Path | None = None,
 ) -> RunManifest:
     root = cwd or Path.cwd()
@@ -65,7 +72,17 @@ def build_run_manifest(
         runs_root=str(runs_root),
         git_revision=_git_revision(root),
         python_version=platform.python_version(),
-        claude_cli={"binary": claude_binary, "version": _version(claude_binary)},
+        claude_cli={
+            "binary": claude_binary,
+            "version": _version(claude_binary),
+            "model": claude_model,
+            "max_turns": claude_max_turns,
+            "permission_mode": claude_permission_mode,
+            "extra_args": claude_extra_args or [],
+            "real_claude": real_claude,
+            "real_tools": real_tools,
+            "repeat_count": repeat_count,
+        },
         tools={
             "octave-cli": _version("octave-cli"),
             "ADRSolver": _version("ADRSolver"),

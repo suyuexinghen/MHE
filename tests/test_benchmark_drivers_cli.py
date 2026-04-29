@@ -30,6 +30,81 @@ def test_benchmark_run_cli_writes_dry_run_outputs(tmp_path: Path, capsys) -> Non
     ).exists()
 
 
+def test_benchmark_run_cli_allows_real_claude_without_real_tools(tmp_path: Path) -> None:
+    status = main(
+        [
+            "benchmark-run",
+            "--suite",
+            "octave-native",
+            "--lanes",
+            "direct",
+            "--cases",
+            "sinc-values",
+            "--runs-root",
+            str(tmp_path),
+            "--allow-real-claude",
+            "--claude-binary",
+            "missing-claude-for-test",
+            "--claude-max-turns",
+            "2",
+            "--claude-permission-mode",
+            "auto",
+            "--claude-extra-arg",
+            "--test-extra",
+        ]
+    )
+
+    assert status == 0
+    command_path = (
+        tmp_path / "octave-native-benchmark" / "direct" / "sinc-values" / "claude_command.json"
+    )
+    command = json.loads(command_path.read_text())
+    assert command["max_turns"] == 2
+    assert command["permission_mode"] == "auto"
+    assert command["extra_args"] == ["--test-extra"]
+    summary = json.loads(
+        (
+            tmp_path / "octave-native-benchmark" / "direct" / "sinc-values" / "summary.json"
+        ).read_text()
+    )
+    assert summary["status"] == "failed"
+    assert not (
+        tmp_path / "octave-native-benchmark" / "direct" / "sinc-values" / "solve.m"
+    ).exists()
+
+
+def test_benchmark_run_cli_writes_repeat_summary(tmp_path: Path) -> None:
+    status = main(
+        [
+            "benchmark-run",
+            "--suite",
+            "octave-native",
+            "--lanes",
+            "extension",
+            "--cases",
+            "sinc-values",
+            "--runs-root",
+            str(tmp_path),
+            "--repeat",
+            "2",
+        ]
+    )
+
+    assert status == 0
+    repeat_summary = json.loads(
+        (tmp_path / "octave-native-benchmark" / "comparison" / "repeat_summary.json").read_text()
+    )
+    assert repeat_summary["rows"][0]["run_count"] == 2
+    assert (
+        tmp_path
+        / "repeat-02"
+        / "octave-native-benchmark"
+        / "extension"
+        / "sinc-values"
+        / "summary.json"
+    ).exists()
+
+
 def test_benchmark_run_cli_rejects_unknown_lane(tmp_path: Path, capsys) -> None:
     status = main(
         [

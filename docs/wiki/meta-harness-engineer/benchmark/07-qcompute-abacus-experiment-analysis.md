@@ -1,12 +1,16 @@
 # 07. QCompute × ABACUS Hamiltonian Proxy 实验分析报告
 
-> 版本：v0.1 | 生成依据：`.runs/benchmark-wiki/qcompute-abacus-benchmark/` | 日期：2026-04-28
+> 版本：v0.2 | 生成依据：`.runs/benchmark-wiki/qcompute-abacus-benchmark/` | 日期：2026-04-28
 
 ## 7.1 实验范围
 
-本报告对应 `qcompute-abacus` suite，用于验证 ABACUS-adjacent Hamiltonian proxy benchmark 在三条 workflow lane 下的 driver、evidence、comparison bundle 和 non-claims 表达。
+本报告对应 `qcompute-abacus` suite，用于验证 MHE benchmark driver 能否把 ABACUS-adjacent Hamiltonian proxy 任务组织成可复查的三 lane benchmark：
 
-本轮是安全 dry-run / mocked benchmark，不声明真实 ABACUS DFT、ABACUS H/S matrix bridge、真实 QPU 或 quantum advantage 结论。它验证的是：H2 FCIDUMP proxy case、JW/BK mapping comparison case、unsupported ABACUS H/S bridge sentinel、Claude CLI evidence、QCompute evidence layout 和 generic comparator 支持。
+1. `extension`：无 LLM 的 MHE/QCompute extension baseline；
+2. `direct`：direct Claude CLI proposal baseline；
+3. `agent`：Claude proposal + MHE extension-shaped pipeline lane。
+
+本轮运行是 dry-run benchmark，没有使用 `--allow-real-tools`。因此，本报告只分析 benchmark driver、case catalog、summary schema、evidence layout、comparison bundle、manifest 记录和 unsupported bridge 表达；不声明真实 ABACUS DFT、真实 ABACUS H/S matrix conversion、真实 QPU、quantum advantage，或正式 quantum chemistry 数值结论。
 
 ## 7.2 数据来源
 
@@ -18,7 +22,23 @@
 - Manifest：`.runs/benchmark-wiki/qcompute-abacus-benchmark/comparison/run_manifest.json`
 - Generated report：`.runs/benchmark-wiki/qcompute-abacus-benchmark/reports/qcompute-abacus-analysis-report.md`
 
-## 7.3 Case 覆盖
+Manifest 记录的环境信息包括：
+
+| Item | Observed value |
+|---|---|
+| Python | `3.13.11` |
+| Claude Code | `2.1.114 (Claude Code)` |
+| Git revision | `810499d` |
+| `qiskit` | available |
+| `qiskit_aer` | available |
+| `pennylane` | available |
+| `abacus` binary | not found / `null` |
+
+这些信息只说明本地环境探测状态。由于本轮未开启 `--allow-real-tools`，即使 `qiskit` 与 `qiskit_aer` 可见，本报告中的 lane metrics 仍是 dry-run wiring metrics，不是 simulator 实测结果。
+
+## 7.3 Case 覆盖与 comparator verdict
+
+本轮共覆盖 3 个 cases，每个 case 均进入 `extension`、`direct`、`agent` 三条 lane。
 
 | Case | Extension | Direct | Agent | Verdict |
 |---|---|---|---|---|
@@ -34,47 +54,159 @@ Observed summary:
 - Schema failures observed by comparator: 0
 - Direct Claude CLI calls recorded: 3
 - Agent Claude CLI calls recorded: 3
+- Direct repairs recorded: 0
+- Agent repairs recorded: 0
 
-## 7.4 Workflow lane observations
+## 7.4 Case-level observations
+
+### 7.4.1 `h2-fcidump-vqe-proxy`
+
+该 case 是正向 proxy case。它以 ABACUS H2 input refs 作为 provenance anchor，并在 lane output 目录中 materialize 一个 H2 STO-3G-style `hamiltonian.fcidump` fixture。
+
+Dry-run summary 显示：
+
+- `extension` lane：`passed`，evidence count = 3；
+- `direct` lane：`passed`，evidence count = 6；
+- `agent` lane：`passed`，evidence count = 6；
+- expected metrics 均存在；
+- `convergence_iterations = 5.0`；
+- `num_qubits = 2.0`；
+- `energy_error = 0.0` 是 reference echo，用于验证 comparator/tolerance wiring。
+
+需要强调：这里的 `energy`、`energy_error`、`shots_completed` 是 dry-run 指标，不是 Qiskit Aer 执行后的物理或数值结论。正式数值分析必须使用：
+
+```bash
+PYTHONPATH=src python -m metaharness.cli benchmark-run \
+  --suite qcompute-abacus \
+  --lanes extension,agent \
+  --cases h2-fcidump-vqe-proxy \
+  --runs-root .runs/benchmark-real \
+  --allow-real-tools
+```
+
+并复查 `run_plan.json`、`run_artifact.json`、`validation.json` 和 `evidence.json`。
+
+### 7.4.2 `h2-fcidump-jw-vs-bk`
+
+该 case 验证同一 H2 FCIDUMP fixture 的 mapping comparison 产物结构。它不是 ABACUS 物理正确性比较，而是 benchmark driver 能否表达 QCompute Hamiltonian metadata comparison。
+
+Dry-run summary 显示：
+
+- `extension` lane：`passed`，evidence count = 3；
+- `direct` lane：`passed`，evidence count = 6；
+- `agent` lane：`passed`，evidence count = 6；
+- `jw_num_qubits = 2.0`；
+- `bk_num_qubits = 2.0`；
+- `jw_term_count` / `bk_term_count` 在 dry-run 中为 wiring placeholder。
+
+正式 mapping 分析应读取 real-mode 的 `mapping_metadata.json` 或 `run_plan.json` 中的 Hamiltonian metadata，而不是引用 dry-run term counts。
+
+### 7.4.3 `abacus-hs-bridge-pending`
+
+该 case 是 unsupported bridge sentinel，用于防止报告误称 ABACUS H/S matrix 已可进入 QCompute。
+
+Comparator 结果：
+
+- `extension` lane：`skipped`，evidence count = 1；
+- `direct` lane：`skipped`，evidence count = 6；
+- `agent` lane：`skipped`，evidence count = 6；
+- verdict：`capability_skip`。
+
+三条 lane 的 skip reason 均为：
+
+```text
+unsupported_source_format: ABACUS H/S-to-FCIDUMP bridge is not implemented
+```
+
+这是本轮最重要的 truthfulness guardrail：ABACUS `out_mat_hs` / `out_mat_hs2` source refs 已被记录，但不会被伪装成已支持的 FCIDUMP 或 qubit Hamiltonian input。
+
+## 7.5 Workflow lane observations
 
 ### Extension baseline
 
-The extension lane writes deterministic dry-run QCompute evidence for positive Hamiltonian proxy cases, including `hamiltonian.fcidump`, `validation.json`, and `evidence.json`. The unsupported ABACUS H/S bridge case writes `source_refs.json` and remains skipped.
+`extension` lane 对正向 proxy cases 写入 deterministic dry-run evidence：
+
+- `validation.json`
+- `evidence.json`
+- `hamiltonian.fcidump`
+
+对 H/S bridge sentinel，只写入 `source_refs.json` 并返回 `skipped`。这说明 driver 已经具备区分“可执行 proxy case”和“未实现 bridge case”的能力。
 
 ### Direct Claude CLI lane
 
-The direct lane records a Claude proposal and dry-run boundary evidence. It does not call MHE QCompute extension components in dry-run mode, preserving the direct baseline boundary.
+`direct` lane 每个 case 记录一次 Claude proposal attempt，并写入：
+
+- `claude_prompt.txt`
+- `claude_command.json`
+- `claude_stdout.json`
+- `claude_stderr.txt`
+- `claude_result.json`
+- `proposal.json`
+
+在 dry-run 模式下，direct lane 不调用 MHE QCompute extension components。这保持了 direct baseline 与 extension-mediated workflow 的边界。
 
 ### MHE Claude CLI agent lane
 
-The agent lane records a Claude proposal and agent-lane evidence. Real mode is designed to combine proposal evidence with QCompute extension execution when dependencies are available and `--allow-real-tools` is used.
+`agent` lane 每个 case 也记录一次 Claude proposal attempt。对 positive proxy cases，dry-run 写入 agent-lane evidence；在 real mode 设计中，该 lane 应在 proposal 之后进入 QCompute extension pipeline，以获得 `run_plan.json`、`run_artifact.json`、`validation.json` 和 `evidence.json`。
 
-## 7.5 Non-claims
+## 7.6 Numeric interpretation
 
-This benchmark does not claim:
+本轮不能解读为真实 quantum simulation 或 ABACUS/QCompute 数值结果，原因如下：
 
-- ABACUS currently exports FCIDUMP through MHE.
-- ABACUS H/S matrix outputs are currently converted to FCIDUMP or qubit Hamiltonians.
-- QCompute solves general ABACUS DFT, SCF, band, DOS, phonon, work-function, or vacancy workflows.
-- The H2 proxy is a production quantum chemistry benchmark.
-- Dry-run energy metrics are real Qiskit Aer or quantum hardware results.
+1. 未使用 `--allow-real-tools`；
+2. positive case 的 metrics 是 dry-run reference echoes；
+3. `shots_completed = 0.0` 表明未执行 simulator shots；
+4. `energy_error = 0.0` 只验证 tolerance wiring，不是 VQE 收敛结论；
+5. ABACUS binary 在 manifest 中为 `null`，本轮没有 ABACUS 运行；
+6. H/S bridge sentinel 被正确 skipped。
 
-## 7.6 Acceptance status
+正式数值报告至少需要补充：
+
+- real-mode `extension` lane 的 Qiskit Aer execution status；
+- `run_artifact.json` 中的 `counts`、`probabilities`、`shots_completed`；
+- `validation.json` 中的 `metrics.energy`、`metrics.energy_error`、`promotion_ready`；
+- `evidence.json` 中的 provenance refs；
+- 多次重复运行的 timing / flaky 标记。
+
+## 7.7 Evidence completeness
+
+当前 dry-run 的 evidence 完整性满足 benchmark framework 级别复查：
+
+| Case | Extension evidence count | Direct evidence count | Agent evidence count |
+|---|---:|---:|---:|
+| `h2-fcidump-vqe-proxy` | 3 | 6 | 6 |
+| `h2-fcidump-jw-vs-bk` | 3 | 6 | 6 |
+| `abacus-hs-bridge-pending` | 1 | 6 | 6 |
+
+独立 reviewer 可从产物重建：
+
+1. case spec；
+2. lane summary；
+3. direct/agent prompt 与 fake Claude result；
+4. positive proxy cases 的 FCIDUMP fixture；
+5. H/S bridge sentinel 的 source refs 与 skip reason；
+6. comparator verdict 与 manifest 环境记录。
+
+## 7.8 Acceptance status
 
 | Requirement | Status | Notes |
 |---|---|---|
-| Suite is available via CLI | Complete | `--suite qcompute-abacus` works for run and compare. |
-| Positive H2 proxy case | Complete for dry-run | FCIDUMP fixture and metrics are emitted. |
-| JW/BK mapping comparison case | Complete for dry-run | Mapping-shape metrics are emitted. |
-| H/S bridge sentinel | Complete | Unsupported source format is skipped, not faked. |
-| Generic comparator support | Complete | CSV, Markdown, JSON bundle and manifest are generated. |
-| Real QCompute execution | Dependency-gated | Requires Qiskit/Qiskit Aer and `--allow-real-tools`. |
-| Real ABACUS H/S bridge | Pending | Requires converter implementation. |
+| `qcompute-abacus` CLI suite | Complete | `benchmark-run` 和 `benchmark-compare` 均可执行。 |
+| Three cases catalogued | Complete | H2 VQE proxy、JW/BK comparison、H/S bridge sentinel 均进入 suite。 |
+| Three lanes per case | Complete for dry-run | `extension`、`direct`、`agent` summaries 均生成。 |
+| Generic comparator support | Complete | `summary_table.csv`、`result_bundle.json`、`run_manifest.json`、report/backlog 均生成。 |
+| Schema failures | None observed | Comparator 未发现 schema failure。 |
+| H/S bridge truthfulness | Complete | Sentinel case 为 `capability_skip`，未伪造支持。 |
+| Real QCompute execution | Pending formal report | 本地 `qiskit` / `qiskit_aer` 可见，但本轮未启用 `--allow-real-tools`。 |
+| Real ABACUS H/S bridge | Pending | 需要 converter 设计与测试。 |
 
-## 7.7 Backlog
+## 7.9 Backlog
 
-1. Add an ABACUS H/S matrix parser for `out_mat_hs` / `out_mat_hs2` outputs.
-2. Define a supported conversion target: FCIDUMP or direct QCompute Pauli dictionary.
-3. Validate converted Hamiltonians against ABACUS provenance and QCompute parser expectations.
-4. Promote `abacus-hs-bridge-pending` from skipped sentinel to executable bridge case only after converter tests pass.
-5. Add real-mode smoke coverage when Qiskit and Qiskit Aer are available.
+1. 运行 `h2-fcidump-vqe-proxy` 的 real extension lane，并记录 `run_plan.json`、`run_artifact.json`、`validation.json`、`evidence.json`。
+2. 运行 real agent lane，验证 Claude proposal 后是否能稳定进入 QCompute extension pipeline。
+3. 将 real-mode energy / energy_error 与 dry-run reference echo 明确分表展示。
+4. 为 `h2-fcidump-jw-vs-bk` 输出 real mapping metadata 表，包括 Pauli term count、mapping method、qubit count。
+5. 实现 ABACUS `out_mat_hs` / `out_mat_hs2` parser。
+6. 定义 H/S matrix 到 FCIDUMP 或 QCompute Pauli dictionary 的正式转换目标。
+7. 只有在 converter tests 通过后，才允许把 `abacus-hs-bridge-pending` 从 skipped sentinel 提升为 executable bridge case。
+8. 增加 repeated real runs，记录 median elapsed time、driver overhead、simulator variance 和 flaky flags。

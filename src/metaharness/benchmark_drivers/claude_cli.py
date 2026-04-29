@@ -71,6 +71,7 @@ class ClaudeCLIBrainProvider:
                 "permission_mode": self.config.permission_mode,
                 "no_session_persistence": True,
                 "model": self.config.model,
+                "extra_args": self.config.extra_args,
             },
         )
         result_path = output_dir / "claude_result.json"

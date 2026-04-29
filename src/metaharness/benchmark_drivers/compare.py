@@ -123,6 +123,13 @@ def write_comparison_outputs(
     cases: list[str] | None = None,
     lanes: list[BenchmarkLane] | None = None,
     claude_binary: str = "claude",
+    claude_model: str | None = None,
+    claude_max_turns: int = 5,
+    claude_permission_mode: str = "auto",
+    claude_extra_args: list[str] | None = None,
+    real_claude: bool = False,
+    real_tools: bool = False,
+    repeat_count: int = 1,
 ) -> list[ComparisonRow]:
     rows = compare_suite(runs_root, suite)
     manifest_lanes = lanes or _observed_lanes(runs_root, suite)
@@ -139,6 +146,13 @@ def write_comparison_outputs(
             cases=cases or [row.case_id for row in rows],
             runs_root=runs_root,
             claude_binary=claude_binary,
+            claude_model=claude_model,
+            claude_max_turns=claude_max_turns,
+            claude_permission_mode=claude_permission_mode,
+            claude_extra_args=claude_extra_args,
+            real_claude=real_claude,
+            real_tools=real_tools,
+            repeat_count=repeat_count,
         ),
     )
     write_text(comp_dir / "comparison_report.md", _comparison_markdown(suite, rows))

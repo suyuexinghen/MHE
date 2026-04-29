@@ -41,10 +41,14 @@ class OctaveBenchmarkRunner:
         runs_root: Path,
         allow_real_tools: bool = False,
         brain_provider: ClaudeCLIBrainProvider | FakeClaudeCLIBrainProvider | None = None,
+        adaptive_agent: bool = False,
+        max_repair_attempts: int = 1,
     ) -> None:
         self.runs_root = runs_root
         self.allow_real_tools = allow_real_tools
         self.brain_provider = brain_provider or FakeClaudeCLIBrainProvider()
+        self.adaptive_agent = adaptive_agent
+        self.max_repair_attempts = max(0, max_repair_attempts)
 
     def run_case(self, case: BenchmarkCaseSpec, lanes: list[BenchmarkLane]) -> list[LaneSummary]:
         summaries: list[LaneSummary] = []
@@ -195,18 +199,27 @@ class OctaveBenchmarkRunner:
                 ],
                 skip_reason="octave-cli not found",
             )
+        evidence_files = [
+            claude_result.invocation.prompt_path,
+            claude_result.invocation.stdout_path,
+            claude_result.invocation.stderr_path,
+            claude_result.invocation.result_path or "",
+            claude_result.invocation.proposal_path or "",
+        ]
+        if self.adaptive_agent:
+            return self._run_adaptive_agent_lane(
+                case=case,
+                output_dir=output_dir,
+                initial_proposal=claude_result.proposal,
+                attempt_log=attempt_log,
+                evidence_files=evidence_files,
+            )
         return self._run_extension_pipeline_lane(
             case=case,
             lane="agent",
             output_dir=output_dir,
             attempt_log=attempt_log,
-            evidence_files=[
-                claude_result.invocation.prompt_path,
-                claude_result.invocation.stdout_path,
-                claude_result.invocation.stderr_path,
-                claude_result.invocation.result_path or "",
-                claude_result.invocation.proposal_path or "",
-            ],
+            evidence_files=evidence_files,
         )
 
     def _run_extension_pipeline_lane(
@@ -217,10 +230,11 @@ class OctaveBenchmarkRunner:
         output_dir: Path,
         attempt_log: AttemptLog | None = None,
         evidence_files: list[str] | None = None,
+        proposal: dict[str, Any] | None = None,
     ) -> LaneSummary:
         started_at = time.perf_counter()
         try:
-            spec = self._build_extension_spec(case, output_dir)
+            spec = self._build_extension_spec(case, output_dir, proposal=proposal)
             plan = OctaveScriptCompilerComponent().build_plan(spec)
             artifact = OctaveExecutorComponent().execute_plan(plan)
             artifact = artifact.model_copy(
@@ -261,6 +275,91 @@ class OctaveBenchmarkRunner:
                 started_at=started_at,
             )
 
+    def _run_adaptive_agent_lane(
+        self,
+        *,
+        case: BenchmarkCaseSpec,
+        output_dir: Path,
+        initial_proposal: dict[str, Any],
+        attempt_log: AttemptLog,
+        evidence_files: list[str],
+    ) -> LaneSummary:
+        current_proposal = initial_proposal
+        diagnostics_files: list[str] = []
+        for repair_index in range(self.max_repair_attempts + 1):
+            attempt_output_dir = (
+                output_dir if repair_index == 0 else output_dir / f"repair-{repair_index}"
+            )
+            summary = self._run_extension_pipeline_lane(
+                case=case,
+                lane="agent",
+                output_dir=attempt_output_dir,
+                attempt_log=attempt_log,
+                evidence_files=[*evidence_files, *diagnostics_files],
+                proposal=current_proposal,
+            )
+            if summary.passed or repair_index >= self.max_repair_attempts:
+                if attempt_output_dir != output_dir:
+                    write_json(output_dir / "adaptive_final_summary.json", summary)
+                    return write_lane_outputs(
+                        runs_root=self.runs_root,
+                        case=case,
+                        lane="agent",
+                        status=summary.status,
+                        metrics=summary.metrics,
+                        evidence_files=[
+                            *summary.evidence_files,
+                            str(output_dir / "adaptive_final_summary.json"),
+                        ],
+                        attempt_log=attempt_log,
+                        error_message=summary.error_message,
+                        skip_reason=summary.skip_reason,
+                    )
+                return summary
+            diagnostics_path = self._write_adaptive_diagnostics(
+                output_dir,
+                case,
+                summary,
+                current_proposal,
+                repair_index + 1,
+            )
+            diagnostics_files.append(str(diagnostics_path))
+            repair_result = self.brain_provider.propose(
+                prompt=self._repair_prompt(case, summary, diagnostics_path),
+                output_dir=output_dir / f"repair-{repair_index + 1}-claude",
+            )
+            attempt_log.add(
+                AttemptRecord(
+                    attempt_id=attempt_log.attempt_count + 1,
+                    lane="agent",
+                    status="failed" if repair_result.error else "passed",
+                    repair=True,
+                    llm_call=True,
+                    message=repair_result.error,
+                    evidence_files=[
+                        repair_result.invocation.prompt_path,
+                        repair_result.invocation.stdout_path,
+                        repair_result.invocation.stderr_path,
+                        repair_result.invocation.result_path or "",
+                        repair_result.invocation.proposal_path or "",
+                    ],
+                )
+            )
+            evidence_files.extend(
+                [
+                    repair_result.invocation.prompt_path,
+                    repair_result.invocation.stdout_path,
+                    repair_result.invocation.stderr_path,
+                    repair_result.invocation.result_path or "",
+                    repair_result.invocation.proposal_path or "",
+                ]
+            )
+            if repair_result.error:
+                current_proposal = {}
+            else:
+                current_proposal = repair_result.proposal
+        return summary
+
     def _run_direct_script_lane(
         self,
         *,
@@ -287,7 +386,7 @@ class OctaveBenchmarkRunner:
         ]
         try:
             result = subprocess.run(
-                ["octave-cli", "--no-gui", "--quiet", "--no-init-file", str(script_path)],
+                ["octave-cli", "--no-gui", "--quiet", "--no-init-file", script_path.name],
                 cwd=output_dir,
                 text=True,
                 capture_output=True,
@@ -322,7 +421,19 @@ class OctaveBenchmarkRunner:
             )
         write_text(stdout_path, result.stdout)
         write_text(stderr_path, result.stderr)
-        metrics = self._read_metrics(output_dir)
+        try:
+            metrics = self._read_metrics(output_dir)
+        except json.JSONDecodeError as exc:
+            return write_lane_outputs(
+                runs_root=self.runs_root,
+                case=case,
+                lane=lane,
+                status="failed",
+                evidence_files=evidence_files,
+                attempt_log=attempt_log,
+                error_message=f"invalid metrics.json: {exc}",
+                started_at=started_at,
+            )
         return write_lane_outputs(
             runs_root=self.runs_root,
             case=case,
@@ -348,13 +459,16 @@ class OctaveBenchmarkRunner:
         )
 
     def _build_extension_spec(
-        self, case: BenchmarkCaseSpec, output_dir: Path
+        self,
+        case: BenchmarkCaseSpec,
+        output_dir: Path,
+        proposal: dict[str, Any] | None = None,
     ) -> OctaveExperimentSpec:
         return OctaveExperimentSpec(
             task_id=case.case_id,
             script=OctaveScriptSpec(
                 mode="inline",
-                inline_source=build_octave_case_script(case),
+                inline_source=self._extension_inline_source(case, proposal or {}),
             ),
             workspace=OctaveWorkspaceSpec(working_directory=str(output_dir / "workspace")),
             expected_outputs=[
@@ -362,18 +476,52 @@ class OctaveBenchmarkRunner:
                     name=metric,
                     variable_name=metric,
                     tolerance=OctaveToleranceSpec(
-                        expected_value=float(reference.value)
-                        if (reference := case.metric_references.get(metric)) is not None
-                        and isinstance(reference.value, int | float)
-                        else 0.0,
-                        atol=reference.tolerance
-                        if reference is not None
-                        else case.tolerance.get(metric, 1e-8),
+                        expected_value=float(reference.value),
+                        atol=reference.tolerance,
                         rtol=0.0,
-                    ),
+                    )
+                    if (reference := case.metric_references.get(metric)) is not None
+                    and isinstance(reference.value, int | float)
+                    else None,
                 )
                 for metric in case.expected_metrics
             ],
+        )
+
+    def _extension_inline_source(self, case: BenchmarkCaseSpec, proposal: dict[str, Any]) -> str:
+        return self._proposal_script(proposal) or build_octave_case_script(case)
+
+    def _write_adaptive_diagnostics(
+        self,
+        output_dir: Path,
+        case: BenchmarkCaseSpec,
+        summary: LaneSummary,
+        proposal: dict[str, Any],
+        repair_attempt: int,
+    ) -> Path:
+        return write_json(
+            output_dir / f"adaptive_diagnostics_{repair_attempt}.json",
+            {
+                "case_id": case.case_id,
+                "repair_attempt": repair_attempt,
+                "status": summary.status,
+                "missing_metrics": summary.missing_metrics,
+                "error_message": summary.error_message,
+                "proposal": proposal,
+                "evidence_files": summary.evidence_files,
+            },
+        )
+
+    def _repair_prompt(
+        self, case: BenchmarkCaseSpec, summary: LaneSummary, diagnostics_path: Path
+    ) -> str:
+        return (
+            "Repair the Octave benchmark agent proposal as JSON. "
+            "Return a proposal with one of solve_m, script, or octave_script containing a complete "
+            f"Octave script for case {case.case_id}. "
+            f"Missing metrics: {summary.missing_metrics}. "
+            f"Previous error: {summary.error_message}. "
+            f"Diagnostics path: {diagnostics_path}."
         )
 
     def _write_extension_evidence(self, output_dir: Path, case: BenchmarkCaseSpec) -> list[str]:
@@ -406,14 +554,17 @@ class OctaveBenchmarkRunner:
         write_text(script_path, content)
 
     def _default_direct_script(self, case: BenchmarkCaseSpec) -> str:
-        metric_fields = ", ".join(f"'{metric}', {metric}" for metric in case.expected_metrics)
+        metric_writes = []
+        for index, metric in enumerate(case.expected_metrics):
+            separator = "" if index == 0 else ", "
+            metric_writes.append(f"fprintf(fid, '{separator}\\\"{metric}\\\": %.17g', {metric});")
         return (
             "more off;\n"
             "warning('on', 'all');\n"
             + build_octave_case_script(case)
-            + "\nmetrics = struct("
-            + metric_fields
-            + ");\nfid = fopen('metrics.json', 'w');\nfputs(fid, jsonencode(metrics));\nfclose(fid);\n"
+            + "\nfid = fopen('metrics.json', 'w');\nfprintf(fid, '{');\n"
+            + "\n".join(metric_writes)
+            + "\nfprintf(fid, '}');\nfclose(fid);\n"
         )
 
     def _proposal_script(self, proposal: dict[str, Any]) -> str | None:
