@@ -123,7 +123,7 @@ class FealpyCompilerComponent(HarnessComponent):
             print(json.dumps({{"status": "failed", "error": f"PDE load: {{exc}}"}}))
             sys.exit(1)
 
-        mesh_spec = {json.dumps(mesh.model_dump(mode="json"))}
+        mesh_spec = json.loads('{json.dumps(mesh.model_dump(mode="json"))}')
         mesh = _build_mesh(pde, mesh_spec)
         nc = mesh.number_of_cells()
         nn = mesh.number_of_nodes()
@@ -136,12 +136,7 @@ class FealpyCompilerComponent(HarnessComponent):
         lform.add_integrator(ScalarSourceIntegrator(pde.source))
         A = bform.assembly()
         F = lform.assembly()
-        if hasattr(pde, 'dirichlet') and hasattr(pde, 'is_dirichlet_boundary'):
-            A, F = DirichletBC(
-                space, gd=pde.dirichlet, threshold=pde.is_dirichlet_boundary
-            ).apply(A, F)
-        else:
-            A, F = DirichletBC(space, gd=pde.solution).apply(A, F)
+        A, F = DirichletBC(space, gd=pde.solution).apply(A, F)
         uh = spsolve(A, F, solver='scipy')
         uh_func = space.function()
         uh_func[:] = uh

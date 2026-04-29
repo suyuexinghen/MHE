@@ -116,7 +116,9 @@ class TestGovernanceRecordWithArtifactStore:
         assert "provenance_refs" in refs
         assert len(refs["provenance_refs"]) > 0
 
-    def test_record_with_file_backed_stores_recovers_after_reload(self, test_runs_dir: Path) -> None:
+    def test_record_with_file_backed_stores_recovers_after_reload(
+        self, test_runs_dir: Path
+    ) -> None:
         bundle, policy = _make_bundle()
         governance = QComputeGovernanceAdapter(session_id="sess-reload")
 

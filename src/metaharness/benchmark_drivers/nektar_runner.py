@@ -94,10 +94,14 @@ class NektarBenchmarkRunner:
         runs_root: Path,
         allow_real_tools: bool = False,
         brain_provider: ClaudeCLIBrainProvider | FakeClaudeCLIBrainProvider | None = None,
+        adaptive_agent: bool = False,
+        max_repair_attempts: int = 1,
     ) -> None:
         self.runs_root = runs_root
         self.allow_real_tools = allow_real_tools
         self.brain_provider = brain_provider or FakeClaudeCLIBrainProvider()
+        self.adaptive_agent = adaptive_agent
+        self.max_repair_attempts = max(0, max_repair_attempts)
 
     def run_case(self, case: BenchmarkCaseSpec, lanes: list[BenchmarkLane]) -> list[LaneSummary]:
         self._write_preflight(case)
@@ -253,17 +257,26 @@ class NektarBenchmarkRunner:
                 ],
                 attempt_log=attempt_log,
             )
+        evidence_files = [
+            claude_result.invocation.prompt_path,
+            claude_result.invocation.stdout_path,
+            claude_result.invocation.stderr_path,
+            claude_result.invocation.result_path or "",
+            claude_result.invocation.proposal_path or "",
+        ]
+        if self.adaptive_agent:
+            return self._run_adaptive_agent_lane(
+                case=case,
+                initial_proposal=claude_result.proposal,
+                attempt_log=attempt_log,
+                evidence_files=evidence_files,
+            )
         return self._run_reference_xml_lane(
             case,
             "agent",
             attempt_log=attempt_log,
-            extra_evidence_files=[
-                claude_result.invocation.prompt_path,
-                claude_result.invocation.stdout_path,
-                claude_result.invocation.stderr_path,
-                claude_result.invocation.result_path or "",
-                claude_result.invocation.proposal_path or "",
-            ],
+            extra_evidence_files=evidence_files,
+            proposal=claude_result.proposal,
         )
 
     def _run_reference_xml_lane(
@@ -273,6 +286,7 @@ class NektarBenchmarkRunner:
         *,
         attempt_log: AttemptLog | None = None,
         extra_evidence_files: list[str] | None = None,
+        proposal: dict[str, Any] | None = None,
     ) -> LaneSummary:
         if case.capability_gated:
             return write_lane_outputs(
@@ -299,12 +313,14 @@ class NektarBenchmarkRunner:
                 skip_reason=f"{solver_binary} not found",
             )
         output_dir = case_dir(self.runs_root, case.suite, lane, case.case_id)
+        proposal_context = self._proposal_context(proposal)
         started_at = time.perf_counter()
         session_path = self._materialize_session_xml(output_dir, case, test_spec)
         stdout_path = output_dir / "solver.stdout.log"
         stderr_path = output_dir / "solver.stderr.log"
+        command = [solver_binary, session_path.name, *proposal_context["extra_solver_args"]]
         result = subprocess.run(
-            [solver_binary, session_path.name],
+            command,
             cwd=output_dir,
             text=True,
             capture_output=True,
@@ -326,6 +342,7 @@ class NektarBenchmarkRunner:
                     key: {"value": value, "tolerance": tolerance}
                     for key, (value, tolerance) in sorted(test_spec.reference_metrics.items())
                 },
+                "proposal_context": proposal_context,
             },
         )
         evidence_path = write_json(
@@ -338,6 +355,8 @@ class NektarBenchmarkRunner:
                 "session_xml": str(session_path),
                 "stdout": str(stdout_path),
                 "stderr": str(stderr_path),
+                "command": command,
+                "proposal_context": proposal_context,
             },
         )
         evidence_files = [
@@ -359,6 +378,94 @@ class NektarBenchmarkRunner:
             evidence_files=evidence_files,
             attempt_log=attempt_log,
             started_at=started_at,
+        )
+
+    def _run_adaptive_agent_lane(
+        self,
+        *,
+        case: BenchmarkCaseSpec,
+        initial_proposal: dict[str, Any],
+        attempt_log: AttemptLog,
+        evidence_files: list[str],
+    ) -> LaneSummary:
+        proposal = dict(initial_proposal)
+        summary = self._run_reference_xml_lane(
+            case,
+            "agent",
+            attempt_log=attempt_log,
+            extra_evidence_files=evidence_files,
+            proposal=proposal,
+        )
+        for repair_index in range(1, self.max_repair_attempts + 1):
+            if summary.passed:
+                break
+            repair_prompt = self._repair_prompt(case, summary, repair_index)
+            output_dir = (
+                case_dir(self.runs_root, case.suite, "agent", case.case_id)
+                / f"repair-{repair_index:02d}"
+            )
+            repair_result = self.brain_provider.propose(prompt=repair_prompt, output_dir=output_dir)
+            attempt_log.add(
+                AttemptRecord(
+                    attempt_id=attempt_log.attempt_count + 1,
+                    lane="agent",
+                    status="failed" if repair_result.error else "passed",
+                    repair=True,
+                    llm_call=True,
+                    message=repair_result.error,
+                    evidence_files=[
+                        repair_result.invocation.prompt_path,
+                        repair_result.invocation.stdout_path,
+                        repair_result.invocation.stderr_path,
+                        repair_result.invocation.result_path or "",
+                        repair_result.invocation.proposal_path or "",
+                    ],
+                )
+            )
+            evidence_files.extend(
+                [
+                    repair_result.invocation.prompt_path,
+                    repair_result.invocation.stdout_path,
+                    repair_result.invocation.stderr_path,
+                    repair_result.invocation.result_path or "",
+                    repair_result.invocation.proposal_path or "",
+                ]
+            )
+            if repair_result.error:
+                break
+            proposal = repair_result.proposal
+            summary = self._run_reference_xml_lane(
+                case,
+                "agent",
+                attempt_log=attempt_log,
+                extra_evidence_files=evidence_files,
+                proposal=proposal,
+            )
+        return summary
+
+    def _proposal_context(self, proposal: dict[str, Any] | None) -> dict[str, Any]:
+        proposal = proposal or {}
+        extra_solver_args = proposal.get("extra_solver_args", [])
+        if not isinstance(extra_solver_args, list):
+            extra_solver_args = []
+        safe_extra_args = [str(value) for value in extra_solver_args if str(value).startswith("--")]
+        return {
+            "selected_session": str(proposal.get("session_xml", "session.xml")),
+            "rationale": str(proposal.get("rationale", "")),
+            "extra_solver_args": safe_extra_args,
+        }
+
+    def _repair_prompt(
+        self,
+        case: BenchmarkCaseSpec,
+        summary: LaneSummary,
+        repair_index: int,
+    ) -> str:
+        return (
+            f"Repair Nektar++ benchmark proposal for case {case.case_id}. "
+            f"Attempt {repair_index} failed with status={summary.status}, "
+            f"missing_metrics={summary.missing_metrics}, error={summary.error_message}. "
+            "Return JSON with optional proposal.extra_solver_args and rationale."
         )
 
     def _write_preflight(self, case: BenchmarkCaseSpec) -> None:

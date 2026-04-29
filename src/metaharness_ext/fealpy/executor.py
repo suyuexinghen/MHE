@@ -48,7 +48,7 @@ class FealpyExecutorComponent(HarnessComponent):
                 evidence_refs=[],
             )
 
-        workspace = Path(plan.workspace_dir)
+        workspace = Path(plan.workspace_dir).resolve()
         workspace.mkdir(parents=True, exist_ok=True)
         script_path = workspace / "solve.py"
         script_path.write_text(plan.script_source)

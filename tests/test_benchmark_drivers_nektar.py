@@ -214,6 +214,127 @@ def test_nektar_agent_real_mode_replays_with_proposal_evidence(tmp_path: Path, m
     assert (output_dir / "session.xml").read_text() == xml_path.read_text()
 
 
+def test_nektar_agent_real_mode_applies_safe_proposal_solver_args(
+    tmp_path: Path, monkeypatch
+) -> None:
+    tst_path = tmp_path / "case.tst"
+    xml_path = tmp_path / "case.xml"
+    xml_path.write_text("<NEKTAR><CONDITIONS /></NEKTAR>\n")
+    tst_path.write_text(
+        """
+        <test>
+          <executable>ADRSolver</executable>
+          <parameters>case.xml</parameters>
+          <metrics>
+            <metric type="L2"><value variable="u" tolerance="1e-8">0.00135233</value></metric>
+          </metrics>
+        </test>
+        """
+    )
+    monkeypatch.setattr(
+        "metaharness.benchmark_drivers.nektar_runner.shutil.which", lambda _: "ADRSolver"
+    )
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            "L 2 error (variable u): 0.00135233\n",
+            "",
+        )
+
+    monkeypatch.setattr("metaharness.benchmark_drivers.nektar_runner.subprocess.run", fake_run)
+    case = BenchmarkCaseSpec(
+        case_id="fixture",
+        suite="nektar-pde",
+        task_family="nektar_pde",
+        description="fixture case",
+        required_capabilities=["nektar_adr_solver"],
+        source_reference={"tst": str(tst_path)},
+        expected_metrics=["l2_error_u", "elapsed_seconds"],
+        reference_metrics={"l2_error_u": MetricReference(value=0.00135233, tolerance=1e-8)},
+        problem_definition={"solver_binary": "FallbackSolver"},
+    )
+    runner = NektarBenchmarkRunner(
+        runs_root=tmp_path / "runs",
+        allow_real_tools=True,
+        brain_provider=FakeClaudeCLIBrainProvider(
+            {"extra_solver_args": ["--verbose", "unsafe.xml"], "rationale": "trace run"}
+        ),
+    )
+
+    summary = runner.run_agent(case)
+
+    validation = (
+        tmp_path / "runs" / "nektar-pde-benchmark" / "agent" / "fixture" / "validation.json"
+    ).read_text()
+    assert summary.status == "passed"
+    assert calls[0][-1] == "--verbose"
+    assert "unsafe.xml" not in calls[0]
+    assert "trace run" in validation
+
+
+def test_nektar_adaptive_agent_records_repair_attempt(tmp_path: Path, monkeypatch) -> None:
+    tst_path = tmp_path / "case.tst"
+    xml_path = tmp_path / "case.xml"
+    xml_path.write_text("<NEKTAR><CONDITIONS /></NEKTAR>\n")
+    tst_path.write_text(
+        """
+        <test>
+          <executable>ADRSolver</executable>
+          <parameters>case.xml</parameters>
+          <metrics>
+            <metric type="L2"><value variable="u" tolerance="1e-8">0.00135233</value></metric>
+          </metrics>
+        </test>
+        """
+    )
+    monkeypatch.setattr(
+        "metaharness.benchmark_drivers.nektar_runner.shutil.which", lambda _: "ADRSolver"
+    )
+    attempts = {"count": 0}
+
+    def fake_run(command, **kwargs):
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            "L 2 error (variable u): 0.00135233\n",
+            "",
+        )
+
+    monkeypatch.setattr("metaharness.benchmark_drivers.nektar_runner.subprocess.run", fake_run)
+    case = BenchmarkCaseSpec(
+        case_id="fixture",
+        suite="nektar-pde",
+        task_family="nektar_pde",
+        description="fixture case",
+        required_capabilities=["nektar_adr_solver"],
+        source_reference={"tst": str(tst_path)},
+        expected_metrics=["l2_error_u", "elapsed_seconds"],
+        reference_metrics={"l2_error_u": MetricReference(value=0.00135233, tolerance=1e-8)},
+        problem_definition={"solver_binary": "FallbackSolver"},
+    )
+    runner = NektarBenchmarkRunner(
+        runs_root=tmp_path / "runs",
+        allow_real_tools=True,
+        adaptive_agent=True,
+        max_repair_attempts=1,
+        brain_provider=FakeClaudeCLIBrainProvider({"extra_solver_args": ["--verbose"]}),
+    )
+
+    summary = runner.run_agent(case)
+
+    assert summary.status == "passed"
+    assert summary.repair_count == 1
+    assert summary.llm_calls == 2
+    assert attempts["count"] == 2
+
+
 def test_nektar_runner_dry_run_writes_three_lane_outputs(tmp_path: Path) -> None:
     case = nektar_case_catalog()["advdiff-2d"]
     runner = NektarBenchmarkRunner(
@@ -232,6 +353,13 @@ def test_nektar_runner_dry_run_writes_three_lane_outputs(tmp_path: Path) -> None
     assert (base / "direct" / "advdiff-2d" / "solver.stdout.log").exists()
     assert (base / "direct" / "advdiff-2d" / "claude_prompt.txt").exists()
     assert (base / "agent" / "advdiff-2d" / "proposal.json").exists()
+
+
+def test_nektar_diffusion_case_is_replay_enabled() -> None:
+    case = nektar_case_catalog()["diffusion-2d"]
+
+    assert not case.capability_gated
+    assert case.problem_definition["solver_binary"] == "DiffusionSolver"
 
 
 def test_nektar_capability_gated_extension_dry_run_is_skipped(tmp_path: Path) -> None:

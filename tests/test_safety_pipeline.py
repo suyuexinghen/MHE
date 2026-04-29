@@ -270,7 +270,6 @@ def test_sandbox_validator_allows_authorized_protected_promotion(
     assert result.decision == GateDecision.ALLOW
 
 
-
 def test_pipeline_rejects_promotion_when_protected_components_are_flagged(
     manifest_dir: Path, graphs_dir: Path
 ) -> None:

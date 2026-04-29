@@ -129,6 +129,30 @@ def _repeat_runs_root(runs_root: Path, repeat_index: int) -> Path:
     return runs_root if repeat_index == 1 else runs_root / f"repeat-{repeat_index:02d}"
 
 
+def _percentile(values: list[float], percentile: float) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    if len(ordered) == 1:
+        return ordered[0]
+    position = (len(ordered) - 1) * percentile
+    lower = int(position)
+    upper = min(lower + 1, len(ordered) - 1)
+    weight = position - lower
+    return ordered[lower] * (1 - weight) + ordered[upper] * weight
+
+
+def _timing_stats(values: list[float]) -> dict[str, float | None]:
+    q1 = _percentile(values, 0.25)
+    q3 = _percentile(values, 0.75)
+    return {
+        "min": min(values) if values else None,
+        "max": max(values) if values else None,
+        "median": statistics.median(values) if values else None,
+        "iqr": q3 - q1 if q1 is not None and q3 is not None else None,
+    }
+
+
 def _aggregate_repeated_summaries(summaries: list[Any]) -> dict[str, object]:
     groups: dict[tuple[str, str], list[Any]] = {}
     for summary in summaries:
@@ -136,7 +160,7 @@ def _aggregate_repeated_summaries(summaries: list[Any]) -> dict[str, object]:
     rows = []
     for (case_id, lane), lane_summaries in sorted(groups.items()):
         driver_times = [
-            summary.driver_time_seconds
+            float(summary.driver_time_seconds)
             for summary in lane_summaries
             if summary.driver_time_seconds is not None
         ]
@@ -146,6 +170,18 @@ def _aggregate_repeated_summaries(summaries: list[Any]) -> dict[str, object]:
             if summary.elapsed_seconds is not None
         ]
         statuses = [summary.status for summary in lane_summaries]
+        flags = []
+        if len(set(statuses)) > 1:
+            flags.append("flaky_status")
+        elapsed_stats = _timing_stats(solver_times)
+        median_elapsed = elapsed_stats["median"]
+        if (
+            median_elapsed is not None
+            and elapsed_stats["iqr"] is not None
+            and median_elapsed > 0
+            and elapsed_stats["iqr"] / median_elapsed > 0.5
+        ):
+            flags.append("flaky_timing")
         rows.append(
             {
                 "case_id": case_id,
@@ -156,13 +192,17 @@ def _aggregate_repeated_summaries(summaries: list[Any]) -> dict[str, object]:
                 "skipped_count": sum(
                     1 for summary in lane_summaries if summary.status == "skipped"
                 ),
-                "median_driver_time_seconds": statistics.median(driver_times)
-                if driver_times
-                else None,
-                "median_elapsed_seconds": statistics.median(solver_times) if solver_times else None,
+                "median_driver_time_seconds": _timing_stats(driver_times)["median"],
+                "min_driver_time_seconds": _timing_stats(driver_times)["min"],
+                "max_driver_time_seconds": _timing_stats(driver_times)["max"],
+                "iqr_driver_time_seconds": _timing_stats(driver_times)["iqr"],
+                "median_elapsed_seconds": median_elapsed,
+                "min_elapsed_seconds": elapsed_stats["min"],
+                "max_elapsed_seconds": elapsed_stats["max"],
+                "iqr_elapsed_seconds": elapsed_stats["iqr"],
                 "total_llm_calls": sum(summary.llm_calls for summary in lane_summaries),
                 "total_repairs": sum(summary.repair_count for summary in lane_summaries),
-                "flags": ["flaky_status"] if len(set(statuses)) > 1 else [],
+                "flags": flags,
             }
         )
     return {"rows": rows}
@@ -183,7 +223,7 @@ def _cmd_benchmark_run(args: argparse.Namespace) -> int:
     case_ids = _parse_csv(args.cases) if args.cases else None
     runs_root = Path(args.runs_root)
     repeat_count = max(1, int(args.repeat))
-    use_real_claude = args.allow_real_claude or args.allow_real_tools
+    use_real_claude = bool(args.allow_real_claude)
     brain_provider = (
         ClaudeCLIBrainProvider(
             ClaudeCLIConfig(
@@ -213,6 +253,8 @@ def _cmd_benchmark_run(args: argparse.Namespace) -> int:
                 runs_root=runs_root,
                 allow_real_tools=args.allow_real_tools,
                 brain_provider=brain_provider,
+                adaptive_agent=args.adaptive_agent,
+                max_repair_attempts=args.max_repair_attempts,
             )
         else:
             cases = get_qcompute_abacus_cases(case_ids)

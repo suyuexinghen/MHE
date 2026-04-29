@@ -493,9 +493,7 @@ def test_commit_graph_auto_rolls_back_after_health_probe_failure(
     assert events[-1].payload["rolled_back_to"] == 1
 
 
-def test_observation_window_rolls_back_with_evidence(
-    manifest_dir: Path, graphs_dir: Path
-) -> None:
+def test_observation_window_rolls_back_with_evidence(manifest_dir: Path, graphs_dir: Path) -> None:
     runtime = HarnessRuntime(ComponentDiscovery(bundled=manifest_dir))
     runtime.boot()
     snapshot = parse_graph_xml(graphs_dir / "default-topology.xml")

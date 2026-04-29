@@ -1,0 +1,88 @@
+{
+  "name": "fealpy_study",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.fealpy.study:FealpyStudyComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [
+      {
+        "name": "study",
+        "type": "FealpyStudySpec",
+        "required": true,
+        "description": "Accept a fealpy study spec defining parameter sweeps for convergence analysis.",
+        "cardinality": "one"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "report",
+        "type": "FealpyStudyReport",
+        "mode": "sync",
+        "description": "Return study report with trials, best parameters, and convergence analysis."
+      }
+    ],
+    "events": [],
+    "provides": [
+      {
+        "name": "fealpy.study.run",
+        "description": "Run fealpy parameter sweep studies for convergence testing."
+      }
+    ],
+    "requires": [
+      {
+        "name": "fealpy.compile",
+        "description": "Require script compilation for each trial."
+      },
+      {
+        "name": "fealpy.execute.run",
+        "description": "Require executor for each trial run."
+      },
+      {
+        "name": "fealpy.validate.report",
+        "description": "Require validator for each trial validation."
+      }
+    ],
+    "slots": [
+      {
+        "slot": "fealpy_study.primary",
+        "binding": "primary",
+        "required": true
+      }
+    ]
+  },
+  "safety": {
+    "protected": false,
+    "mutability": "mutable",
+    "sandbox_profile": "workspace-write",
+    "hot_swap": false
+  },
+  "policy": {
+    "sandbox": {
+      "tier": "workspace-write"
+    },
+    "credentials": {
+      "requires_subject": false,
+      "allow_inline_credentials": false,
+      "required_claims": []
+    }
+  },
+  "state_schema_version": 1,
+  "provides": [
+    "fealpy.study.run"
+  ],
+  "requires": [
+    "fealpy.compile",
+    "fealpy.execute.run",
+    "fealpy.validate.report"
+  ],
+  "deps": {
+    "components": [],
+    "capabilities": [
+      "fealpy.compile",
+      "fealpy.execute.run",
+      "fealpy.validate.report"
+    ]
+  },
+  "bins": []
+}

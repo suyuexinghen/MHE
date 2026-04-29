@@ -45,7 +45,6 @@ def nektar_case_catalog() -> dict[str, BenchmarkCaseSpec]:
                 "pde_type": "unsteady_diffusion",
                 "dimension": 2,
             },
-            capability_gated=True,
         ),
         BenchmarkCaseSpec(
             case_id="advdiff-2d",

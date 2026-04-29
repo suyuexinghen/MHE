@@ -55,6 +55,7 @@ class FealpyValidatorComponent(HarnessComponent):
                     ValidationIssue(
                         code="FEALPY_ENV_UNAVAILABLE",
                         message="Environment unavailable",
+                        subject="fealpy_environment",
                         blocks_promotion=True,
                     )
                 ],
@@ -75,6 +76,7 @@ class FealpyValidatorComponent(HarnessComponent):
                     ValidationIssue(
                         code="FEALPY_TIMEOUT",
                         message=artifact.error_message or "Timeout",
+                        subject="fealpy_execution",
                         blocks_promotion=True,
                     )
                 ],
@@ -95,6 +97,7 @@ class FealpyValidatorComponent(HarnessComponent):
                     ValidationIssue(
                         code="FEALPY_RUNTIME_FAILED",
                         message=artifact.error_message or "Execution failed",
+                        subject="fealpy_execution",
                         blocks_promotion=True,
                     )
                 ],
@@ -115,6 +118,7 @@ class FealpyValidatorComponent(HarnessComponent):
                     ValidationIssue(
                         code="FEALPY_OUTPUT_MISSING",
                         message="No L2 or H1 error in artifact",
+                        subject="fealpy_output",
                         blocks_promotion=True,
                     )
                 ],
@@ -135,6 +139,7 @@ class FealpyValidatorComponent(HarnessComponent):
                 ValidationIssue(
                     code="FEALPY_L2_TOLERANCE",
                     message=msg,
+                    subject="l2_error",
                     blocks_promotion=True,
                 )
             )
@@ -150,6 +155,7 @@ class FealpyValidatorComponent(HarnessComponent):
                 ValidationIssue(
                     code="FEALPY_H1_TOLERANCE",
                     message=msg,
+                    subject="h1_error",
                     blocks_promotion=True,
                 )
             )

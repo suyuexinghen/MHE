@@ -445,6 +445,7 @@ class QComputeAbacusBenchmarkRunner:
                 "source_reference": case.source_reference,
                 "status": "unsupported_source_format",
                 "reason": reason,
+                "bridge_status": bridge_status.model_dump(mode="json"),
             },
         )
         bridge_status_path = write_json(output_dir / "bridge_status.json", bridge_status)

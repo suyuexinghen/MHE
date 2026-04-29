@@ -56,6 +56,25 @@ def test_octave_catalog_contains_documented_cases() -> None:
     assert all(case.required_capabilities for case in catalog.values())
 
 
+def test_claude_cli_provider_reports_stdout_error_payload(tmp_path: Path) -> None:
+    def fake_run(command, **kwargs):
+        return subprocess.CompletedProcess(
+            command,
+            1,
+            '{"is_error": true, "errors": ["Reached maximum number of turns (2)"]}',
+            "",
+        )
+
+    provider = ClaudeCLIBrainProvider(ClaudeCLIConfig(binary="gclaude"), command_runner=fake_run)
+
+    result = provider.propose(prompt="hello", output_dir=tmp_path)
+
+    assert result.error == "Reached maximum number of turns (2)"
+    assert result.result["is_error"] is True
+    assert (tmp_path / "claude_result.json").exists()
+    assert not (tmp_path / "proposal.json").exists()
+
+
 def test_claude_cli_provider_writes_command_evidence(tmp_path: Path) -> None:
     calls: list[list[str]] = []
 

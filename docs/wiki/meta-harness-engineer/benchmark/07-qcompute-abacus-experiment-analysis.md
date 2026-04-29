@@ -120,6 +120,8 @@ unsupported_source_format: ABACUS H/S-to-FCIDUMP bridge is not implemented
 
 这是本轮最重要的 truthfulness guardrail：ABACUS `out_mat_hs` / `out_mat_hs2` source refs 已被记录，但不会被伪装成已支持的 FCIDUMP 或 qubit Hamiltonian input。
 
+后续实现已补充 `bridge_status.json`：runner 会从可读 ABACUS `INPUT` refs 中提取 `basis_type`、`gamma_only`、`ks_solver`、`out_mat_hs` / `out_mat_hs2` 等 metadata，用于证明 source format 被识别；同时写入 `conversion_plan`，定义 accepted artifacts、目标表示和 validation requirements。当前只有 toy `ABACUS_HS_TOY` fixture conversion 用于测试 FCIDUMP contract；真实 ABACUS H/S matrix 到 FCIDUMP 或 QCompute Pauli dictionary 的 converter 仍未实现，因此 `promotion_ready` 仍为 `false`。
+
 ## 7.5 Workflow lane observations
 
 ### Extension baseline
@@ -197,6 +199,7 @@ unsupported_source_format: ABACUS H/S-to-FCIDUMP bridge is not implemented
 | Generic comparator support | Complete | `summary_table.csv`、`result_bundle.json`、`run_manifest.json`、report/backlog 均生成。 |
 | Schema failures | None observed | Comparator 未发现 schema failure。 |
 | H/S bridge truthfulness | Complete | Sentinel case 为 `capability_skip`，未伪造支持。 |
+| H/S bridge metadata parser | Implemented scaffold | `bridge_status.json` 解析可读 ABACUS `INPUT` refs 与 H/S output flags，但不做矩阵转换。 |
 | Real QCompute execution | Pending formal report | 本地 `qiskit` / `qiskit_aer` 可见，但本轮未启用 `--allow-real-tools`。 |
 | Real ABACUS H/S bridge | Pending | 需要 converter 设计与测试。 |
 
@@ -206,7 +209,7 @@ unsupported_source_format: ABACUS H/S-to-FCIDUMP bridge is not implemented
 2. 运行 real agent lane，验证 Claude proposal 后是否能稳定进入 QCompute extension pipeline。
 3. 将 real-mode energy / energy_error 与 dry-run reference echo 明确分表展示。
 4. 为 `h2-fcidump-jw-vs-bk` 输出 real mapping metadata 表，包括 Pauli term count、mapping method、qubit count。
-5. 实现 ABACUS `out_mat_hs` / `out_mat_hs2` parser。
+5. 扩展 ABACUS bridge parser，从 `INPUT` metadata 进入真实 `out_mat_hs` / `out_mat_hs2` matrix artifact 解析。
 6. 定义 H/S matrix 到 FCIDUMP 或 QCompute Pauli dictionary 的正式转换目标。
 7. 只有在 converter tests 通过后，才允许把 `abacus-hs-bridge-pending` 从 skipped sentinel 提升为 executable bridge case。
 8. 增加 repeated real runs，记录 median elapsed time、driver overhead、simulator variance 和 flaky flags。

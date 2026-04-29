@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from json import JSONDecodeError
 from pathlib import Path
+from typing import Any
 
 from pydantic import ValidationError
 
 from metaharness.benchmark_drivers.io import (
+    case_dir,
     comparison_dir,
     read_json,
     reports_dir,
@@ -40,6 +42,11 @@ FIELDNAMES = [
     "extension_evidence_count",
     "direct_evidence_count",
     "agent_evidence_count",
+    "real_tools",
+    "real_claude",
+    "repeat_count",
+    "direct_proposal_source",
+    "agent_proposal_source",
     "verdict",
 ]
 
@@ -136,27 +143,42 @@ def write_comparison_outputs(
     comp_dir = comparison_dir(runs_root, suite)
     report_dir = reports_dir(runs_root, suite)
     row_payloads = [row.model_dump(mode="json") for row in rows]
-    write_csv(comp_dir / "summary_table.csv", row_payloads, FIELDNAMES)
-    write_json(comp_dir / "result_bundle.json", {"suite": suite, "rows": row_payloads})
-    write_json(
-        comp_dir / "run_manifest.json",
-        build_run_manifest(
-            suite=suite,
-            lanes=manifest_lanes,
-            cases=cases or [row.case_id for row in rows],
-            runs_root=runs_root,
-            claude_binary=claude_binary,
-            claude_model=claude_model,
-            claude_max_turns=claude_max_turns,
-            claude_permission_mode=claude_permission_mode,
-            claude_extra_args=claude_extra_args,
-            real_claude=real_claude,
-            real_tools=real_tools,
-            repeat_count=repeat_count,
-        ),
+    manifest = build_run_manifest(
+        suite=suite,
+        lanes=manifest_lanes,
+        cases=cases or [row.case_id for row in rows],
+        runs_root=runs_root,
+        claude_binary=claude_binary,
+        claude_model=claude_model,
+        claude_max_turns=claude_max_turns,
+        claude_permission_mode=claude_permission_mode,
+        claude_extra_args=claude_extra_args,
+        real_claude=real_claude,
+        real_tools=real_tools,
+        repeat_count=repeat_count,
     )
-    write_text(comp_dir / "comparison_report.md", _comparison_markdown(suite, rows))
-    write_text(report_dir / f"{suite}-analysis-report.md", _analysis_markdown(suite, rows))
+    repeat_summary = _read_repeat_summary(comp_dir)
+    evidence_context = _evidence_context(
+        runs_root=runs_root,
+        suite=suite,
+        rows=rows,
+        manifest=manifest.model_dump(mode="json"),
+        repeat_summary=repeat_summary,
+    )
+    enriched_row_payloads = _enrich_rows(row_payloads, evidence_context)
+    write_csv(comp_dir / "summary_table.csv", enriched_row_payloads, FIELDNAMES)
+    write_json(
+        comp_dir / "result_bundle.json",
+        {"suite": suite, "evidence_context": evidence_context, "rows": row_payloads},
+    )
+    write_json(comp_dir / "run_manifest.json", manifest)
+    write_text(
+        comp_dir / "comparison_report.md", _comparison_markdown(suite, rows, evidence_context)
+    )
+    write_text(
+        report_dir / f"{suite}-analysis-report.md",
+        _analysis_markdown(suite, rows, evidence_context),
+    )
     write_text(report_dir / f"{suite}-backlog.md", _backlog_markdown(suite, rows))
     return rows
 
@@ -165,6 +187,75 @@ def _observed_lanes(runs_root: Path, suite: BenchmarkSuite) -> list[BenchmarkLan
     root = suite_root(runs_root, suite)
     known_lanes: list[BenchmarkLane] = ["extension", "direct", "agent"]
     return [lane for lane in known_lanes if (root / lane).exists()]
+
+
+def _read_repeat_summary(comp_dir: Path) -> dict[str, Any] | None:
+    repeat_path = comp_dir / "repeat_summary.json"
+    if not repeat_path.exists():
+        return None
+    try:
+        return read_json(repeat_path)
+    except (JSONDecodeError, OSError):
+        return None
+
+
+def _proposal_source(
+    runs_root: Path, suite: BenchmarkSuite, lane: BenchmarkLane, case_id: str
+) -> str:
+    command_path = case_dir(runs_root, suite, lane, case_id) / "claude_command.json"
+    if not command_path.exists():
+        return "none"
+    try:
+        command = read_json(command_path).get("command", [])
+    except (JSONDecodeError, OSError):
+        return "unknown"
+    if not command:
+        return "unknown"
+    return "fake" if command[0] == "fake-claude" else "real"
+
+
+def _evidence_context(
+    *,
+    runs_root: Path,
+    suite: BenchmarkSuite,
+    rows: list[ComparisonRow],
+    manifest: dict[str, Any],
+    repeat_summary: dict[str, Any] | None,
+) -> dict[str, Any]:
+    claude_cli = manifest.get("claude_cli", {})
+    proposal_sources = {
+        row.case_id: {
+            "direct": _proposal_source(runs_root, suite, "direct", row.case_id),
+            "agent": _proposal_source(runs_root, suite, "agent", row.case_id),
+        }
+        for row in rows
+    }
+    return {
+        "real_tools": bool(claude_cli.get("real_tools", False)),
+        "real_claude": bool(claude_cli.get("real_claude", False)),
+        "repeat_count": claude_cli.get("repeat_count", 1),
+        "proposal_sources": proposal_sources,
+        "repeat_rows": [] if repeat_summary is None else repeat_summary.get("rows", []),
+    }
+
+
+def _enrich_rows(
+    row_payloads: list[dict[str, Any]], evidence_context: dict[str, Any]
+) -> list[dict[str, Any]]:
+    enriched = []
+    for row in row_payloads:
+        sources = evidence_context["proposal_sources"].get(row["case_id"], {})
+        enriched.append(
+            {
+                **row,
+                "real_tools": evidence_context["real_tools"],
+                "real_claude": evidence_context["real_claude"],
+                "repeat_count": evidence_context["repeat_count"],
+                "direct_proposal_source": sources.get("direct", "none"),
+                "agent_proposal_source": sources.get("agent", "none"),
+            }
+        )
+    return enriched
 
 
 def _verdict(
@@ -187,22 +278,47 @@ def _verdict(
     return "workflow_gap"
 
 
-def _comparison_markdown(suite: BenchmarkSuite, rows: list[ComparisonRow]) -> str:
+def _comparison_markdown(
+    suite: BenchmarkSuite, rows: list[ComparisonRow], evidence_context: dict[str, Any]
+) -> str:
     lines = [
         f"# {suite} comparison report",
         "",
-        "| Case | Extension | Direct | Agent | Verdict |",
-        "|---|---|---|---|---|",
+        "## Evidence context",
+        "",
+        f"- Real tools: `{evidence_context['real_tools']}`",
+        f"- Real Claude: `{evidence_context['real_claude']}`",
+        f"- Repeat count: `{evidence_context['repeat_count']}`",
+        "",
+        "| Case | Extension | Direct | Agent | Direct proposal | Agent proposal | Verdict |",
+        "|---|---|---|---|---|---|---|",
     ]
     for row in rows:
+        sources = evidence_context["proposal_sources"].get(row.case_id, {})
         lines.append(
-            f"| {row.case_id} | {row.extension_status} | {row.direct_status} | {row.agent_status} | {row.verdict} |"
+            f"| {row.case_id} | {row.extension_status} | {row.direct_status} | {row.agent_status} | {sources.get('direct', 'none')} | {sources.get('agent', 'none')} | {row.verdict} |"
         )
+    if evidence_context["repeat_rows"]:
+        lines.extend(
+            [
+                "",
+                "## Repeat statistics",
+                "",
+                "| Case | Lane | Runs | Passed | Failed | Skipped | Median elapsed | IQR elapsed | Flags |",
+                "|---|---|---:|---:|---:|---:|---:|---:|---|",
+            ]
+        )
+        for repeat_row in evidence_context["repeat_rows"]:
+            lines.append(
+                f"| {repeat_row['case_id']} | {repeat_row['lane']} | {repeat_row['run_count']} | {repeat_row['passed_count']} | {repeat_row['failed_count']} | {repeat_row['skipped_count']} | {repeat_row.get('median_elapsed_seconds')} | {repeat_row.get('iqr_elapsed_seconds')} | {', '.join(repeat_row.get('flags', [])) or 'none'} |"
+            )
     lines.append("")
     return "\n".join(lines)
 
 
-def _analysis_markdown(suite: BenchmarkSuite, rows: list[ComparisonRow]) -> str:
+def _analysis_markdown(
+    suite: BenchmarkSuite, rows: list[ComparisonRow], evidence_context: dict[str, Any]
+) -> str:
     passed = sum(1 for row in rows if row.verdict == "all_passed")
     capability_skips = sum(1 for row in rows if row.verdict == "capability_skip")
     schema_failures = sum(1 for row in rows if row.verdict == "schema_failed")
@@ -220,6 +336,9 @@ def _analysis_markdown(suite: BenchmarkSuite, rows: list[ComparisonRow]) -> str:
         "",
         "## Workflow quality",
         "",
+        f"- Real tools: `{evidence_context['real_tools']}`",
+        f"- Real Claude: `{evidence_context['real_claude']}`",
+        f"- Repeat count: `{evidence_context['repeat_count']}`",
         f"- Direct Claude CLI calls: {total_direct_llm_calls}",
         f"- Agent Claude CLI calls: {total_agent_llm_calls}",
         "- Evidence counts measure reproducibility support, not numerical superiority.",
@@ -227,13 +346,28 @@ def _analysis_markdown(suite: BenchmarkSuite, rows: list[ComparisonRow]) -> str:
         "",
         "## Case verdicts",
         "",
-        "| Case | Extension | Direct | Agent | Verdict |",
-        "|---|---|---|---|---|",
+        "| Case | Extension | Direct | Agent | Direct proposal | Agent proposal | Verdict |",
+        "|---|---|---|---|---|---|---|",
     ]
     for row in rows:
+        sources = evidence_context["proposal_sources"].get(row.case_id, {})
         lines.append(
-            f"| {row.case_id} | {row.extension_status} | {row.direct_status} | {row.agent_status} | {row.verdict} |"
+            f"| {row.case_id} | {row.extension_status} | {row.direct_status} | {row.agent_status} | {sources.get('direct', 'none')} | {sources.get('agent', 'none')} | {row.verdict} |"
         )
+    if evidence_context["repeat_rows"]:
+        lines.extend(
+            [
+                "",
+                "## Repeat statistics",
+                "",
+                "| Case | Lane | Runs | Passed | Failed | Skipped | Median elapsed | IQR elapsed | Flags |",
+                "|---|---|---:|---:|---:|---:|---:|---:|---|",
+            ]
+        )
+        for repeat_row in evidence_context["repeat_rows"]:
+            lines.append(
+                f"| {repeat_row['case_id']} | {repeat_row['lane']} | {repeat_row['run_count']} | {repeat_row['passed_count']} | {repeat_row['failed_count']} | {repeat_row['skipped_count']} | {repeat_row.get('median_elapsed_seconds')} | {repeat_row.get('iqr_elapsed_seconds')} | {', '.join(repeat_row.get('flags', [])) or 'none'} |"
+            )
     lines.extend(["", "## Limitations", ""])
     if suite == "nektar-pde":
         lines.extend(

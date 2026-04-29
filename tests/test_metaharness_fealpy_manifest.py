@@ -9,6 +9,7 @@ from metaharness_ext.fealpy.capabilities import (
     CAP_FEALPY_COMPILE,
     CAP_FEALPY_ENV_PROBE,
     CAP_FEALPY_EXECUTE_RUN,
+    CAP_FEALPY_STUDY_RUN,
     CAP_FEALPY_TASK_ISSUE,
     CAP_FEALPY_VALIDATE_REPORT,
 )
@@ -17,6 +18,7 @@ from metaharness_ext.fealpy.slots import (
     FEALPY_ENVIRONMENT_SLOT,
     FEALPY_EXECUTOR_SLOT,
     FEALPY_GATEWAY_SLOT,
+    FEALPY_STUDY_SLOT,
     FEALPY_VALIDATOR_SLOT,
 )
 
@@ -59,6 +61,13 @@ EXPECTED_MANIFESTS = {
         "capabilities": [CAP_FEALPY_VALIDATE_REPORT],
         "sandbox_tier": "read-only",
         "protected": True,
+    },
+    "fealpy_study.json": {
+        "name": "fealpy_study",
+        "entry": "metaharness_ext.fealpy.study:FealpyStudyComponent",
+        "slot": FEALPY_STUDY_SLOT,
+        "capabilities": [CAP_FEALPY_STUDY_RUN],
+        "sandbox_tier": "workspace-write",
     },
 }
 
@@ -148,4 +157,4 @@ def test_all_manifests_register() -> None:
         component, api = declare_component(f"fealpy-{manifest.name}", manifest=manifest)
         declarations = api.snapshot()
         registry.register(f"fealpy-{manifest.name}", manifest=manifest, declarations=declarations)
-    assert len(registry.components) == 5
+    assert len(registry.components) == 6

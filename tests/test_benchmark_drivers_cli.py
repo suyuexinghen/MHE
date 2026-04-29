@@ -73,6 +73,46 @@ def test_benchmark_run_cli_allows_real_claude_without_real_tools(tmp_path: Path)
     ).exists()
 
 
+def test_benchmark_run_cli_real_tools_do_not_imply_real_claude(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    monkeypatch.setattr("metaharness.benchmark_drivers.octave_runner.shutil.which", lambda _: None)
+
+    status = main(
+        [
+            "benchmark-run",
+            "--suite",
+            "octave-native",
+            "--lanes",
+            "direct",
+            "--cases",
+            "sinc-values",
+            "--runs-root",
+            str(tmp_path),
+            "--allow-real-tools",
+            "--claude-binary",
+            "missing-claude-for-test",
+        ]
+    )
+
+    assert status == 0
+    command_path = (
+        tmp_path / "octave-native-benchmark" / "direct" / "sinc-values" / "claude_command.json"
+    )
+    command = json.loads(command_path.read_text())
+    summary = json.loads(
+        (
+            tmp_path / "octave-native-benchmark" / "direct" / "sinc-values" / "summary.json"
+        ).read_text()
+    )
+    output = json.loads(capsys.readouterr().out)
+    assert command["command"][0] == "fake-claude"
+    assert output["real_claude"] is False
+    assert output["real_tools"] is True
+    assert summary["status"] == "skipped"
+    assert summary["skip_reason"] == "octave-cli not found"
+
+
 def test_benchmark_run_cli_writes_repeat_summary(tmp_path: Path) -> None:
     status = main(
         [
@@ -95,6 +135,9 @@ def test_benchmark_run_cli_writes_repeat_summary(tmp_path: Path) -> None:
         (tmp_path / "octave-native-benchmark" / "comparison" / "repeat_summary.json").read_text()
     )
     assert repeat_summary["rows"][0]["run_count"] == 2
+    assert "min_elapsed_seconds" in repeat_summary["rows"][0]
+    assert "max_elapsed_seconds" in repeat_summary["rows"][0]
+    assert "iqr_elapsed_seconds" in repeat_summary["rows"][0]
     assert (
         tmp_path
         / "repeat-02"
@@ -105,7 +148,9 @@ def test_benchmark_run_cli_writes_repeat_summary(tmp_path: Path) -> None:
     ).exists()
 
 
-def test_benchmark_run_cli_forwards_adaptive_agent_options(tmp_path: Path, monkeypatch) -> None:
+def test_benchmark_run_cli_forwards_octave_adaptive_agent_options(
+    tmp_path: Path, monkeypatch
+) -> None:
     captured = {}
 
     class FakeOctaveBenchmarkRunner:
@@ -127,6 +172,43 @@ def test_benchmark_run_cli_forwards_adaptive_agent_options(tmp_path: Path, monke
             "agent",
             "--cases",
             "sinc-values",
+            "--runs-root",
+            str(tmp_path),
+            "--adaptive-agent",
+            "--max-repair-attempts",
+            "3",
+        ]
+    )
+
+    assert status == 0
+    assert captured["adaptive_agent"] is True
+    assert captured["max_repair_attempts"] == 3
+
+
+def test_benchmark_run_cli_forwards_nektar_adaptive_agent_options(
+    tmp_path: Path, monkeypatch
+) -> None:
+    captured = {}
+
+    class FakeNektarBenchmarkRunner:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+            self.runs_root = kwargs["runs_root"]
+
+        def run_case(self, case, lanes):
+            return []
+
+    monkeypatch.setattr("metaharness.cli.NektarBenchmarkRunner", FakeNektarBenchmarkRunner)
+
+    status = main(
+        [
+            "benchmark-run",
+            "--suite",
+            "nektar-pde",
+            "--lanes",
+            "agent",
+            "--cases",
+            "advdiff-2d",
             "--runs-root",
             str(tmp_path),
             "--adaptive-agent",
@@ -280,8 +362,17 @@ def test_benchmark_compare_cli_writes_reports(tmp_path: Path) -> None:
     )
 
     assert status == 0
-    assert (tmp_path / "octave-native-benchmark" / "comparison" / "result_bundle.json").exists()
-    assert (tmp_path / "octave-native-benchmark" / "comparison" / "comparison_report.md").exists()
+    comparison_dir = tmp_path / "octave-native-benchmark" / "comparison"
+    assert (comparison_dir / "result_bundle.json").exists()
+    assert (comparison_dir / "comparison_report.md").exists()
+    bundle = json.loads((comparison_dir / "result_bundle.json").read_text())
+    report = (comparison_dir / "comparison_report.md").read_text()
+    csv_text = (comparison_dir / "summary_table.csv").read_text()
+    assert bundle["evidence_context"]["real_tools"] is False
+    assert bundle["evidence_context"]["real_claude"] is False
+    assert "Real tools: `False`" in report
+    assert "Direct proposal" in report
+    assert "direct_proposal_source" in csv_text
 
 
 def test_benchmark_compare_manifest_records_observed_lanes(tmp_path: Path) -> None:

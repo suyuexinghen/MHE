@@ -189,7 +189,10 @@ Unsupported bridge evidence:
 
 ```text
 source_refs.json
+bridge_status.json
 ```
+
+`bridge_status.json` records parsed ABACUS `INPUT` metadata such as `basis_type`, `gamma_only`, `ks_solver`, and H/S output flags (`out_mat_hs`, `out_mat_hs2`) when source refs are available. It also records a `conversion_plan` with accepted artifact names, target representation, and validation requirements. A toy `ABACUS_HS_TOY` fixture converter may exercise the FCIDUMP contract in tests, but real ABACUS H/S artifacts must still report `promotion_ready = false` until an H/S-to-FCIDUMP or H/S-to-qubit-Hamiltonian converter is implemented and scientifically validated.
 
 Comparison outputs reuse the generic benchmark comparator:
 
@@ -257,8 +260,10 @@ A result is acceptable only when:
 
 The natural next implementation is an ABACUS H/S matrix bridge:
 
-1. parse ABACUS `out_mat_hs` / `out_mat_hs2` text or CSR outputs;
-2. capture basis and k-point metadata;
-3. define a supported conversion target, either FCIDUMP or a QCompute `pauli_dict`;
-4. validate the converted Hamiltonian against an ABACUS reference and a QCompute parser;
-5. promote `abacus-hs-bridge-pending` from skipped sentinel to executable bridge case.
+1. keep parsing ABACUS `INPUT` metadata and H/S output flags into `bridge_status.json`;
+2. use the toy `ABACUS_HS_TOY` converter only to test the FCIDUMP contract and failure taxonomy;
+3. parse real ABACUS `out_mat_hs` / `out_mat_hs2` text or CSR matrix outputs;
+4. capture basis, k-point, spin, sparsity, and matrix-shape metadata;
+5. define a supported conversion target, either FCIDUMP or a QCompute `pauli_dict`;
+6. validate the converted Hamiltonian against an ABACUS reference and a QCompute parser;
+7. promote `abacus-hs-bridge-pending` from skipped sentinel to executable bridge case only after real converter tests pass.

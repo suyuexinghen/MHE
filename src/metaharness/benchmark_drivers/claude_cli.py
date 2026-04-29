@@ -114,19 +114,29 @@ class ClaudeCLIBrainProvider:
             proposal_path=str(proposal_path),
             return_code=completed.returncode,
         )
-        if completed.returncode != 0:
-            return ClaudeCLIResult(invocation=invocation, error=completed.stderr.strip())
-
         try:
             result = json.loads(completed.stdout or "{}")
         except json.JSONDecodeError as exc:
             return ClaudeCLIResult(invocation=invocation, error=f"invalid Claude JSON: {exc}")
 
-        proposal = result.get("proposal", result if isinstance(result, dict) else {})
         write_json(result_path, result)
+        if completed.returncode != 0 or result.get("is_error") is True:
+            error = completed.stderr.strip() or self._result_error_message(result)
+            return ClaudeCLIResult(invocation=invocation, result=result, error=error)
+
+        proposal = result.get("proposal", result if isinstance(result, dict) else {})
         write_json(proposal_path, proposal)
         write_json(command_path, {"command": command, "result_path": str(result_path)})
         return ClaudeCLIResult(invocation=invocation, result=result, proposal=proposal)
+
+    def _result_error_message(self, result: dict[str, Any]) -> str:
+        errors = result.get("errors")
+        if isinstance(errors, list) and errors:
+            return "; ".join(str(error) for error in errors)
+        terminal_reason = result.get("terminal_reason")
+        if terminal_reason:
+            return str(terminal_reason)
+        return "Claude CLI returned an error result"
 
 
 class FakeClaudeCLIBrainProvider:

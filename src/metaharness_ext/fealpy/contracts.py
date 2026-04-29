@@ -173,3 +173,96 @@ class FealpyValidationReport(BaseModel):
     @property
     def blocks_promotion(self) -> bool:
         return any(issue.blocks_promotion for issue in self.issues)
+
+
+# ── Evidence ───────────────────────────────────────────────────────────
+
+
+class FealpyEvidenceWarning(BaseModel):
+    code: str
+    message: str
+    severity: str = "warning"
+    evidence: dict[str, Any] = Field(default_factory=dict)
+
+
+class FealpyEvidenceBundle(BaseModel):
+    bundle_id: str
+    task_id: str
+    run_id: str | None = None
+    plan_ref: str | None = None
+    artifact_ref: str | None = None
+    validation_ref: str | None = None
+    environment: FealpyEnvironmentReport | None = None
+    plan: FealpyRunPlan | None = None
+    artifact: FealpyRunArtifact | None = None
+    validation: FealpyValidationReport | None = None
+    evidence_files: list[str] = Field(default_factory=list)
+    evidence_refs: list[str] = Field(default_factory=list)
+    warnings: list[FealpyEvidenceWarning] = Field(default_factory=list)
+    provenance: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+# ── Policy ─────────────────────────────────────────────────────────────
+
+
+class FealpyPolicyReport(BaseModel):
+    passed: bool
+    decision: str  # allow / defer / reject
+    reason: str
+    warnings: list[FealpyEvidenceWarning] = Field(default_factory=list)
+    gates: list[Any] = Field(default_factory=list)
+    evidence: dict[str, Any] = Field(default_factory=dict)
+
+
+# ── Study ──────────────────────────────────────────────────────────────
+
+
+class FealpyStudyAxis(BaseModel):
+    parameter_path: str
+    values: list[Any] | None = None
+    range: tuple[float, float] | None = None
+    step: float | None = None
+
+    @field_validator("parameter_path")
+    @classmethod
+    def validate_path(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("parameter_path must not be empty")
+        return value.strip()
+
+
+class FealpyStudySpec(BaseModel):
+    study_id: str
+    task_template: FealpyProblemSpec
+    axes: list[FealpyStudyAxis] = Field(default_factory=list)
+    objective: str = "l2_error"
+    goal: str = "minimize"  # minimize / maximize
+    max_trials: int | None = None
+
+    @computed_field
+    @property
+    def resolved_task_id(self) -> str:
+        return self.task_template.task_id
+
+
+class FealpyStudyTrial(BaseModel):
+    trial_id: str
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    plan_ref: str | None = None
+    artifact_ref: str | None = None
+    validation_ref: str | None = None
+    metric_value: float | None = None
+    passed: bool = False
+    messages: list[str] = Field(default_factory=list)
+
+
+class FealpyStudyReport(BaseModel):
+    study_id: str
+    task_id: str | None = None
+    trials: list[FealpyStudyTrial] = Field(default_factory=list)
+    best_trial_id: str | None = None
+    recommended_parameters: dict[str, Any] | None = None
+    convergence_analysis: dict[str, Any] = Field(default_factory=dict)
+    summary_metrics: dict[str, float | str] = Field(default_factory=dict)
+    messages: list[str] = Field(default_factory=list)

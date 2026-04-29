@@ -3,7 +3,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from metaharness.benchmark_drivers.claude_cli import FakeClaudeCLIBrainProvider
+from metaharness.benchmark_drivers.claude_cli import ClaudeCLIResult, FakeClaudeCLIBrainProvider
+from metaharness.benchmark_drivers.models import ClaudeInvocationRecord
 from metaharness.benchmark_drivers.octave_cases import octave_case_catalog
 from metaharness.benchmark_drivers.octave_runner import OctaveBenchmarkRunner
 from metaharness.benchmark_drivers.octave_scripts import build_octave_case_script
@@ -42,6 +43,48 @@ def test_octave_direct_real_mode_skips_when_binary_missing(tmp_path: Path, monke
 
     assert summary.status == "skipped"
     assert summary.skip_reason == "octave-cli not found"
+
+
+def test_octave_direct_records_claude_error_evidence(tmp_path: Path) -> None:
+    class FailingBrainProvider:
+        def propose(self, *, prompt: str, output_dir: Path) -> ClaudeCLIResult:
+            output_dir.mkdir(parents=True, exist_ok=True)
+            prompt_path = output_dir / "claude_prompt.txt"
+            stdout_path = output_dir / "claude_stdout.json"
+            stderr_path = output_dir / "claude_stderr.txt"
+            result_path = output_dir / "claude_result.json"
+            prompt_path.write_text(prompt)
+            stdout_path.write_text('{"is_error": true}')
+            stderr_path.write_text("")
+            result_path.write_text('{"is_error": true}')
+            return ClaudeCLIResult(
+                invocation=ClaudeInvocationRecord(
+                    binary="claude",
+                    command=["claude"],
+                    prompt_path=str(prompt_path),
+                    stdout_path=str(stdout_path),
+                    stderr_path=str(stderr_path),
+                    result_path=str(result_path),
+                    proposal_path=str(output_dir / "proposal.json"),
+                    return_code=1,
+                ),
+                result={"is_error": True},
+                error="Reached maximum number of turns (4)",
+            )
+
+    case = octave_case_catalog()["sinc-values"]
+    runner = OctaveBenchmarkRunner(
+        runs_root=tmp_path,
+        allow_real_tools=True,
+        brain_provider=FailingBrainProvider(),
+    )
+
+    summary = runner.run_direct(case)
+
+    assert summary.status == "failed"
+    assert "Reached maximum number of turns" in (summary.error_message or "")
+    assert any(path.endswith("claude_stdout.json") for path in summary.evidence_files)
+    assert any(path.endswith("claude_result.json") for path in summary.evidence_files)
 
 
 def test_octave_direct_real_mode_uses_proposal_script(tmp_path: Path, monkeypatch) -> None:

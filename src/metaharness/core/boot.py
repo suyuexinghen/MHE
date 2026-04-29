@@ -969,7 +969,9 @@ class HarnessRuntime:
                 for issue in report.issues
                 if issue.category != ValidationIssueCategory.PROTECTED_COMPONENT
             ]
-            report = report.model_copy(update={"valid": not non_protected_issues, "issues": non_protected_issues})
+            report = report.model_copy(
+                update={"valid": not non_protected_issues, "issues": non_protected_issues}
+            )
             promotion = promotion.model_copy(update={"validation_report": report})
         else:
             protected_authorization_report = self._validate_protected_authorization(promotion)

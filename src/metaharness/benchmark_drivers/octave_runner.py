@@ -96,6 +96,7 @@ class OctaveBenchmarkRunner:
                 lane="direct",
                 status="failed",
                 attempt_log=attempt_log,
+                evidence_files=self._claude_evidence_files(claude_result),
                 error_message=claude_result.error,
             )
         if not self.allow_real_tools:
@@ -158,6 +159,7 @@ class OctaveBenchmarkRunner:
                 lane="agent",
                 status="failed",
                 attempt_log=attempt_log,
+                evidence_files=self._claude_evidence_files(claude_result),
                 error_message=claude_result.error,
             )
         if not self.allow_real_tools:
@@ -444,6 +446,15 @@ class OctaveBenchmarkRunner:
             attempt_log=attempt_log,
             started_at=started_at,
         )
+
+    def _claude_evidence_files(self, claude_result) -> list[str]:
+        return [
+            claude_result.invocation.prompt_path,
+            claude_result.invocation.stdout_path,
+            claude_result.invocation.stderr_path,
+            claude_result.invocation.result_path or "",
+            claude_result.invocation.proposal_path or "",
+        ]
 
     def _claude_attempt_log(self, error: str | None, lane: BenchmarkLane) -> AttemptLog:
         return AttemptLog(
