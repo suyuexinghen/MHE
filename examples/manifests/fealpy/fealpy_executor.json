@@ -1,0 +1,82 @@
+{
+  "name": "fealpy_executor",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.fealpy.executor:FealpyExecutorComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [
+      {
+        "name": "plan",
+        "type": "FealpyRunPlan",
+        "required": true,
+        "description": "Accept a compiled run plan containing the solver script.",
+        "cardinality": "one"
+      },
+      {
+        "name": "environment",
+        "type": "FealpyEnvironmentReport",
+        "required": false,
+        "description": "Optional environment report for availability gating."
+      }
+    ],
+    "outputs": [
+      {
+        "name": "artifact",
+        "type": "FealpyRunArtifact",
+        "mode": "sync",
+        "description": "Return run artifact with L2/H1 errors, DOF count, and timing."
+      }
+    ],
+    "events": [],
+    "provides": [
+      {
+        "name": "fealpy.execute.run",
+        "description": "Execute fealpy FEM solver script and collect error metrics."
+      }
+    ],
+    "requires": [
+      {
+        "name": "fealpy.compile",
+        "description": "Require script compilation before execution."
+      }
+    ],
+    "slots": [
+      {
+        "slot": "fealpy_executor.primary",
+        "binding": "primary",
+        "required": true
+      }
+    ]
+  },
+  "safety": {
+    "protected": false,
+    "mutability": "mutable",
+    "sandbox_profile": "workspace-write",
+    "hot_swap": true
+  },
+  "policy": {
+    "sandbox": {
+      "tier": "workspace-write"
+    },
+    "credentials": {
+      "requires_subject": false,
+      "allow_inline_credentials": false,
+      "required_claims": []
+    }
+  },
+  "state_schema_version": 1,
+  "provides": [
+    "fealpy.execute.run"
+  ],
+  "requires": [
+    "fealpy.compile"
+  ],
+  "deps": {
+    "components": [],
+    "capabilities": [
+      "fealpy.compile"
+    ]
+  },
+  "bins": []
+}

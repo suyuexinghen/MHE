@@ -1,0 +1,68 @@
+{
+  "name": "fealpy_compiler",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.fealpy.compiler:FealpyCompilerComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [
+      {
+        "name": "task",
+        "type": "FealpyProblemSpec",
+        "required": true,
+        "description": "Accept a validated fealpy problem spec for script generation.",
+        "cardinality": "one"
+      },
+      {
+        "name": "environment",
+        "type": "FealpyEnvironmentReport",
+        "required": false,
+        "description": "Optional environment report for prerequisite checking."
+      }
+    ],
+    "outputs": [
+      {
+        "name": "plan",
+        "type": "FealpyRunPlan",
+        "mode": "sync",
+        "description": "Return a compiled run plan with generated Python solver script."
+      }
+    ],
+    "events": [],
+    "provides": [
+      {
+        "name": "fealpy.compile",
+        "description": "Compile fealpy problem specs into executable solver scripts."
+      }
+    ],
+    "requires": [],
+    "slots": [
+      {
+        "slot": "fealpy_compiler.primary",
+        "binding": "primary",
+        "required": true
+      }
+    ]
+  },
+  "safety": {
+    "protected": false,
+    "mutability": "mutable",
+    "sandbox_profile": "read-only",
+    "hot_swap": true
+  },
+  "policy": {
+    "sandbox": {
+      "tier": "read-only"
+    },
+    "credentials": {
+      "requires_subject": false,
+      "allow_inline_credentials": false,
+      "required_claims": []
+    }
+  },
+  "state_schema_version": 1,
+  "provides": [
+    "fealpy.compile"
+  ],
+  "bins": []
+}

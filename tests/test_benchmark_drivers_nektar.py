@@ -109,6 +109,111 @@ def test_nektar_direct_real_mode_replays_tst_session_xml(tmp_path: Path, monkeyp
     assert (output_dir / "reference_metrics.json").exists()
 
 
+def test_nektar_extension_real_mode_replays_tst_session_xml(tmp_path: Path, monkeypatch) -> None:
+    tst_path = tmp_path / "case.tst"
+    xml_path = tmp_path / "case.xml"
+    xml_path.write_text("<NEKTAR><CONDITIONS /></NEKTAR>\n")
+    tst_path.write_text(
+        """
+        <test>
+          <executable>ADRSolver</executable>
+          <parameters>case.xml</parameters>
+          <metrics>
+            <metric type="L2"><value variable="u" tolerance="1e-8">0.00135233</value></metric>
+          </metrics>
+        </test>
+        """
+    )
+    monkeypatch.setattr(
+        "metaharness.benchmark_drivers.nektar_runner.shutil.which", lambda _: "ADRSolver"
+    )
+
+    def fake_run(command, **kwargs):
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            "L 2 error (variable u): 0.00135233\n",
+            "",
+        )
+
+    monkeypatch.setattr("metaharness.benchmark_drivers.nektar_runner.subprocess.run", fake_run)
+    case = BenchmarkCaseSpec(
+        case_id="fixture",
+        suite="nektar-pde",
+        task_family="nektar_pde",
+        description="fixture case",
+        required_capabilities=["nektar_adr_solver"],
+        source_reference={"tst": str(tst_path)},
+        expected_metrics=["l2_error_u", "elapsed_seconds"],
+        reference_metrics={"l2_error_u": MetricReference(value=0.00135233, tolerance=1e-8)},
+        problem_definition={"solver_binary": "FallbackSolver"},
+    )
+    runner = NektarBenchmarkRunner(runs_root=tmp_path / "runs", allow_real_tools=True)
+
+    summary = runner.run_extension(case)
+
+    output_dir = tmp_path / "runs" / "nektar-pde-benchmark" / "extension" / "fixture"
+    assert summary.status == "passed"
+    assert summary.passed
+    assert (output_dir / "session.xml").read_text() == xml_path.read_text()
+    assert (output_dir / "validation.json").exists()
+    assert (output_dir / "evidence.json").exists()
+
+
+def test_nektar_agent_real_mode_replays_with_proposal_evidence(tmp_path: Path, monkeypatch) -> None:
+    tst_path = tmp_path / "case.tst"
+    xml_path = tmp_path / "case.xml"
+    xml_path.write_text("<NEKTAR><CONDITIONS /></NEKTAR>\n")
+    tst_path.write_text(
+        """
+        <test>
+          <executable>ADRSolver</executable>
+          <parameters>case.xml</parameters>
+          <metrics>
+            <metric type="L2"><value variable="u" tolerance="1e-8">0.00135233</value></metric>
+          </metrics>
+        </test>
+        """
+    )
+    monkeypatch.setattr(
+        "metaharness.benchmark_drivers.nektar_runner.shutil.which", lambda _: "ADRSolver"
+    )
+
+    def fake_run(command, **kwargs):
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            "L 2 error (variable u): 0.00135233\n",
+            "",
+        )
+
+    monkeypatch.setattr("metaharness.benchmark_drivers.nektar_runner.subprocess.run", fake_run)
+    case = BenchmarkCaseSpec(
+        case_id="fixture",
+        suite="nektar-pde",
+        task_family="nektar_pde",
+        description="fixture case",
+        required_capabilities=["nektar_adr_solver"],
+        source_reference={"tst": str(tst_path)},
+        expected_metrics=["l2_error_u", "elapsed_seconds"],
+        reference_metrics={"l2_error_u": MetricReference(value=0.00135233, tolerance=1e-8)},
+        problem_definition={"solver_binary": "FallbackSolver"},
+    )
+    runner = NektarBenchmarkRunner(
+        runs_root=tmp_path / "runs",
+        allow_real_tools=True,
+        brain_provider=FakeClaudeCLIBrainProvider({"session_xml": "session.xml"}),
+    )
+
+    summary = runner.run_agent(case)
+
+    output_dir = tmp_path / "runs" / "nektar-pde-benchmark" / "agent" / "fixture"
+    assert summary.status == "passed"
+    assert summary.llm_calls == 1
+    assert (output_dir / "proposal.json").exists()
+    assert (output_dir / "session.xml").read_text() == xml_path.read_text()
+
+
 def test_nektar_runner_dry_run_writes_three_lane_outputs(tmp_path: Path) -> None:
     case = nektar_case_catalog()["advdiff-2d"]
     runner = NektarBenchmarkRunner(

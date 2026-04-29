@@ -105,6 +105,41 @@ def test_benchmark_run_cli_writes_repeat_summary(tmp_path: Path) -> None:
     ).exists()
 
 
+def test_benchmark_run_cli_forwards_adaptive_agent_options(tmp_path: Path, monkeypatch) -> None:
+    captured = {}
+
+    class FakeOctaveBenchmarkRunner:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+            self.runs_root = kwargs["runs_root"]
+
+        def run_case(self, case, lanes):
+            return []
+
+    monkeypatch.setattr("metaharness.cli.OctaveBenchmarkRunner", FakeOctaveBenchmarkRunner)
+
+    status = main(
+        [
+            "benchmark-run",
+            "--suite",
+            "octave-native",
+            "--lanes",
+            "agent",
+            "--cases",
+            "sinc-values",
+            "--runs-root",
+            str(tmp_path),
+            "--adaptive-agent",
+            "--max-repair-attempts",
+            "3",
+        ]
+    )
+
+    assert status == 0
+    assert captured["adaptive_agent"] is True
+    assert captured["max_repair_attempts"] == 3
+
+
 def test_benchmark_run_cli_rejects_unknown_lane(tmp_path: Path, capsys) -> None:
     status = main(
         [

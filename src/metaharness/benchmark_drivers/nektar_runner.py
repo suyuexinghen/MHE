@@ -119,13 +119,7 @@ class NektarBenchmarkRunner:
                 lane="extension",
                 evidence_factory=lambda path: self._write_extension_evidence(path, case),
             )
-        return write_lane_outputs(
-            runs_root=self.runs_root,
-            case=case,
-            lane="extension",
-            status="skipped",
-            skip_reason="real Nektar reference-XML extension replay is not enabled by default",
-        )
+        return self._run_reference_xml_lane(case, "extension")
 
     def run_direct(self, case: BenchmarkCaseSpec) -> LaneSummary:
         output_dir = case_dir(self.runs_root, case.suite, "direct", case.case_id)
@@ -259,13 +253,112 @@ class NektarBenchmarkRunner:
                 ],
                 attempt_log=attempt_log,
             )
+        return self._run_reference_xml_lane(
+            case,
+            "agent",
+            attempt_log=attempt_log,
+            extra_evidence_files=[
+                claude_result.invocation.prompt_path,
+                claude_result.invocation.stdout_path,
+                claude_result.invocation.stderr_path,
+                claude_result.invocation.result_path or "",
+                claude_result.invocation.proposal_path or "",
+            ],
+        )
+
+    def _run_reference_xml_lane(
+        self,
+        case: BenchmarkCaseSpec,
+        lane: BenchmarkLane,
+        *,
+        attempt_log: AttemptLog | None = None,
+        extra_evidence_files: list[str] | None = None,
+    ) -> LaneSummary:
+        if case.capability_gated:
+            return write_lane_outputs(
+                runs_root=self.runs_root,
+                case=case,
+                lane=lane,
+                status="skipped",
+                attempt_log=attempt_log,
+                evidence_files=extra_evidence_files or [],
+                skip_reason="capability gated for current extension dispatch",
+            )
+        test_spec = self._load_test_spec(case)
+        solver_binary = test_spec.executable or str(
+            case.problem_definition.get("solver_binary", "ADRSolver")
+        )
+        if shutil.which(solver_binary) is None:
+            return write_lane_outputs(
+                runs_root=self.runs_root,
+                case=case,
+                lane=lane,
+                status="skipped",
+                attempt_log=attempt_log,
+                evidence_files=extra_evidence_files or [],
+                skip_reason=f"{solver_binary} not found",
+            )
+        output_dir = case_dir(self.runs_root, case.suite, lane, case.case_id)
+        started_at = time.perf_counter()
+        session_path = self._materialize_session_xml(output_dir, case, test_spec)
+        stdout_path = output_dir / "solver.stdout.log"
+        stderr_path = output_dir / "solver.stderr.log"
+        result = subprocess.run(
+            [solver_binary, session_path.name],
+            cwd=output_dir,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=600,
+        )
+        write_text(stdout_path, result.stdout)
+        write_text(stderr_path, result.stderr)
+        metrics: dict[str, Any] = parse_nektar_error_norms(result.stdout)
+        metrics["elapsed_seconds"] = time.perf_counter() - started_at
+        reference_path = self._write_nektar_reference_metrics(output_dir, test_spec)
+        validation_path = write_json(
+            output_dir / "validation.json",
+            {
+                "passed": result.returncode == 0,
+                "exit_code": result.returncode,
+                "metrics": metrics,
+                "reference_metrics": {
+                    key: {"value": value, "tolerance": tolerance}
+                    for key, (value, tolerance) in sorted(test_spec.reference_metrics.items())
+                },
+            },
+        )
+        evidence_path = write_json(
+            output_dir / "evidence.json",
+            {
+                "case_id": case.case_id,
+                "lane": lane,
+                "mode": "reference_xml_replay",
+                "solver_binary": solver_binary,
+                "session_xml": str(session_path),
+                "stdout": str(stdout_path),
+                "stderr": str(stderr_path),
+            },
+        )
+        evidence_files = [
+            *(extra_evidence_files or []),
+            str(session_path),
+            str(stdout_path),
+            str(stderr_path),
+            str(validation_path),
+            str(evidence_path),
+        ]
+        if reference_path is not None:
+            evidence_files.append(str(reference_path))
         return write_lane_outputs(
             runs_root=self.runs_root,
             case=case,
-            lane="agent",
-            status="skipped",
+            lane=lane,
+            status="passed" if result.returncode == 0 else "failed",
+            metrics=metrics,
+            evidence_files=evidence_files,
             attempt_log=attempt_log,
-            skip_reason="real Nektar agent replay requires a dedicated extension session mapping",
+            started_at=started_at,
         )
 
     def _write_preflight(self, case: BenchmarkCaseSpec) -> None:
@@ -379,10 +472,10 @@ class NektarBenchmarkRunner:
         self,
         output_dir: Path,
         test_spec: NektarTestSpec,
-    ) -> None:
+    ) -> Path | None:
         if not test_spec.reference_metrics:
-            return
-        write_json(
+            return None
+        return write_json(
             output_dir / "reference_metrics.json",
             {
                 key: {"value": value, "tolerance": tolerance}

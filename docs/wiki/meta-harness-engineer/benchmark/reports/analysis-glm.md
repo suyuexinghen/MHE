@@ -104,3 +104,16 @@
   2. 同时让 direct lane 调用真实 Claude CLI（不是 Fake provider），获取 LLM proposal 的真实质量数据
   3. 基于真实对比结果，决定是先优化 pipeline 自适应能力，还是先扩展 domain 覆盖
   4. 设计 LLM-in-the-loop 的 pipeline 原型，在 1-2 个 case 上验证 adaptive workflow 是否比固定 pipeline 有显著提升
+
+  六、按建议完成的第一轮实现状态
+
+  已落地的工程改进：
+  - `benchmark-run` 已拆分 `--allow-real-tools` 和 `--allow-real-claude`，可以分别测量真实 solver 执行与真实 Claude CLI proposal 质量。
+  - CLI 增加 `--repeat`，重复运行结果写入 `comparison/repeat_summary.json`，为 timing / stability / flaky 判断提供入口。
+  - Octave agent lane 增加 adaptive prototype：Claude proposal 可以参数化 extension inline script，validation 失败后可触发 bounded repair loop，并记录 `repair=True` / `llm_call=True` attempt。
+  - QCompute × ABACUS 的 `abacus-hs-bridge-pending` 仍保持 truthful skip，但新增 `bridge_status.json`，明确 parser/converter/promotion milestone。
+  - `/home/linden/.claude/skills/mhe-benchmark-iteration/` 已补充 real Claude/real solver gate、adaptive-agent protocol、repeat-run reporting、公平性检查和 backlog 模板。
+
+  仍不能声称的结论：
+  - 上述改动是 benchmark infrastructure 的实现，不等价于已经证明 MHE extension 在真实数值精度或 runtime 上优于 direct Claude Code。
+  - 真实数值结论仍需要安装对应 solver / simulator，使用 `--allow-real-tools`，并结合 `--allow-real-claude`、`--repeat N` 生成新的 comparison bundle 后再写报告。
