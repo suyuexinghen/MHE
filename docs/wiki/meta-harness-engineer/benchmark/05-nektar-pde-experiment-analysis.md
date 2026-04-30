@@ -89,11 +89,51 @@ Formal real-mode analysis should separately report:
 | Agent real-mode replay | Pending | Needs dedicated Nektar extension session mapping. |
 | Comparator bundle | Complete | CSV, Markdown, JSON bundle and manifest are generated. |
 
-## 5.8 Backlog
+## 5.8 Phase B real-solver evidence
 
-1. Execute native `Tester` or equivalent solver command for each case and record real preflight stdout/stderr.
-2. Implement Nektar extension replay for ADRSolver cases before expanding to DiffusionSolver, IncNavierStokesSolver, and CompressibleFlowSolver.
-3. Define agent proposal-to-`NektarSessionPlan` mapping and validation rules.
-4. Add repeated real runs and median timing / flaky flags.
-5. Add per-variable L2/Linf tables to the generated report.
-6. Keep `diffusion-2d` and `euler-1d` capability-gated until extension dispatch support is verified.
+A later Phase B run executed real Nektar tools for the extension lane only:
+
+- Run root: `.runs/nektar-real-solver-phase-b-20260430`
+- Compare bundle: `.runs/nektar-real-solver-phase-b-20260430/nektar-pde-benchmark/comparison/result_bundle.json`
+- Real tools: `true`
+- Real Claude proposals: `false`
+- Repeat count: `3`
+
+| Case | Lane | Passed / Runs | Median elapsed seconds | Flags |
+|---|---|---:|---:|---|
+| `advection-1d` | extension | 3 / 3 | 1.7995890200254507 | none |
+| `advdiff-2d` | extension | 3 / 3 | 2.657321578997653 | none |
+| `advdiff-imex-2d` | extension | 3 / 3 | 4.116794275003485 | none |
+
+This proves repeated real Nektar extension execution for the listed cases. It does not prove direct or agent lane superiority because `direct` and `agent` were not run; the comparator therefore reports `verdict="incomplete"` for each case.
+
+## 5.9 Phase C real-Claude smoke evidence
+
+A narrow Phase C smoke then executed `advection-1d` with real tools and real Claude proposals for `direct` and `agent` lanes:
+
+- Run root: `.runs/nektar-real-claude-phase-c-20260430`
+- Compare bundle: `.runs/nektar-real-claude-phase-c-20260430/nektar-pde-benchmark/comparison/result_bundle.json`
+- Repeat summary: `.runs/nektar-real-claude-phase-c-20260430/nektar-pde-benchmark/comparison/repeat_summary.json`
+- Real tools: `true`
+- Real Claude proposals: `true`
+- Repeat count: `3`
+
+| Case | Lane | Passed / Runs | Median elapsed seconds | LLM calls | Flags |
+|---|---|---:|---:|---:|---|
+| `advection-1d` | direct | 2 / 3 | 4.281351247482235 | 3 | `flaky_status` |
+| `advection-1d` | agent | 1 / 3 | 8.60528252000222 | 3 | `flaky_status` |
+
+The successful direct and agent repeats produced matching `l2_error_u=0.00960004` and `linf_error_u=0.0177832`. Failed repeats did not reach solver execution; their error was `Reached maximum number of turns (5)`, so they should be classified as real-Claude proposal/runtime failures rather than Nektar solver failures.
+
+This Phase C smoke is enough to prove the real-Claude lanes are wired to executable Nektar workflows for `advection-1d`, but it does not support a superiority claim. The immediate optimization target is reducing proposal turn-limit failures and recording proposal/preflight failure categories more explicitly.
+
+## 5.10 Backlog
+
+1. Tighten Nektar direct and agent prompts or Claude turn limits so Phase C proposal generation is stable.
+2. Classify `Reached maximum number of turns (5)` as a proposal/runtime failure category in lane summaries.
+3. Rerun Phase C `advection-1d` until repeated direct/agent status is stable enough for comparison.
+4. Execute native `Tester` or equivalent solver command for each additional case and record real preflight stdout/stderr.
+5. Implement or validate Nektar extension replay coverage before expanding to DiffusionSolver, IncNavierStokesSolver, and CompressibleFlowSolver.
+6. Define agent proposal-to-`NektarSessionPlan` mapping and validation rules.
+7. Add per-variable L2/Linf tables to the generated report.
+8. Keep `diffusion-2d` and `euler-1d` capability-gated until extension dispatch support is verified.

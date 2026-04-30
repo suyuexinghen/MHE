@@ -85,6 +85,105 @@
 
 对于显式 tiny dense reference fixture，validator 可计算 2×2 generalized eigenproblem 并比较 reference eigenvalues；这只证明 validation contract，不证明 production ABACUS H/S conversion。
 
+新增 `review_signoff.json` 用于表达 reviewer evidence 状态；默认 deterministic/ACP reviewer 仍必须阻断 promotion：
+
+```json
+{
+  "reviewer_backend": "deterministic_policy",
+  "decision": "block",
+  "claim_boundary_ok": true,
+  "reviewer_evidence_only": true,
+  "replaces_human_scientific_signoff": false,
+  "sentinel_must_remain_skipped": true,
+  "accepted_evidence": [
+    "bridge_status.json",
+    "bridge_validation.json"
+  ],
+  "missing_evidence": [
+    "administrator_approved_reference_fixture_missing",
+    "tolerance_table_missing",
+    "scientific_reviewer_signoff_missing",
+    "production_converter_missing",
+    "abacus_hs_to_fcidump_converter"
+  ]
+}
+```
+
+ACP-connected Claude Code 可在 JSON diagnostic 稳定通过后填充同一 schema；`reviewer_evidence_only=true` 与 `replaces_human_scientific_signoff=false` 是强制 claim boundary，表示它能补强 reviewer evidence，但不能替代 human/scientific sign-off 或管理员认可的真实 fixture。
+
+新增 `approval_manifest.json` 用于把管理员/科学负责人认可变成显式机器可读证据；默认缺失状态仍阻断 promotion：
+
+```json
+{
+  "status": "missing",
+  "approved_by": null,
+  "approval_role": null,
+  "fixture_refs": [],
+  "tolerance_table_ref": null,
+  "reference_observable": null,
+  "notes": [
+    "No abacus_hs_approval.json approval manifest was provided."
+  ]
+}
+```
+
+即使提供 `abacus_hs_approval.json`，也必须包含 `approved_by`、`approval_role`、`fixture_refs`、`tolerance_table_ref` 和 `reference_observable`；否则状态为 `invalid`。
+
+新增 `promotion_gate.json` 汇总 bridge status、validation、review signoff 与 approval manifest，作为 R4 是否可晋升的单一 gate；默认仍阻断：
+
+```json
+{
+  "status": "blocked",
+  "promotion_ready": false,
+  "required_artifacts": [
+    "bridge_status.json",
+    "bridge_validation.json",
+    "review_signoff.json",
+    "abacus_hs_approval.json",
+    "production_converter_evidence",
+    "real_mode_repeat_summary"
+  ],
+  "missing_evidence": [
+    "human_scientific_approval_manifest_missing",
+    "administrator_approved_reference_fixture_missing",
+    "tolerance_table_missing",
+    "scientific_reviewer_signoff_missing",
+    "production_converter_missing",
+    "abacus_hs_to_fcidump_converter",
+    "real_mode_repeat_summary_missing"
+  ],
+  "missing_evidence_by_category": {
+    "human_approval": [
+      "human_scientific_approval_manifest_missing"
+    ],
+    "scientific_validation": [
+      "administrator_approved_reference_fixture_missing",
+      "tolerance_table_missing",
+      "scientific_reviewer_signoff_missing"
+    ],
+    "production_converter": [
+      "production_converter_missing",
+      "abacus_hs_to_fcidump_converter"
+    ],
+    "real_repeat_evidence": [
+      "real_mode_repeat_summary_missing"
+    ]
+  },
+  "claim_boundary_ok": true,
+  "sentinel_must_remain_skipped": true
+}
+```
+
+因此，管理员认可 manifest 只是必要条件之一；没有 production converter evidence 和 real-mode repeat summary 时，仍不能晋升 sentinel，也不能声称真实 ABACUS × QCompute conversion 已可用。分类 gate 的责任边界如下：
+
+| blocker category | 可满足方 | ACP/Claude reviewer 能做什么 | CI/tests 能做什么 | claim boundary |
+|---|---|---|---|---|
+| `human_approval` | 授权管理员/科学负责人 | 只能检查 manifest schema 与缺失字段，不能批准 | 验证 `missing` / `invalid` / `approved` 状态解析 | human approval 是必要条件，不是充分条件 |
+| `scientific_validation` | 科学负责人/领域 reviewer | 可审查 evidence completeness 和 overclaim 风险 | 验证 tiny dense validator contract 和 blocker 输出 | validator contract 不等于 production scientific validation |
+| `production_converter` | converter 实现与代码/科学审查 | 可审查 conversion plan、claim boundary 和缺口 | 验证 converter evidence artifact 存在并通过真实 fixture 测试 | proxy/header conversion 不能冒充 production converter |
+| `real_repeat_evidence` | benchmark runner + 真实工具环境 | 可辅助报告 repeat evidence，但不能制造真实运行 | 验证 `repeat_summary.json` schema、非 dry-run 标记和稳定性字段 | repeated dry-run 不能证明真实数值稳定性 |
+
+
 新增 `convert_abacus_hs_header_to_pauli_proxy()` 可把 H matrix artifact 的 header/numeric sample 转成 QCompute `QubitHamiltonian` proxy：
 
 ```json
@@ -114,7 +213,7 @@ python -m pytest tests/test_benchmark_drivers_qcompute_abacus.py -q
 ruff check src/metaharness_ext/qcompute/abacus_bridge.py tests/test_benchmark_drivers_qcompute_abacus.py
 ```
 
-结果：`21 passed`，lint 通过，格式检查通过。
+结果：`43 passed`（focused CLI + QCompute ABACUS tests），lint 通过，格式检查通过。
 
 ## 5. 仍然不能声称的内容
 

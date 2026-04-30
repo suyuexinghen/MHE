@@ -93,6 +93,9 @@ Safe validation was executed without real external tools.
 | Authorized real-Claude permission smoke | Passed; command evidence records `--permission-mode bypassPermissions` when `--allow-real-claude` is set and no explicit permission mode is provided | `.runs/permission-bypass-smoke-20260430/` |
 | Authorized Octave real-Claude smoke | Executed without permission prompts; direct and agent lanes both classified `proposal_max_turns` at `--claude-max-turns 2` | `.runs/octave-real-claude-authorized-smoke-20260430/` |
 | ACP provider missing-server smoke | Wrote ACP evidence paths and failed safely because the isolated MHE environment lacks the Aeloon ACP SDK import path/dependencies | `.runs/acp-provider-missing-smoke-20260430/` |
+| ACP provider connected smoke | ACP transport connected through the Aeloon SDK root and recorded usage/session metadata, but the Claude ACP server returned empty `content` with `stop_reason = end_turn`; proposal generation is therefore blocked by empty ACP response content, not by MHE import/config wiring | `.runs/acp-provider-self-contained-smoke-20260430/` |
+| ACP JSON diagnostic + ABACUS reviewer schema | Implemented local JSON-only diagnostic classification and `review_signoff.json` schema for ABACUS bridge evidence; this makes ACP reviewer evidence auditable once ACP content is stable, while preserving the human/scientific sign-off blocker | `src/metaharness/benchmark_drivers/acp_provider.py`, `src/metaharness_ext/qcompute/abacus_bridge.py`, `review_signoff.json` |
+| Octave Phase B real-solver baseline | Passed; `sinc-values`, `roots-cubic`, and `expm-jordan-2x2` ran extension-only with `--allow-real-tools --repeat 3`; all 9 runs passed with real Octave 9.2.0 metrics, and timing flags were recorded where IQR/median was high | `.runs/octave-real-solver-phase-b-20260430/` |
 
 A first focused pytest attempt without `PYTHONPATH=src` exposed stale/import-path-sensitive failures around `metaharness_ext.qcompute.abacus_bridge`. Re-running with the repository source path selected the current local code and passed. Future local benchmark verification should use `PYTHONPATH=src` consistently, matching the documented CLI command pattern.
 
@@ -108,11 +111,15 @@ The 2026-04-30 repeat smoke validates repeat aggregation and report generation, 
 
 Therefore, these runs strengthen confidence in benchmark infrastructure but do not change the numerical non-claim boundary. The authorized real-Claude smoke additionally proves that the local benchmark configuration can run Claude CLI in `bypassPermissions` mode, but the observed `proposal_max_turns` outcome remains proposal-budget evidence rather than solver evidence.
 
+The Phase B Octave run changes the evidence boundary for the extension-only Octave baseline: it is now real solver evidence for three small native Octave cases, not a dry-run echo. It still does not compare against direct Claude or agent lanes, so the comparator verdict is intentionally `incomplete`. The useful facts are: all three cases passed over three real Octave runs, no dependency skips occurred, no LLM calls were made, and timing variability was flagged for `sinc-values` and `roots-cubic` because their median elapsed times are very small.
+
+The ACP connected smoke changes the ACP boundary: MHE can import the Aeloon SDK, launch/connect to `@agentclientprotocol/claude-agent-acp`, and record session/usage metadata. Real ACP proposal generation remains blocked because the server returns empty `content` with `stop_reason = end_turn`; this is an upstream ACP collector/server behavior to investigate before treating ACP as a usable benchmark brain provider. The new JSON diagnostic and ABACUS `review_signoff.json` schema separate transport/proposal health from reviewer evidence: ACP can help produce auditable review artifacts once stable, but it does not replace administrator-approved ABACUS fixtures or human scientific sign-off.
+
 ## 8.6 Manager-facing message
 
 A concise manager-facing summary is:
 
-> We now have a benchmark framework that can repeatedly compare extension, direct, and agent lanes with auditable evidence and failure taxonomy. The current data supports workflow-auditability claims, while real solver repeated runs remain the blocker for numerical accuracy, performance, robustness, or superiority claims.
+> We now have a benchmark framework that can repeatedly compare extension, direct, and agent lanes with auditable evidence and failure taxonomy. The Octave extension lane now has a small real-solver repeated baseline, while direct/agent superiority claims remain blocked until real Claude/agent proposal runs produce executable proposals and comparable solver outcomes.
 
 Avoid these unsupported shortcuts:
 
@@ -120,6 +127,8 @@ Avoid these unsupported shortcuts:
 - “Agent repair works generally.”
 - “Dry-run zero error proves solver correctness.”
 - “Real-Claude preflight failure proves solver failure.”
+- “ACP transport success proves ACP proposal generation works.”
+- “Extension-only real Octave baseline proves MHE beats direct Claude or agent workflows.”
 
 ## 8.7 Next report after real runs
 
