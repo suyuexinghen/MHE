@@ -286,7 +286,8 @@ QCompute 实现依赖增强后 MHE core 的特定 phase（参照 `MHE-core-enhan
 - R0 已进入代码与测试：bridge scaffold 会从 `INPUT` 所在目录和 `OUT.<suffix>` 目录发现本地 H/S matrix artifacts，并继续保持 `promotion_ready = false`、`failure_code = "converter_missing"`。
 - R1 已提升到 header-level parser contract：`matrix_metadata` 可记录 artifact bytes、line count、ABACUS CSR `Matrix Dimension` / `Matrix number` header、text matrix `rows` / `columns` header、matrix role、format family 和 validation blockers。
 - R2 已具备 QCompute `pauli_dict` proxy conversion contract：H matrix artifact 可显式转换为 `abacus_hs_header_proxy` / `diagonal_z_proxy` 的 `QubitHamiltonian`，用于 pipeline contract 测试；S matrix 和无可提取 numeric terms 的 artifact 仍返回 unsupported。
-- R3–R4 仍由 `readiness_gates` 阻断：缺少管理员认可 reference fixture、tolerance table、scientific reviewer sign-off 和 repeated real-mode evidence 前，sentinel 必须保持 skipped，且不能声称科学正确或真实生产级 ABACUS H/S conversion。
+- R3 已新增 evidence-only validator contract：`bridge_validation.json` 可对 tiny dense H/S reference fixture 做 2×2 generalized eigenproblem tolerance check；默认 sentinel 仍阻断并记录缺少管理员认可 fixture、tolerance table、scientific reviewer sign-off 和 production converter。
+- R4 仍由 `readiness_gates` 阻断：缺少 production converter、reviewer sign-off 和 repeated real-mode evidence 前，sentinel 必须保持 skipped，且不能声称科学正确或真实生产级 ABACUS H/S conversion。
 
 ---
 

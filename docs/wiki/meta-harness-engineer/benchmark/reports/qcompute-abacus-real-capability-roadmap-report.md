@@ -15,8 +15,8 @@
 | R0 artifact inventory | 已完成当前切片 | 从 `INPUT` 所在目录和 `OUT.<suffix>` 自动发现 `.csr` / `.txt` H/S artifact | 可声称 artifact 被发现并结构化记录 |
 | R1 parser contract | 已完成 header-level 切片 | CSR `Matrix Dimension` / `Matrix number` 与 text `rows` / `columns` header 可解析进 `matrix_metadata` | 可声称 header-level parser contract 可测试；不能声称完整矩阵语义解析 |
 | R2 conversion contract | 已完成 proxy 切片 | H matrix artifact 可转换为 QCompute `QubitHamiltonian` proxy，`source_format=abacus_hs_header_proxy`、`mapping_method=diagonal_z_proxy` | 可声称 QCompute pipeline contract proxy conversion；不能声称科学正确的 H/S→Hamiltonian conversion |
-| R3 scientific validation | 未开始/阻断中 | `readiness_gates` 要求 reference fixture、tolerance table、scientific reviewer sign-off | 不能声称科学数值正确性 |
-| R4 benchmark promotion | 阻断中 | `readiness_gates` 要求 real-mode executable bridge summary、comparison bundle、repeat-run stability | `abacus-hs-bridge-pending` 必须保持 capability skip |
+| R3 scientific validation | 已完成 validator contract 切片/真实验证仍阻断 | 新增 `bridge_validation.json`，可对 tiny dense H/S reference fixture 执行 generalized eigenproblem tolerance check；默认 sentinel 仍记录缺少管理员认可 fixture、tolerance table、reviewer sign-off、production converter | 只能声称 validation contract 可测试；不能声称真实 ABACUS H/S 科学验证已完成 |
+| R4 benchmark promotion | 阻断中 | `readiness_gates` 要求 real-mode executable bridge summary、comparison bundle、repeat-run stability；`bridge_validation.promotion_ready=false` | `abacus-hs-bridge-pending` 必须保持 capability skip |
 
 ## 3. 新增证据面
 
@@ -65,6 +65,26 @@
 }
 ```
 
+新增 `bridge_validation.json` 用于表达 R3 validator contract 状态；默认 sentinel 仍阻断：
+
+```json
+{
+  "status": "blocked",
+  "validation_kind": "small_dense_hs_eigenproblem",
+  "reference_validated": false,
+  "scientifically_validated": false,
+  "promotion_ready": false,
+  "blockers": [
+    "administrator_approved_reference_fixture_missing",
+    "tolerance_table_missing",
+    "scientific_reviewer_signoff_missing",
+    "production_converter_missing"
+  ]
+}
+```
+
+对于显式 tiny dense reference fixture，validator 可计算 2×2 generalized eigenproblem 并比较 reference eigenvalues；这只证明 validation contract，不证明 production ABACUS H/S conversion。
+
 新增 `convert_abacus_hs_header_to_pauli_proxy()` 可把 H matrix artifact 的 header/numeric sample 转成 QCompute `QubitHamiltonian` proxy：
 
 ```json
@@ -94,13 +114,13 @@ python -m pytest tests/test_benchmark_drivers_qcompute_abacus.py -q
 ruff check src/metaharness_ext/qcompute/abacus_bridge.py tests/test_benchmark_drivers_qcompute_abacus.py
 ```
 
-结果：`14 passed`，lint 通过。
+结果：`21 passed`，lint 通过，格式检查通过。
 
 ## 5. 仍然不能声称的内容
 
 - 不能声称 ABACUS H/S matrix 已被完整解析成科学可用矩阵。
-- 不能声称 ABACUS H/S matrix 已转换为 FCIDUMP 或 QCompute `pauli_dict`。
-- 不能声称 QCompute 已消费真实 ABACUS H/S Hamiltonian。
+- 不能声称 ABACUS H/S matrix 已科学正确地转换为 FCIDUMP 或 production QCompute `pauli_dict`。
+- 不能声称 QCompute 已消费科学验证过的真实 ABACUS H/S Hamiltonian；当前只有 proxy conversion contract。
 - 不能声称 real ABACUS × QCompute 数值准确性、性能优势或 quantum advantage。
 - 不能把 `abacus-hs-bridge-pending` 提升为 executable bridge case。
 
@@ -110,8 +130,8 @@ ruff check src/metaharness_ext/qcompute/abacus_bridge.py tests/test_benchmark_dr
 
 1. 一个可公开/可测试的 ABACUS H/S reference fixture；
 2. 对应 ABACUS reference energy、spectrum 或 operator-level reference；
-3. parser tolerance 与 conversion tolerance table；
+3. parser tolerance、conversion tolerance 与 validator tolerance table；
 4. scientific reviewer sign-off；
-5. real-mode repeated benchmark evidence。
+5. production converter evidence and real-mode repeated benchmark evidence。
 
 在这些条件满足前，MHE 的真实优势仍应表述为 workflow controllability、evidence completeness 和 overclaim prevention。

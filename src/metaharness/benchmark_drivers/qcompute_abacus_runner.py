@@ -21,7 +21,10 @@ from metaharness.benchmark_drivers.models import (
 from metaharness.benchmark_drivers.qcompute_abacus_cases import H2_FCIDUMP
 from metaharness.benchmark_drivers.runner_common import dry_run_summary, write_lane_outputs
 from metaharness.sdk.runtime import ComponentRuntime
-from metaharness_ext.qcompute.abacus_bridge import build_abacus_hs_bridge_status
+from metaharness_ext.qcompute.abacus_bridge import (
+    build_abacus_hs_bridge_status,
+    build_abacus_hs_bridge_validation,
+)
 from metaharness_ext.qcompute.config_compiler import QComputeConfigCompilerComponent
 from metaharness_ext.qcompute.contracts import (
     QComputeBackendSpec,
@@ -438,6 +441,7 @@ class QComputeAbacusBenchmarkRunner:
             source_reference=case.source_reference,
             reason=reason,
         )
+        bridge_validation = build_abacus_hs_bridge_validation(case.source_reference)
         source_refs_path = write_json(
             output_dir / "source_refs.json",
             {
@@ -446,9 +450,13 @@ class QComputeAbacusBenchmarkRunner:
                 "status": "unsupported_source_format",
                 "reason": reason,
                 "bridge_status": bridge_status.model_dump(mode="json"),
+                "bridge_validation": bridge_validation.model_dump(mode="json"),
             },
         )
         bridge_status_path = write_json(output_dir / "bridge_status.json", bridge_status)
+        bridge_validation_path = write_json(
+            output_dir / "bridge_validation.json", bridge_validation
+        )
         return write_lane_outputs(
             runs_root=self.runs_root,
             case=case,
@@ -459,6 +467,7 @@ class QComputeAbacusBenchmarkRunner:
                 *(evidence_files or []),
                 str(source_refs_path),
                 str(bridge_status_path),
+                str(bridge_validation_path),
             ],
             attempt_log=attempt_log,
             skip_reason="unsupported_source_format: ABACUS H/S-to-FCIDUMP bridge is not implemented",

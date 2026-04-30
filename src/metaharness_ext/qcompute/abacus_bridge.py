@@ -68,6 +68,28 @@ class AbacusHSConversionResult(BaseModel):
     unsupported_reason: str | None = None
 
 
+class AbacusHSEigenproblemValidation(BaseModel):
+    status: Literal["blocked", "reference_passed", "reference_failed"] = "blocked"
+    validation_kind: str = "small_dense_hs_eigenproblem"
+    source_ref: str | None = None
+    reference_fixture: bool = False
+    reference_validated: bool = False
+    scientifically_validated: bool = False
+    promotion_ready: bool = False
+    matrix_dimension: int | None = None
+    eigenvalues: list[float] = Field(default_factory=list)
+    reference_eigenvalues: list[float] = Field(default_factory=list)
+    tolerance: float | None = None
+    max_eigenvalue_error: float | None = None
+    residual_norms: list[float] = Field(default_factory=list)
+    max_residual_norm: float | None = None
+    blockers: list[str] = Field(default_factory=list)
+    claim_boundary: str = (
+        "Small dense H/S reference validation tests the validator contract only; "
+        "it does not validate production ABACUS H/S conversion or quantum advantage."
+    )
+
+
 class AbacusHSConversionPlan(BaseModel):
     source_format: str = "abacus_hs_matrix"
     target_format: Literal["fcidump", "qcompute_pauli_dict"] = "qcompute_pauli_dict"
@@ -87,7 +109,9 @@ class AbacusHSConversionPlan(BaseModel):
             "reference energy or spectrum comparison recorded",
         ]
     )
-    unsupported_reason: str = "Only validated proxy conversion is implemented; scientific conversion is blocked."
+    unsupported_reason: str = (
+        "Only validated proxy conversion is implemented; scientific conversion is blocked."
+    )
 
 
 class AbacusHSBridgeStatus(BaseModel):
@@ -234,6 +258,67 @@ def convert_toy_abacus_hs_fixture_to_fcidump(text: str) -> AbacusHSConversionRes
 
 def parse_abacus_input_refs(source_refs: list[str]) -> list[dict[str, Any]]:
     return [parse_abacus_input_ref(source_ref) for source_ref in source_refs]
+
+
+def validate_abacus_hs_small_dense_eigenproblem(source_ref: str) -> AbacusHSEigenproblemValidation:
+    path = Path(source_ref)
+    if not path.exists():
+        return AbacusHSEigenproblemValidation(
+            source_ref=source_ref,
+            blockers=["reference_fixture_missing"],
+        )
+    try:
+        fixture = _parse_small_dense_hs_reference_fixture(path.read_text())
+        eigenvalues, residual_norms = _solve_two_by_two_generalized_eigenproblem(
+            fixture["h_matrix"], fixture["s_matrix"]
+        )
+    except ValueError as exc:
+        return AbacusHSEigenproblemValidation(
+            source_ref=source_ref,
+            blockers=[str(exc), "scientific_reviewer_signoff_missing"],
+        )
+    reference = fixture["reference_eigenvalues"]
+    tolerance = fixture["tolerance"]
+    errors = [abs(value - expected) for value, expected in zip(eigenvalues, reference, strict=True)]
+    max_error = max(errors) if errors else None
+    max_residual = max(residual_norms) if residual_norms else None
+    passed = max_error is not None and max_error <= tolerance
+    blockers = ["scientific_reviewer_signoff_missing", "production_converter_missing"]
+    if not passed:
+        blockers.insert(0, "reference_eigenvalue_tolerance_failed")
+    return AbacusHSEigenproblemValidation(
+        status="reference_passed" if passed else "reference_failed",
+        source_ref=source_ref,
+        reference_fixture=True,
+        reference_validated=passed,
+        scientifically_validated=False,
+        promotion_ready=False,
+        matrix_dimension=2,
+        eigenvalues=eigenvalues,
+        reference_eigenvalues=reference,
+        tolerance=tolerance,
+        max_eigenvalue_error=max_error,
+        residual_norms=residual_norms,
+        max_residual_norm=max_residual,
+        blockers=blockers,
+    )
+
+
+def build_abacus_hs_bridge_validation(
+    source_reference: str | dict[str, Any],
+) -> AbacusHSEigenproblemValidation:
+    for source_ref in _source_refs(source_reference):
+        path = Path(source_ref)
+        if path.exists() and path.name.endswith(".hsref"):
+            return validate_abacus_hs_small_dense_eigenproblem(source_ref)
+    return AbacusHSEigenproblemValidation(
+        blockers=[
+            "administrator_approved_reference_fixture_missing",
+            "tolerance_table_missing",
+            "scientific_reviewer_signoff_missing",
+            "production_converter_missing",
+        ]
+    )
 
 
 def convert_abacus_hs_header_to_pauli_proxy(source_ref: str) -> AbacusHSConversionResult:
@@ -419,6 +504,113 @@ def _parse_diagonal_proxy_terms(path: Path, metadata: dict[str, Any]) -> list[fl
     if metadata.get("format_family") == "abacus_text_matrix":
         return _parse_text_matrix_row_starts(lines)
     return _parse_sparse_matrix_block_values(lines)
+
+
+def _parse_small_dense_hs_reference_fixture(text: str) -> dict[str, Any]:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines or lines[0] != "ABACUS_HS_DENSE_REFERENCE":
+        raise ValueError("unsupported_reference_fixture_format")
+    tolerance = _reference_float(lines, "tolerance")
+    reference_eigenvalues = _reference_float_list(lines, "reference_eigenvalues")
+    h_matrix = _reference_matrix(lines, "h_matrix", 2)
+    s_matrix = _reference_matrix(lines, "s_matrix", 2)
+    if len(reference_eigenvalues) != 2:
+        raise ValueError("reference_eigenvalue_count_mismatch")
+    _ensure_symmetric_matrix(h_matrix, "h_matrix")
+    _ensure_symmetric_matrix(s_matrix, "s_matrix")
+    return {
+        "h_matrix": h_matrix,
+        "s_matrix": s_matrix,
+        "reference_eigenvalues": sorted(reference_eigenvalues),
+        "tolerance": tolerance,
+    }
+
+
+def _solve_two_by_two_generalized_eigenproblem(
+    h_matrix: list[list[float]], s_matrix: list[list[float]]
+) -> tuple[list[float], list[float]]:
+    s00, s01 = s_matrix[0]
+    s10, s11 = s_matrix[1]
+    det_s = s00 * s11 - s01 * s10
+    if det_s <= 0.0 or s00 <= 0.0:
+        raise ValueError("overlap_matrix_not_positive_definite")
+    h00, h01 = h_matrix[0]
+    h10, h11 = h_matrix[1]
+    a = s00 * s11 - s01 * s10
+    b = -(h00 * s11 + h11 * s00 - h01 * s10 - h10 * s01)
+    c = h00 * h11 - h01 * h10
+    discriminant = b * b - 4.0 * a * c
+    if discriminant < 0.0:
+        raise ValueError("generalized_eigenproblem_has_complex_roots")
+    root = math.sqrt(discriminant)
+    eigenvalues = sorted([(-b - root) / (2.0 * a), (-b + root) / (2.0 * a)])
+    residual_norms = [
+        _two_by_two_generalized_residual(h_matrix, s_matrix, value) for value in eigenvalues
+    ]
+    return eigenvalues, residual_norms
+
+
+def _two_by_two_generalized_residual(
+    h_matrix: list[list[float]], s_matrix: list[list[float]], eigenvalue: float
+) -> float:
+    shifted = [
+        [
+            h_matrix[0][0] - eigenvalue * s_matrix[0][0],
+            h_matrix[0][1] - eigenvalue * s_matrix[0][1],
+        ],
+        [
+            h_matrix[1][0] - eigenvalue * s_matrix[1][0],
+            h_matrix[1][1] - eigenvalue * s_matrix[1][1],
+        ],
+    ]
+    if abs(shifted[0][0]) + abs(shifted[0][1]) >= abs(shifted[1][0]) + abs(shifted[1][1]):
+        vector = [-shifted[0][1], shifted[0][0]]
+    else:
+        vector = [-shifted[1][1], shifted[1][0]]
+    norm = math.sqrt(vector[0] * vector[0] + vector[1] * vector[1])
+    if norm == 0.0:
+        vector = [1.0, 0.0]
+    else:
+        vector = [vector[0] / norm, vector[1] / norm]
+    residual = [
+        shifted[0][0] * vector[0] + shifted[0][1] * vector[1],
+        shifted[1][0] * vector[0] + shifted[1][1] * vector[1],
+    ]
+    return math.sqrt(residual[0] * residual[0] + residual[1] * residual[1])
+
+
+def _reference_matrix(lines: list[str], section: str, size: int) -> list[list[float]]:
+    try:
+        start = lines.index(section) + 1
+    except ValueError as exc:
+        raise ValueError(f"missing_{section}") from exc
+    matrix = [[float(value) for value in line.split()] for line in lines[start : start + size]]
+    if len(matrix) != size or any(len(row) != size for row in matrix):
+        raise ValueError(f"{section}_shape_mismatch")
+    return matrix
+
+
+def _reference_float(lines: list[str], key: str) -> float:
+    prefix = f"{key} "
+    for line in lines:
+        if line.startswith(prefix):
+            return float(line.split()[1])
+    raise ValueError(f"missing_{key}")
+
+
+def _reference_float_list(lines: list[str], key: str) -> list[float]:
+    prefix = f"{key} "
+    for line in lines:
+        if line.startswith(prefix):
+            return sorted(float(value) for value in line.split()[1:])
+    raise ValueError(f"missing_{key}")
+
+
+def _ensure_symmetric_matrix(matrix: list[list[float]], section: str) -> None:
+    for row_index, row in enumerate(matrix):
+        for column_index, value in enumerate(row):
+            if abs(value - matrix[column_index][row_index]) > 1e-12:
+                raise ValueError(f"{section}_not_symmetric")
 
 
 def _parse_text_matrix_row_starts(lines: list[str]) -> list[float]:

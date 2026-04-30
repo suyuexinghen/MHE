@@ -8,12 +8,14 @@ from metaharness.benchmark_drivers.qcompute_abacus_cases import get_qcompute_aba
 from metaharness.benchmark_drivers.qcompute_abacus_runner import QComputeAbacusBenchmarkRunner
 from metaharness_ext.qcompute.abacus_bridge import (
     build_abacus_hs_bridge_status,
+    build_abacus_hs_bridge_validation,
     build_abacus_hs_conversion_plan,
     convert_abacus_hs_header_to_pauli_proxy,
     convert_toy_abacus_hs_fixture_to_fcidump,
     discover_abacus_hs_matrix_refs,
     parse_abacus_hs_matrix_ref,
     parse_abacus_input_ref,
+    validate_abacus_hs_small_dense_eigenproblem,
 )
 
 
@@ -130,12 +132,7 @@ def test_abacus_hs_real_csr_header_parser_records_dimension_and_number(tmp_path:
 
 def test_abacus_hs_text_header_parser_records_rows_and_columns(tmp_path: Path) -> None:
     hs_path = tmp_path / "hk_nao.txt.ref"
-    hs_path.write_text(
-        "# rows 26\n"
-        "# columns 26\n"
-        "Row 1\n"
-        " -6.56277e-01 -5.05476e-03\n"
-    )
+    hs_path.write_text("# rows 26\n# columns 26\nRow 1\n -6.56277e-01 -5.05476e-03\n")
 
     metadata = parse_abacus_hs_matrix_ref(str(hs_path))
 
@@ -148,10 +145,7 @@ def test_abacus_hs_text_header_parser_records_rows_and_columns(tmp_path: Path) -
 def test_abacus_hs_header_proxy_converts_h_matrix_to_qubit_hamiltonian(tmp_path: Path) -> None:
     hs_path = tmp_path / "data-HR-sparse_SPIN0.csr"
     hs_path.write_text(
-        "Matrix Dimension of H(R): 4\n"
-        "Matrix number of H(R): 4\n"
-        "0 0 0 4\n"
-        " -1.0 0.25 0.5 -0.125\n"
+        "Matrix Dimension of H(R): 4\nMatrix number of H(R): 4\n0 0 0 4\n -1.0 0.25 0.5 -0.125\n"
     )
 
     result = convert_abacus_hs_header_to_pauli_proxy(str(hs_path))
@@ -171,7 +165,76 @@ def test_abacus_hs_header_proxy_rejects_overlap_matrix(tmp_path: Path) -> None:
     result = convert_abacus_hs_header_to_pauli_proxy(str(hs_path))
 
     assert result.status == "unsupported"
-    assert result.unsupported_reason == "Only H matrix artifacts can be converted into a Hamiltonian proxy."
+    assert (
+        result.unsupported_reason
+        == "Only H matrix artifacts can be converted into a Hamiltonian proxy."
+    )
+
+
+def test_abacus_hs_small_dense_reference_validation_passes_toy_eigenproblem(
+    tmp_path: Path,
+) -> None:
+    fixture_path = tmp_path / "validated.hsref"
+    fixture_path.write_text(
+        "ABACUS_HS_DENSE_REFERENCE\n"
+        "tolerance 1e-12\n"
+        "reference_eigenvalues 1.0 2.0\n"
+        "h_matrix\n"
+        "1.0 0.0\n"
+        "0.0 2.0\n"
+        "s_matrix\n"
+        "1.0 0.0\n"
+        "0.0 1.0\n"
+    )
+
+    result = validate_abacus_hs_small_dense_eigenproblem(str(fixture_path))
+
+    assert result.status == "reference_passed"
+    assert result.reference_validated is True
+    assert result.scientifically_validated is False
+    assert result.promotion_ready is False
+    assert result.eigenvalues == [1.0, 2.0]
+    assert result.max_eigenvalue_error == 0.0
+    assert "production_converter_missing" in result.blockers
+
+
+def test_abacus_hs_small_dense_reference_validation_fails_tolerance(
+    tmp_path: Path,
+) -> None:
+    fixture_path = tmp_path / "invalid.hsref"
+    fixture_path.write_text(
+        "ABACUS_HS_DENSE_REFERENCE\n"
+        "tolerance 1e-12\n"
+        "reference_eigenvalues 1.0 3.0\n"
+        "h_matrix\n"
+        "1.0 0.0\n"
+        "0.0 2.0\n"
+        "s_matrix\n"
+        "1.0 0.0\n"
+        "0.0 1.0\n"
+    )
+
+    result = validate_abacus_hs_small_dense_eigenproblem(str(fixture_path))
+
+    assert result.status == "reference_failed"
+    assert result.reference_validated is False
+    assert result.scientifically_validated is False
+    assert result.max_eigenvalue_error == 1.0
+    assert result.blockers[0] == "reference_eigenvalue_tolerance_failed"
+
+
+def test_abacus_hs_bridge_validation_blocks_without_reference_fixture() -> None:
+    result = build_abacus_hs_bridge_validation({"abacus_hs_source_refs": []})
+
+    assert result.status == "blocked"
+    assert result.scientifically_validated is False
+    assert result.promotion_ready is False
+    assert result.blockers == [
+        "administrator_approved_reference_fixture_missing",
+        "tolerance_table_missing",
+        "scientific_reviewer_signoff_missing",
+        "production_converter_missing",
+    ]
 
 
 def test_abacus_hs_matrix_discovery_uses_input_suffix_out_dir(tmp_path: Path) -> None:
@@ -275,6 +338,10 @@ def test_qcompute_abacus_bridge_case_is_explicitly_skipped(tmp_path: Path) -> No
     assert bridge_status["missing_capabilities"] == ["abacus_hs_to_fcidump_converter"]
     assert bridge_status["failure_code"] == "converter_missing"
     assert "matrix_metadata" in bridge_status
+    bridge_validation = json.loads((output_dir / "bridge_validation.json").read_text())
+    assert bridge_validation["status"] == "blocked"
+    assert "production_converter_missing" in bridge_validation["blockers"]
+    assert bridge_validation["promotion_ready"] is False
     assert bridge_status["readiness_gates"][0]["stage"] == "R1_parser"
     assert bridge_status["readiness_gates"][1]["status"] == "metadata_only"
     assert bridge_status["conversion_plan"]["status"] == "ready"
