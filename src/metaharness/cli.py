@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from metaharness import __version__
+from metaharness.benchmark_drivers.acp_provider import ACPBrainConfig, ACPBrainProvider
 from metaharness.benchmark_drivers.claude_cli import ClaudeCLIBrainProvider, ClaudeCLIConfig
 from metaharness.benchmark_drivers.compare import write_comparison_outputs
 from metaharness.benchmark_drivers.io import specs_dir, write_json
@@ -153,6 +154,50 @@ def _timing_stats(values: list[float]) -> dict[str, float | None]:
     }
 
 
+def _real_claude_permission_mode(*, allow_real_claude: bool, requested_mode: str | None) -> str:
+    if requested_mode:
+        return requested_mode
+    return "bypassPermissions" if allow_real_claude else "auto"
+
+
+def _parse_env_pairs(values: list[str]) -> dict[str, str]:
+    env: dict[str, str] = {}
+    for value in values:
+        key, separator, raw = value.partition("=")
+        if separator and key:
+            env[key] = raw
+    return env
+
+
+def _benchmark_brain_provider(args: argparse.Namespace, *, use_real_claude: bool) -> Any | None:
+    if not use_real_claude:
+        return None
+    if args.brain_provider == "acp":
+        return ACPBrainProvider(
+            ACPBrainConfig(
+                command=args.acp_command,
+                cwd=args.acp_cwd,
+                env=_parse_env_pairs(args.acp_env),
+                session_key=args.acp_session_key,
+                timeout_seconds=args.acp_timeout_seconds,
+                sdk_root=Path(args.acp_sdk_root) if args.acp_sdk_root else None,
+            )
+        )
+    claude_permission_mode = _real_claude_permission_mode(
+        allow_real_claude=use_real_claude,
+        requested_mode=args.claude_permission_mode,
+    )
+    return ClaudeCLIBrainProvider(
+        ClaudeCLIConfig(
+            binary=args.claude_binary,
+            model=args.claude_model,
+            max_turns=args.claude_max_turns,
+            permission_mode=claude_permission_mode,
+            extra_args=args.claude_extra_arg,
+        )
+    )
+
+
 def _aggregate_repeated_summaries(summaries: list[Any]) -> dict[str, object]:
     groups: dict[tuple[str, str], list[Any]] = {}
     for summary in summaries:
@@ -224,19 +269,7 @@ def _cmd_benchmark_run(args: argparse.Namespace) -> int:
     runs_root = Path(args.runs_root)
     repeat_count = max(1, int(args.repeat))
     use_real_claude = bool(args.allow_real_claude)
-    brain_provider = (
-        ClaudeCLIBrainProvider(
-            ClaudeCLIConfig(
-                binary=args.claude_binary,
-                model=args.claude_model,
-                max_turns=args.claude_max_turns,
-                permission_mode=args.claude_permission_mode,
-                extra_args=args.claude_extra_arg,
-            )
-        )
-        if use_real_claude
-        else None
-    )
+    brain_provider = _benchmark_brain_provider(args, use_real_claude=use_real_claude)
     try:
         if suite == "octave-native":
             cases = get_octave_cases(case_ids)
@@ -298,10 +331,14 @@ def _cmd_benchmark_compare(args: argparse.Namespace) -> int:
     rows = write_comparison_outputs(
         runs_root=Path(args.runs_root),
         suite=args.suite,
+        brain_provider=args.brain_provider,
         claude_binary=args.claude_binary,
         claude_model=args.claude_model,
         claude_max_turns=args.claude_max_turns,
-        claude_permission_mode=args.claude_permission_mode,
+        claude_permission_mode=_real_claude_permission_mode(
+            allow_real_claude=args.allow_real_claude,
+            requested_mode=args.claude_permission_mode,
+        ),
         claude_extra_args=args.claude_extra_arg,
         real_claude=args.allow_real_claude,
         real_tools=args.allow_real_tools,
@@ -361,11 +398,26 @@ def build_parser() -> argparse.ArgumentParser:
     benchmark_run.add_argument("--lanes", default="extension,direct,agent")
     benchmark_run.add_argument("--cases", default="")
     benchmark_run.add_argument("--runs-root", default=".runs")
+    benchmark_run.add_argument(
+        "--brain-provider", choices=["claude-cli", "acp"], default="claude-cli"
+    )
     benchmark_run.add_argument("--claude-binary", default="claude")
     benchmark_run.add_argument("--claude-model", default=None)
     benchmark_run.add_argument("--claude-max-turns", type=int, default=5)
-    benchmark_run.add_argument("--claude-permission-mode", default="auto")
+    benchmark_run.add_argument("--claude-permission-mode", default=None)
     benchmark_run.add_argument("--claude-extra-arg", action="append", default=[])
+    benchmark_run.add_argument(
+        "--acp-command",
+        nargs="+",
+        default=["npx", "@agentclientprotocol/claude-agent-acp"],
+    )
+    benchmark_run.add_argument("--acp-cwd", default=".")
+    benchmark_run.add_argument(
+        "--acp-env", action="append", default=["ACP_PERMISSION_MODE=acceptEdits"]
+    )
+    benchmark_run.add_argument("--acp-session-key", default="mhe-benchmark")
+    benchmark_run.add_argument("--acp-timeout-seconds", type=float, default=300.0)
+    benchmark_run.add_argument("--acp-sdk-root", default=None)
     benchmark_run.add_argument("--allow-real-tools", action="store_true")
     benchmark_run.add_argument("--allow-real-claude", action="store_true")
     benchmark_run.add_argument("--repeat", type=int, default=1)
@@ -380,10 +432,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--suite", choices=["octave-native", "nektar-pde", "qcompute-abacus"], required=True
     )
     benchmark_compare.add_argument("--runs-root", default=".runs")
+    benchmark_compare.add_argument(
+        "--brain-provider", choices=["claude-cli", "acp"], default="claude-cli"
+    )
     benchmark_compare.add_argument("--claude-binary", default="claude")
     benchmark_compare.add_argument("--claude-model", default=None)
     benchmark_compare.add_argument("--claude-max-turns", type=int, default=5)
-    benchmark_compare.add_argument("--claude-permission-mode", default="auto")
+    benchmark_compare.add_argument("--claude-permission-mode", default=None)
     benchmark_compare.add_argument("--claude-extra-arg", action="append", default=[])
     benchmark_compare.add_argument("--allow-real-tools", action="store_true")
     benchmark_compare.add_argument("--allow-real-claude", action="store_true")

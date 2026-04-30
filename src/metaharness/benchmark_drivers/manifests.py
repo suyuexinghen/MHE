@@ -54,6 +54,7 @@ def build_run_manifest(
     lanes: list[BenchmarkLane],
     cases: list[str],
     runs_root: Path,
+    brain_provider: str = "claude-cli",
     claude_binary: str = "claude",
     claude_model: str | None = None,
     claude_max_turns: int = 5,
@@ -73,6 +74,7 @@ def build_run_manifest(
         git_revision=_git_revision(root),
         python_version=platform.python_version(),
         claude_cli={
+            "brain_provider": brain_provider,
             "binary": claude_binary,
             "version": _version(claude_binary),
             "model": claude_model,

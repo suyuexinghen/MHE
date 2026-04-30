@@ -3,6 +3,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from metaharness.benchmark_drivers.acp_provider import ACPBrainConfig, ACPBrainProvider
 from metaharness.benchmark_drivers.claude_cli import ClaudeCLIBrainProvider, ClaudeCLIConfig
 from metaharness.benchmark_drivers.compare import write_comparison_outputs
 from metaharness.benchmark_drivers.io import case_dir, write_json
@@ -73,6 +74,39 @@ def test_claude_cli_provider_reports_stdout_error_payload(tmp_path: Path) -> Non
     assert result.result["is_error"] is True
     assert (tmp_path / "claude_result.json").exists()
     assert not (tmp_path / "proposal.json").exists()
+
+
+def test_acp_provider_extracts_json_proposal(tmp_path: Path) -> None:
+    class StubACPProvider(ACPBrainProvider):
+        async def _run_acp_prompt(self, prompt: str) -> dict[str, object]:
+            return {
+                "transport": "acp",
+                "content": '{"proposal": {"script": "solve.m"}}',
+                "usage": {},
+                "execution_meta": {"acp_session_id": "session-1"},
+            }
+
+    provider = StubACPProvider(ACPBrainConfig(command=["agent-acp"], session_key="case-1"))
+
+    result = provider.propose(prompt="hello", output_dir=tmp_path)
+
+    assert result.error is None
+    assert result.proposal == {"script": "solve.m"}
+    assert result.invocation.command == ["agent-acp"]
+    assert (tmp_path / "acp_command.json").exists()
+    assert (tmp_path / "proposal.json").exists()
+
+
+def test_acp_provider_reports_missing_json_proposal(tmp_path: Path) -> None:
+    class StubACPProvider(ACPBrainProvider):
+        async def _run_acp_prompt(self, prompt: str) -> dict[str, object]:
+            return {"transport": "acp", "content": "not json", "usage": {}, "execution_meta": {}}
+
+    result = StubACPProvider().propose(prompt="hello", output_dir=tmp_path)
+
+    assert result.error == "ACP response did not contain a JSON proposal"
+    assert result.proposal == {}
+    assert (tmp_path / "acp_result.json").exists()
 
 
 def test_claude_cli_provider_writes_command_evidence(tmp_path: Path) -> None:

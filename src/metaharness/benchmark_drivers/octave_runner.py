@@ -86,7 +86,7 @@ class OctaveBenchmarkRunner:
 
     def run_direct(self, case: BenchmarkCaseSpec) -> LaneSummary:
         output_dir = case_dir(self.runs_root, case.suite, "direct", case.case_id)
-        prompt = f"Generate a standalone Octave solve.m for benchmark case {case.case_id}."
+        prompt = self._octave_proposal_prompt(case, "direct")
         claude_result = self.brain_provider.propose(prompt=prompt, output_dir=output_dir)
         attempt_log = self._claude_attempt_log(claude_result.error, "direct")
         preflight = self._write_proposal_preflight(output_dir, case, "direct", claude_result)
@@ -166,7 +166,7 @@ class OctaveBenchmarkRunner:
 
     def run_agent(self, case: BenchmarkCaseSpec) -> LaneSummary:
         output_dir = case_dir(self.runs_root, case.suite, "agent", case.case_id)
-        prompt = f"Generate an Octave benchmark proposal for case {case.case_id}."
+        prompt = self._octave_proposal_prompt(case, "agent")
         claude_result = self.brain_provider.propose(prompt=prompt, output_dir=output_dir)
         attempt_log = self._claude_attempt_log(claude_result.error, "agent")
         preflight = self._write_proposal_preflight(output_dir, case, "agent", claude_result)
@@ -554,6 +554,18 @@ class OctaveBenchmarkRunner:
             preflight_status=preflight["preflight_status"],
             failure_category=None if result.returncode == 0 else "execution_failed",
             started_at=started_at,
+        )
+
+    def _octave_proposal_prompt(self, case: BenchmarkCaseSpec, lane: BenchmarkLane) -> str:
+        reference_script = build_octave_case_script(case)
+        return (
+            "Return only a JSON object, with no markdown and no tool calls. "
+            f"Generate an Octave proposal for benchmark case {case.case_id} in lane {lane}. "
+            "The JSON object must include a solve_m field containing a complete standalone "
+            "Octave script. The script must compute the required metrics and write metrics.json. "
+            f"Required metrics: {', '.join(case.expected_metrics)}. "
+            "Use this self-contained reference body instead of reading repository files:\n"
+            f"{reference_script}"
         )
 
     def _preflight_failure_summary(

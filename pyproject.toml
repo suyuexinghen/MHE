@@ -16,6 +16,9 @@ dev = [
 k8s = [
     "kubernetes>=34.1.0,<35.0.0",
 ]
+acp = [
+    "agent-client-protocol>=0.7.0,<1.0.0",
+]
 
 [project.scripts]
 metaharness = "metaharness.cli:main"

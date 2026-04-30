@@ -47,8 +47,6 @@ def test_benchmark_run_cli_allows_real_claude_without_real_tools(tmp_path: Path)
             "missing-claude-for-test",
             "--claude-max-turns",
             "2",
-            "--claude-permission-mode",
-            "auto",
             "--claude-extra-arg",
             "--test-extra",
         ]
@@ -60,7 +58,7 @@ def test_benchmark_run_cli_allows_real_claude_without_real_tools(tmp_path: Path)
     )
     command = json.loads(command_path.read_text())
     assert command["max_turns"] == 2
-    assert command["permission_mode"] == "auto"
+    assert command["permission_mode"] == "bypassPermissions"
     assert command["extra_args"] == ["--test-extra"]
     summary = json.loads(
         (
@@ -71,6 +69,73 @@ def test_benchmark_run_cli_allows_real_claude_without_real_tools(tmp_path: Path)
     assert not (
         tmp_path / "octave-native-benchmark" / "direct" / "sinc-values" / "solve.m"
     ).exists()
+
+
+def test_benchmark_run_cli_can_select_acp_provider(tmp_path: Path) -> None:
+    status = main(
+        [
+            "benchmark-run",
+            "--suite",
+            "octave-native",
+            "--lanes",
+            "direct",
+            "--cases",
+            "sinc-values",
+            "--runs-root",
+            str(tmp_path),
+            "--allow-real-claude",
+            "--brain-provider",
+            "acp",
+            "--acp-command",
+            "missing-acp-for-test",
+            "--acp-session-key",
+            "test-session",
+        ]
+    )
+
+    assert status == 0
+    case_dir = tmp_path / "octave-native-benchmark" / "direct" / "sinc-values"
+    command = json.loads((case_dir / "acp_command.json").read_text())
+    prompt = (case_dir / "acp_prompt.txt").read_text()
+    assert command["command"] == ["missing-acp-for-test"]
+    assert command["session_key"] == "test-session"
+    assert "Return only a JSON object" in prompt
+    assert "solve_m" in prompt
+    summary = json.loads(
+        (
+            tmp_path / "octave-native-benchmark" / "direct" / "sinc-values" / "summary.json"
+        ).read_text()
+    )
+    assert summary["status"] == "failed"
+
+
+def test_benchmark_run_cli_preserves_explicit_claude_permission_mode(tmp_path: Path) -> None:
+    status = main(
+        [
+            "benchmark-run",
+            "--suite",
+            "octave-native",
+            "--lanes",
+            "direct",
+            "--cases",
+            "sinc-values",
+            "--runs-root",
+            str(tmp_path),
+            "--allow-real-claude",
+            "--claude-binary",
+            "missing-claude-for-test",
+            "--claude-permission-mode",
+            "auto",
+        ]
+    )
+
+    assert status == 0
+    command = json.loads(
+        (
+            tmp_path / "octave-native-benchmark" / "direct" / "sinc-values" / "claude_command.json"
+        ).read_text()
+    )
+    assert command["permission_mode"] == "auto"
 
 
 def test_benchmark_run_cli_real_tools_do_not_imply_real_claude(

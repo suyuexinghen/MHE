@@ -16,6 +16,7 @@
 | [06-Nektar PDE Benchmark 实验分析报告](05-nektar-pde-experiment-analysis.md) | 汇总 Nektar PDE dry-run benchmark 结果、preflight、capability skip、限制与 real-run backlog | MHE / Nektar 维护者 |
 | [07-QCompute × ABACUS Hamiltonian Proxy 实验分析报告](07-qcompute-abacus-experiment-analysis.md) | 汇总 qcompute-abacus dry-run benchmark 结果、H2 proxy、H/S bridge sentinel 与 real-run backlog | MHE / QCompute / ABACUS 维护者 |
 | [08-Benchmark Roadmap Completion Status](06-benchmark-roadmap-completion-status.md) | 对照 `01` / `02` / `03` roadmap 的实现状态、产物路径、acceptance criteria 和后续 real-run 协议 | MHE 维护者 |
+| [09-Real-run Evidence Plan and Deeper Benchmark Analysis](08-real-run-evidence-plan-analysis.md) | 规划下一阶段 real solver / real Claude repeated runs，并汇总 2026-04-30 dry-run repeat smoke 与后续报告边界 | MHE 维护者 / 项目管理者 |
 
 ## 写作边界
 
