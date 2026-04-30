@@ -9,7 +9,9 @@ from metaharness.benchmark_drivers.qcompute_abacus_runner import QComputeAbacusB
 from metaharness_ext.qcompute.abacus_bridge import (
     build_abacus_hs_bridge_status,
     build_abacus_hs_conversion_plan,
+    convert_abacus_hs_header_to_pauli_proxy,
     convert_toy_abacus_hs_fixture_to_fcidump,
+    discover_abacus_hs_matrix_refs,
     parse_abacus_hs_matrix_ref,
     parse_abacus_input_ref,
 )
@@ -94,6 +96,105 @@ def test_real_looking_abacus_hs_matrix_ref_records_artifact_metadata(tmp_path: P
     assert metadata["bytes"] > 0
 
 
+def test_abacus_hs_matrix_metadata_records_parser_contract_blockers(tmp_path: Path) -> None:
+    hs_path = tmp_path / "data-HR-sparse_SPIN0.csr"
+    hs_path.write_text("2 2 3\n1 1 -1.0\n1 2 0.2\n2 2 -0.5\n")
+
+    metadata = parse_abacus_hs_matrix_ref(str(hs_path))
+
+    assert metadata["shape"] == [2, 2]
+    assert metadata["nnz"] == 3
+    assert metadata["parse_status"] == "header_parsed"
+    assert metadata["parser_contract_status"] == "header_parsed"
+    assert metadata["conversion_status"] == "unsupported"
+    assert metadata["validation_blockers"] == ["scientific_reference_missing"]
+
+
+def test_abacus_hs_real_csr_header_parser_records_dimension_and_number(tmp_path: Path) -> None:
+    hs_path = tmp_path / "hrs1_nao.csr.ref"
+    hs_path.write_text(
+        "STEP: 0\n"
+        "Matrix Dimension of H(R): 26\n"
+        "Matrix number of H(R): 177\n"
+        "-3 -1 1 41\n"
+        " 1.22221523e-10 -7.65800183e-10 -3.87251892e-10\n"
+    )
+
+    metadata = parse_abacus_hs_matrix_ref(str(hs_path))
+
+    assert metadata["shape"] == [26, 26]
+    assert metadata["nnz"] == 177
+    assert metadata["parse_status"] == "header_parsed"
+    assert metadata["matrix_role"] == "H"
+
+
+def test_abacus_hs_text_header_parser_records_rows_and_columns(tmp_path: Path) -> None:
+    hs_path = tmp_path / "hk_nao.txt.ref"
+    hs_path.write_text(
+        "# rows 26\n"
+        "# columns 26\n"
+        "Row 1\n"
+        " -6.56277e-01 -5.05476e-03\n"
+    )
+
+    metadata = parse_abacus_hs_matrix_ref(str(hs_path))
+
+    assert metadata["shape"] == [26, 26]
+    assert metadata["nnz"] is None
+    assert metadata["format_family"] == "abacus_text_matrix"
+    assert "matrix_nnz_unparsed" in metadata["validation_blockers"]
+
+
+def test_abacus_hs_header_proxy_converts_h_matrix_to_qubit_hamiltonian(tmp_path: Path) -> None:
+    hs_path = tmp_path / "data-HR-sparse_SPIN0.csr"
+    hs_path.write_text(
+        "Matrix Dimension of H(R): 4\n"
+        "Matrix number of H(R): 4\n"
+        "0 0 0 4\n"
+        " -1.0 0.25 0.5 -0.125\n"
+    )
+
+    result = convert_abacus_hs_header_to_pauli_proxy(str(hs_path))
+
+    assert result.status == "converted"
+    assert result.target_format == "qcompute_pauli_dict"
+    assert result.qubit_hamiltonian is not None
+    assert result.qubit_hamiltonian.source_format == "abacus_hs_header_proxy"
+    assert result.qubit_hamiltonian.mapping_method == "diagonal_z_proxy"
+    assert result.metadata["scientifically_validated"] is False
+
+
+def test_abacus_hs_header_proxy_rejects_overlap_matrix(tmp_path: Path) -> None:
+    hs_path = tmp_path / "data-SR-sparse_SPIN0.csr"
+    hs_path.write_text("Matrix Dimension of S(R): 4\nMatrix number of S(R): 4\n")
+
+    result = convert_abacus_hs_header_to_pauli_proxy(str(hs_path))
+
+    assert result.status == "unsupported"
+    assert result.unsupported_reason == "Only H matrix artifacts can be converted into a Hamiltonian proxy."
+
+
+def test_abacus_hs_matrix_discovery_uses_input_suffix_out_dir(tmp_path: Path) -> None:
+    input_path = tmp_path / "INPUT"
+    input_path.write_text("INPUT_PARAMETERS\nsuffix silicon\nbasis_type lcao\nout_mat_hs2 1\n")
+    hs_path = tmp_path / "OUT.silicon" / "data-SR-sparse_SPIN0.csr"
+    hs_path.parent.mkdir()
+    hs_path.write_text("real-looking sparse S artifact placeholder\n")
+
+    input_metadata = parse_abacus_input_ref(str(input_path))
+    discovered = discover_abacus_hs_matrix_refs([input_metadata])
+    bridge_status = build_abacus_hs_bridge_status(
+        case_id="abacus-hs-bridge-pending",
+        source_reference={"abacus_hs_source_refs": [str(input_path)]},
+    )
+
+    assert discovered == [str(hs_path)]
+    assert bridge_status.matrix_metadata[0]["path"] == str(hs_path)
+    assert bridge_status.matrix_metadata[0]["matrix_role"] == "S"
+    assert bridge_status.matrix_metadata[0]["conversion_status"] == "unsupported"
+    assert bridge_status.promotion_ready is False
+
+
 def test_real_looking_abacus_hs_fixture_records_metadata_without_conversion(
     tmp_path: Path,
 ) -> None:
@@ -122,7 +223,7 @@ def test_real_looking_abacus_hs_fixture_records_metadata_without_conversion(
     assert metadata["parameters"]["nbands"] == ["8"]
     assert metadata["hs_output_keys"] == ["out_mat_hs2"]
     assert bridge_status.status == "converter_missing"
-    assert bridge_status.conversion_plan.status == "metadata_only"
+    assert bridge_status.conversion_plan.status == "ready"
     assert bridge_status.promotion_ready is False
     assert bridge_status.missing_capabilities == ["abacus_hs_to_fcidump_converter"]
     assert bridge_status.failure_code == "converter_missing"
@@ -130,10 +231,10 @@ def test_real_looking_abacus_hs_fixture_records_metadata_without_conversion(
     assert bridge_status.matrix_metadata[0]["conversion_status"] == "unsupported"
 
 
-def test_abacus_hs_conversion_plan_remains_metadata_only() -> None:
+def test_abacus_hs_conversion_plan_marks_proxy_target_ready() -> None:
     plan = build_abacus_hs_conversion_plan(metadata_available=True)
 
-    assert plan.status == "metadata_only"
+    assert plan.status == "ready"
     assert plan.target_format == "qcompute_pauli_dict"
     assert "out_mat_hs" in plan.accepted_artifacts
     assert "converted operator validated by QCompute parser" in plan.validation_requirements
@@ -174,7 +275,9 @@ def test_qcompute_abacus_bridge_case_is_explicitly_skipped(tmp_path: Path) -> No
     assert bridge_status["missing_capabilities"] == ["abacus_hs_to_fcidump_converter"]
     assert bridge_status["failure_code"] == "converter_missing"
     assert "matrix_metadata" in bridge_status
-    assert bridge_status["conversion_plan"]["status"] == "metadata_only"
+    assert bridge_status["readiness_gates"][0]["stage"] == "R1_parser"
+    assert bridge_status["readiness_gates"][1]["status"] == "metadata_only"
+    assert bridge_status["conversion_plan"]["status"] == "ready"
     assert bridge_status["conversion_plan"]["target_format"] == "qcompute_pauli_dict"
     assert any(
         "out_mat_hs" in ref["hs_output_keys"] or "out_mat_hs2" in ref["hs_output_keys"]

@@ -159,3 +159,27 @@ def test_executor_writes_script_to_workspace() -> None:
 
     mock_mkdir.assert_called_once()
     mock_write.assert_called_once_with(plan.script_source)
+
+
+def test_executor_rejects_exhausted_quota() -> None:
+    """Executor returns failed artifact when runtime quota is exhausted."""
+    from metaharness.sdk.execution import ResourceQuota
+    from metaharness.sdk.runtime import ComponentRuntime
+
+    quota = ResourceQuota(
+        quota_id="test-quota",
+        resource_type="fealpy_mesh",
+        limit=100,
+        used=100,
+        remaining=0,
+        exhausted=True,
+    )
+    runtime = ComponentRuntime()
+    runtime.resource_quota = quota
+
+    executor = FealpyExecutorComponent()
+    executor._runtime = runtime
+    plan = _plan()
+    artifact = executor.execute_plan(plan)
+    assert artifact.status == "failed"
+    assert "Resource quota exhausted" in (artifact.error_message or "")

@@ -13,6 +13,7 @@ SUITE_DIRS: dict[BenchmarkSuite, str] = {
     "octave-native": "octave-native-benchmark",
     "nektar-pde": "nektar-pde-benchmark",
     "qcompute-abacus": "qcompute-abacus-benchmark",
+    "fealpy-pde": "fealpy-pde-benchmark",
 }
 
 

@@ -420,6 +420,14 @@ def _analysis_markdown(
                 "- The ABACUS H/S bridge sentinel must remain skipped until a converter is implemented.",
             ]
         )
+    elif suite == "fealpy-pde":
+        lines.extend(
+            [
+                "- Dry-run summaries validate harness layout and comparison logic, not fealpy numerical runtime.",
+                "- Multi-backend comparison requires numpy/pytorch/jax to be installed for real runs.",
+                "- Transient PDE cases (Allen-Cahn, Navier-Stokes) require time-stepping infrastructure in the solver.",
+            ]
+        )
     else:
         lines.extend(
             [

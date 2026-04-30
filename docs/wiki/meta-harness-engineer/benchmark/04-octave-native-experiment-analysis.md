@@ -1,12 +1,12 @@
 # 04. Octave-native Benchmark 实验分析报告
 
-> 版本：v0.1 | 生成依据：`.runs/benchmark-wiki/octave-native-benchmark/` | 日期：2026-04-28
+> 版本：v0.2 | 生成依据：`.runs/benchmark-wiki/octave-native-benchmark/`、`.runs/octave-real-claude-preflight-smoke-20260429-visible/` | 日期：2026-04-29
 
 ## 4.1 实验范围
 
 本报告对应 `octave-native` suite，用于验证 Octave 9.2.0 native numerical cases 在三条 workflow lane 下的 benchmark driver、summary schema、evidence layout、comparison bundle 和报告生成路径。
 
-本轮是安全 dry-run / mocked benchmark，不声明真实 Octave 数值运行结论。它验证的是：case catalog、lane 边界、Claude CLI evidence 记录、MHE extension pipeline evidence 记录、comparator 汇总和 report bundle 可复查。
+本轮主体仍是安全 dry-run / mocked benchmark，不声明真实 Octave 数值运行结论。新增证据只覆盖两类 workflow 能力：real-Claude proposal preflight traceability，以及 controlled failing-fixture repair classification。它们验证的是 case catalog、lane 边界、Claude CLI evidence 记录、MHE extension pipeline evidence 记录、comparator 汇总、repair outcome 分类和 report bundle 可复查。
 
 ## 4.2 数据来源
 
@@ -18,7 +18,7 @@
 - Manifest：`.runs/benchmark-wiki/octave-native-benchmark/comparison/run_manifest.json`
 - Generated report：`.runs/benchmark-wiki/octave-native-benchmark/reports/octave-native-analysis-report.md`
 
-Manifest 记录的环境包括 Python 3.13.11、Claude Code `2.1.114`、GNU Octave 9.2.0，以及本地可见的 Nektar++ solver binaries。该 manifest 只说明环境探测结果；本轮 `benchmark-run` 未使用 `--allow-real-tools`，所以 Octave case 结果仍是 dry-run。
+Manifest 记录的环境包括 Python 3.13.11、Claude Code `2.1.114`、GNU Octave 9.2.0，以及本地可见的 Nektar++ solver binaries。`.runs/benchmark-wiki` 的主体结果未使用 `--allow-real-tools`，所以 10-case Octave 表格仍是 dry-run。另有 real-Claude preflight smoke root `.runs/octave-real-claude-preflight-smoke-20260429-visible/`，其 `run_manifest.json` 记录 `real_claude=true`、`real_tools=true`、`model=cc-gpt-5.5`、`max_turns=4`，仅覆盖 `sinc-values` 的 `direct` 与 `agent` proposal/preflight 分类。
 
 ## 4.3 Case 覆盖
 
@@ -78,7 +78,17 @@ Evidence quality should be evaluated by whether an independent reviewer can reco
 4. The stdout/stderr and metrics path.
 5. The final summary and comparator verdict.
 
-## 4.7 Acceptance status
+## 4.7 Evidence status and next evidence gap
+
+| Evidence layer | Current status | What it supports | What it does not support |
+|---|---|---|---|
+| Dry-run 10-case Octave comparison | Complete under `.runs/benchmark-wiki/octave-native-benchmark/` | Case catalog, lane layout, summary schema, comparator/report generation | Real Octave numerical accuracy, timing, or solver robustness |
+| Real-Claude preflight smoke | Complete for `sinc-values` direct/agent lanes under `.runs/octave-real-claude-preflight-smoke-20260429-visible/` | Real Claude CLI proposal traceability and failure classification; both lanes surfaced `proposal_max_turns` with `preflight_status=failed` | Solver success/failure, repair success, numerical quality |
+| Controlled failing-fixture repair classification | Implemented and covered by focused tests | `repair_outcome`, `diagnostics_files`, `agent_repaired_success`, and `unrepaired_failure` artifact semantics | General agent repair ability or performance on arbitrary scientific scripts |
+
+Manager-facing summary: benchmark evidence now shows real-tool/real-Claude smoke traceability and a controlled repair-classification fixture. The next evidence gap is broader real-solver repeated runs before any performance, robustness, or numerical superiority claim.
+
+## 4.8 Acceptance status
 
 | Requirement | Status | Notes |
 |---|---|---|
@@ -87,13 +97,15 @@ Evidence quality should be evaluated by whether an independent reviewer can reco
 | Claude evidence capture | Complete for dry-run and adapter path | Real CLI execution remains opt-in. |
 | Comparator bundle | Complete | CSV, Markdown, JSON bundle and manifest are generated. |
 | Schema failure handling | Implemented via Pydantic load failure path | Malformed summaries produce `schema_validation.json`. |
+| Proposal contract/preflight | Complete for Octave direct/agent lanes | Real smoke classifies `proposal_max_turns`; missing-script proposals are contract failures. |
+| Controlled repair classification | Complete for focused fixture | `repair_outcome` and diagnostics distinguish `agent_repaired_success` from `unrepaired_failure`. |
 | Repeated real runs | Pending | Not executed in this dry-run report. |
 | Formal Octave numeric conclusions | Pending | Requires `--allow-real-tools` and repeated runs. |
 
-## 4.8 Backlog
+## 4.9 Backlog
 
-1. Run real Octave smoke cases with `--allow-real-tools` and compare dry-run vs real summary contents.
-2. Add exact Octave BIST source line references where practical for each case.
-3. Add repeated-run aggregation fields such as median elapsed time and `flaky_numeric`.
-4. Tighten generated `solve.m` validation against Octave JSON/metrics conventions.
-5. Expand report generation to include per-case metric diff tables from real runs.
+1. Run broader real Octave smoke cases with `--allow-real-tools` and `--allow-real-claude`, using enough Claude turns to reach proposal execution when possible.
+2. Add repeated-run aggregation for real Octave cases before making timing or robustness claims.
+3. Add exact Octave BIST source line references where practical for each case.
+4. Expand report generation to include per-case metric diff tables from real runs.
+5. Keep controlled repair fixture wording scoped to repair classification until real proposal-repair runs exist.

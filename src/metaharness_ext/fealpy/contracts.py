@@ -62,6 +62,9 @@ class FealpyProblemSpec(BaseModel):
     fe_space_type: FealpyFeSpaceType = "Lagrange"
     solver: FealpySolverSpec = Field(default_factory=FealpySolverSpec)
     adaptive_refinement: int = 0
+    dt: float = 0.01
+    num_time_steps: int = 100
+    time_integrator: str = "implicit_euler"
     timeout_seconds: int = 300
     promotion_metadata: dict[str, Any] = Field(default_factory=dict)
     graph_metadata: dict[str, Any] = Field(default_factory=dict)
@@ -94,6 +97,20 @@ class FealpyProblemSpec(BaseModel):
     def validate_refinement(cls, value: int) -> int:
         if value < 0:
             raise ValueError("adaptive_refinement must be >= 0")
+        return value
+
+    @field_validator("dt")
+    @classmethod
+    def validate_dt(cls, value: float) -> float:
+        if value <= 0:
+            raise ValueError("dt must be positive")
+        return value
+
+    @field_validator("num_time_steps")
+    @classmethod
+    def validate_num_time_steps(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("num_time_steps must be >= 0")
         return value
 
 

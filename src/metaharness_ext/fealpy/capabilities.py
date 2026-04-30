@@ -9,6 +9,7 @@ CAP_FEALPY_STUDY_RUN = "fealpy.study.run"
 
 CAP_FEALPY_OPTIMIZER_PROPOSE = "fealpy.optimizer.propose"
 CAP_FEALPY_SCHEDULER_DRYRUN = "fealpy.scheduler.dryrun"
+CAP_FEALPY_QUOTA_PROVIDE = "fealpy.quota.provide"
 
 CANONICAL_CAPABILITIES = frozenset(
     {
@@ -20,5 +21,6 @@ CANONICAL_CAPABILITIES = frozenset(
         CAP_FEALPY_STUDY_RUN,
         CAP_FEALPY_OPTIMIZER_PROPOSE,
         CAP_FEALPY_SCHEDULER_DRYRUN,
+        CAP_FEALPY_QUOTA_PROVIDE,
     }
 )

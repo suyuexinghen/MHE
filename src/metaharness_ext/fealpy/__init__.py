@@ -1,6 +1,12 @@
 """MHE extension for fealpy — Python Finite Element Library."""
 
 from metaharness_ext.fealpy.async_executor import FealpyAsyncExecutor
+from metaharness_ext.fealpy.backend_comparison import (
+    BackendMetrics,
+    FealpyBackendComparisonResult,
+    FealpyBackendComparisonRunner,
+)
+from metaharness_ext.fealpy.benchmark_cases import fealpy_case_catalog, get_fealpy_cases
 from metaharness_ext.fealpy.benchmark_runner import FealpyBenchmarkRunner
 from metaharness_ext.fealpy.capabilities import (
     CANONICAL_CAPABILITIES,
@@ -8,6 +14,7 @@ from metaharness_ext.fealpy.capabilities import (
     CAP_FEALPY_ENV_PROBE,
     CAP_FEALPY_EXECUTE_RUN,
     CAP_FEALPY_OPTIMIZER_PROPOSE,
+    CAP_FEALPY_QUOTA_PROVIDE,
     CAP_FEALPY_SCHEDULER_DRYRUN,
     CAP_FEALPY_STUDY_RUN,
     CAP_FEALPY_TASK_ISSUE,
@@ -42,7 +49,15 @@ from metaharness_ext.fealpy.optimizer import (
     FealpyStudyObservation,
 )
 from metaharness_ext.fealpy.policy import FealpyEvidencePolicy
+from metaharness_ext.fealpy.quota import (
+    FealpyResourceQuotaProvider,
+    estimate_dofs,
+    estimate_memory_mb,
+    estimate_taylor_hood_dofs,
+)
 from metaharness_ext.fealpy.scheduler import (
+    FealpyK8sBackend,
+    FealpyK8sJobSpec,
     FealpySchedulerAdapter,
     FealpySlurmBackend,
     FealpySlurmSubmission,
@@ -52,6 +67,7 @@ from metaharness_ext.fealpy.slots import (
     FEALPY_ENVIRONMENT_SLOT,
     FEALPY_EXECUTOR_SLOT,
     FEALPY_GATEWAY_SLOT,
+    FEALPY_QUOTA_PROVIDER_SLOT,
     FEALPY_STUDY_SLOT,
     FEALPY_VALIDATOR_SLOT,
     PROTECTED_SLOTS,
@@ -69,11 +85,13 @@ from metaharness_ext.fealpy.types import (
 from metaharness_ext.fealpy.validator import FealpyValidatorComponent
 
 __all__ = [
+    "BackendMetrics",
     "CANONICAL_CAPABILITIES",
     "CAP_FEALPY_COMPILE",
     "CAP_FEALPY_ENV_PROBE",
     "CAP_FEALPY_EXECUTE_RUN",
     "CAP_FEALPY_OPTIMIZER_PROPOSE",
+    "CAP_FEALPY_QUOTA_PROVIDE",
     "CAP_FEALPY_SCHEDULER_DRYRUN",
     "CAP_FEALPY_STUDY_RUN",
     "CAP_FEALPY_TASK_ISSUE",
@@ -82,10 +100,13 @@ __all__ = [
     "FEALPY_ENVIRONMENT_SLOT",
     "FEALPY_EXECUTOR_SLOT",
     "FEALPY_GATEWAY_SLOT",
+    "FEALPY_QUOTA_PROVIDER_SLOT",
     "FEALPY_STUDY_SLOT",
     "FEALPY_VALIDATOR_SLOT",
     "FealpyAsyncExecutor",
     "FealpyBackend",
+    "FealpyBackendComparisonResult",
+    "FealpyBackendComparisonRunner",
     "FealpyBenchmarkRunner",
     "FealpyCompilerComponent",
     "FealpyDomainBrainProvider",
@@ -98,6 +119,8 @@ __all__ = [
     "FealpyFeSpaceType",
     "FealpyGatewayComponent",
     "FealpyGovernanceAdapter",
+    "FealpyK8sBackend",
+    "FealpyK8sJobSpec",
     "FealpyMeshSpec",
     "FealpyMeshType",
     "FealpyOptimizerStrategy",
@@ -105,6 +128,7 @@ __all__ = [
     "FealpyPolicyReport",
     "FealpyProblemSpec",
     "FealpyProposalEvaluation",
+    "FealpyResourceQuotaProvider",
     "FealpyRunArtifact",
     "FealpyRunArtifactStatus",
     "FealpyRunPlan",
@@ -124,4 +148,9 @@ __all__ = [
     "FealpyValidatorComponent",
     "PROTECTED_SLOTS",
     "build_evidence_bundle",
+    "estimate_dofs",
+    "fealpy_case_catalog",
+    "get_fealpy_cases",
+    "estimate_memory_mb",
+    "estimate_taylor_hood_dofs",
 ]

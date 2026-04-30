@@ -37,6 +37,20 @@ class FealpyExecutorComponent(HarnessComponent):
         plan: FealpyRunPlan,
         environment: FealpyEnvironmentReport | None = None,
     ) -> FealpyRunArtifact:
+        runtime = getattr(self, "_runtime", None)
+        if runtime is not None:
+            quota = runtime.resolved_resource_quota()
+            if quota is not None and quota.exhausted:
+                return FealpyRunArtifact(
+                    artifact_id=f"artifact-{plan.run_id}",
+                    run_id=plan.run_id,
+                    task_id=plan.task_id,
+                    plan_ref=plan.plan_id,
+                    status="failed",
+                    error_message=f"Resource quota exhausted: {quota.metadata}",
+                    evidence_refs=plan.evidence_refs,
+                )
+
         if environment is not None and not environment.available:
             return FealpyRunArtifact(
                 artifact_id=f"artifact-{plan.run_id}",

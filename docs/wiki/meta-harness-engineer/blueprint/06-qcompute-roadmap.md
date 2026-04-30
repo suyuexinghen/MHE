@@ -269,6 +269,25 @@ QCompute 实现依赖增强后 MHE core 的特定 phase（参照 `MHE-core-enhan
 - VQE 能量与 DFT 参考能量可在 evidence bundle 中对比
 - `provenance_inputs` 正确引用上游 ABACUS artifact
 
+### 6.7.5 真实 ABACUS × QCompute 数值能力补全路线
+
+当前 benchmark 只能证明 Hamiltonian proxy workflow 与 evidence 边界，不能证明真实 ABACUS H/S matrix 已可被 QCompute 数值消费。下一段工作按以下顺序推进，任何阶段未通过前都不能把 `abacus-hs-bridge-pending` 从 capability skip 提升为 executable bridge case：
+
+| 阶段 | 目标 | 交付物 | 可声称结论 |
+|---|---|---|---|
+| R0：artifact inventory | 从已记录 ABACUS `INPUT` provenance 自动发现本地 `out_mat_hs` / `out_mat_hs2` 产物 | `bridge_status.json` 中的 `matrix_metadata`、artifact path、format family、matrix role、bytes | 只能声称 H/S artifact 被发现并做 metadata-only 分类 |
+| R1：parser contract | 定义并测试真实 H/S sparse/text parser 的 typed output | shape、nnz、spin、k-point、basis、Hermiticity diagnostics、failure taxonomy | 只能声称 parser contract 可验证，不声称 conversion |
+| R2：conversion contract | 选择 FCIDUMP 或 QCompute `pauli_dict` 作为首个正式目标 | converter input/output schema、unsupported/error states、toy fixture 与真实 fixture 分离 | 只能声称转换接口存在，不声称科学正确 |
+| R3：scientific validation | 用管理员认可的 ABACUS reference fixture 与 tolerance table 做验证 | reference energy/spectrum、tolerance policy、scientific reviewer sign-off | 才能声称特定 fixture 上的 conversion 被验证 |
+| R4：benchmark promotion | 将 sentinel case 改为 gated executable bridge case | real-mode summaries、comparison bundle、repeat-run stability | 只能对已验证 case 声称真实 ABACUS×QCompute 数值链路可执行 |
+
+当前执行状态：
+
+- R0 已进入代码与测试：bridge scaffold 会从 `INPUT` 所在目录和 `OUT.<suffix>` 目录发现本地 H/S matrix artifacts，并继续保持 `promotion_ready = false`、`failure_code = "converter_missing"`。
+- R1 已提升到 header-level parser contract：`matrix_metadata` 可记录 artifact bytes、line count、ABACUS CSR `Matrix Dimension` / `Matrix number` header、text matrix `rows` / `columns` header、matrix role、format family 和 validation blockers。
+- R2 已具备 QCompute `pauli_dict` proxy conversion contract：H matrix artifact 可显式转换为 `abacus_hs_header_proxy` / `diagonal_z_proxy` 的 `QubitHamiltonian`，用于 pipeline contract 测试；S matrix 和无可提取 numeric terms 的 artifact 仍返回 unsupported。
+- R3–R4 仍由 `readiness_gates` 阻断：缺少管理员认可 reference fixture、tolerance table、scientific reviewer sign-off 和 repeated real-mode evidence 前，sentinel 必须保持 skipped，且不能声称科学正确或真实生产级 ABACUS H/S conversion。
+
 ---
 
 ## 6.8 测试路线图

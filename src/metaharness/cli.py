@@ -33,6 +33,8 @@ from metaharness.sdk.loader import declare_component, load_manifest
 from metaharness.sdk.registry import ComponentRegistry
 from metaharness_ext.ai4pde.case_parser import Ai4PdeCaseXmlError, parse_ai4pde_case_xml
 from metaharness_ext.ai4pde.demo import AI4PDECaseDemoHarness
+from metaharness_ext.fealpy.benchmark_cases import get_fealpy_cases
+from metaharness_ext.fealpy.benchmark_runner import FealpyBenchmarkRunner
 
 
 def _cmd_demo(args: argparse.Namespace) -> int:
@@ -289,6 +291,14 @@ def _cmd_benchmark_run(args: argparse.Namespace) -> int:
                 adaptive_agent=args.adaptive_agent,
                 max_repair_attempts=args.max_repair_attempts,
             )
+        elif suite == "fealpy-pde":
+            cases = get_fealpy_cases(case_ids)
+            runner = FealpyBenchmarkRunner(
+                runs_root=runs_root,
+                allow_real_tools=args.allow_real_tools,
+                adaptive_agent=args.adaptive_agent,
+                max_repair_attempts=args.max_repair_attempts,
+            )
         else:
             cases = get_qcompute_abacus_cases(case_ids)
             runner = QComputeAbacusBenchmarkRunner(
@@ -393,7 +403,9 @@ def build_parser() -> argparse.ArgumentParser:
         "benchmark-run", help="Run scientific workflow benchmark lanes"
     )
     benchmark_run.add_argument(
-        "--suite", choices=["octave-native", "nektar-pde", "qcompute-abacus"], required=True
+        "--suite",
+        choices=["octave-native", "nektar-pde", "qcompute-abacus", "fealpy-pde"],
+        required=True,
     )
     benchmark_run.add_argument("--lanes", default="extension,direct,agent")
     benchmark_run.add_argument("--cases", default="")
@@ -429,7 +441,9 @@ def build_parser() -> argparse.ArgumentParser:
         "benchmark-compare", help="Compare saved scientific workflow benchmark summaries"
     )
     benchmark_compare.add_argument(
-        "--suite", choices=["octave-native", "nektar-pde", "qcompute-abacus"], required=True
+        "--suite",
+        choices=["octave-native", "nektar-pde", "qcompute-abacus", "fealpy-pde"],
+        required=True,
     )
     benchmark_compare.add_argument("--runs-root", default=".runs")
     benchmark_compare.add_argument(
