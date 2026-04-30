@@ -39,7 +39,7 @@ class FealpyMeshSpec(BaseModel):
 
 
 class FealpySolverSpec(BaseModel):
-    method: FealpySolverMethod = "direct"
+    method: FealpySolverMethod = "scipy"
     max_iterations: int = 5000
     atol: float = 1e-14
     rtol: float = 1e-14

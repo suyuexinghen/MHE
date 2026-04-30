@@ -22,8 +22,11 @@ from metaharness.benchmark_drivers.qcompute_abacus_cases import H2_FCIDUMP
 from metaharness.benchmark_drivers.runner_common import dry_run_summary, write_lane_outputs
 from metaharness.sdk.runtime import ComponentRuntime
 from metaharness_ext.qcompute.abacus_bridge import (
+    build_abacus_hs_approval_manifest,
     build_abacus_hs_bridge_status,
     build_abacus_hs_bridge_validation,
+    build_abacus_hs_promotion_gate,
+    build_abacus_hs_review_signoff,
 )
 from metaharness_ext.qcompute.config_compiler import QComputeConfigCompilerComponent
 from metaharness_ext.qcompute.contracts import (
@@ -442,6 +445,17 @@ class QComputeAbacusBenchmarkRunner:
             reason=reason,
         )
         bridge_validation = build_abacus_hs_bridge_validation(case.source_reference)
+        review_signoff = build_abacus_hs_review_signoff(
+            bridge_status=bridge_status,
+            bridge_validation=bridge_validation,
+        )
+        approval_manifest = build_abacus_hs_approval_manifest(case.source_reference)
+        promotion_gate = build_abacus_hs_promotion_gate(
+            bridge_status=bridge_status,
+            bridge_validation=bridge_validation,
+            review_signoff=review_signoff,
+            approval_manifest=approval_manifest,
+        )
         source_refs_path = write_json(
             output_dir / "source_refs.json",
             {
@@ -451,12 +465,20 @@ class QComputeAbacusBenchmarkRunner:
                 "reason": reason,
                 "bridge_status": bridge_status.model_dump(mode="json"),
                 "bridge_validation": bridge_validation.model_dump(mode="json"),
+                "review_signoff": review_signoff.model_dump(mode="json"),
+                "approval_manifest": approval_manifest.model_dump(mode="json"),
+                "promotion_gate": promotion_gate.model_dump(mode="json"),
             },
         )
         bridge_status_path = write_json(output_dir / "bridge_status.json", bridge_status)
         bridge_validation_path = write_json(
             output_dir / "bridge_validation.json", bridge_validation
         )
+        review_signoff_path = write_json(output_dir / "review_signoff.json", review_signoff)
+        approval_manifest_path = write_json(
+            output_dir / "approval_manifest.json", approval_manifest
+        )
+        promotion_gate_path = write_json(output_dir / "promotion_gate.json", promotion_gate)
         return write_lane_outputs(
             runs_root=self.runs_root,
             case=case,
@@ -468,6 +490,9 @@ class QComputeAbacusBenchmarkRunner:
                 str(source_refs_path),
                 str(bridge_status_path),
                 str(bridge_validation_path),
+                str(review_signoff_path),
+                str(approval_manifest_path),
+                str(promotion_gate_path),
             ],
             attempt_log=attempt_log,
             skip_reason="unsupported_source_format: ABACUS H/S-to-FCIDUMP bridge is not implemented",

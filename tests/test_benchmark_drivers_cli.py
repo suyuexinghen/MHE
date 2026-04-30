@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from metaharness.benchmark_drivers.acp_provider import ACPBrainProvider
 from metaharness.cli import main
 
 
@@ -69,6 +70,34 @@ def test_benchmark_run_cli_allows_real_claude_without_real_tools(tmp_path: Path)
     assert not (
         tmp_path / "octave-native-benchmark" / "direct" / "sinc-values" / "solve.m"
     ).exists()
+
+
+def test_acp_provider_json_diagnostic_classifies_json_proposal() -> None:
+    provider = ACPBrainProvider()
+    prompt = provider.build_json_diagnostic_prompt("Return benchmark review status.")
+    diagnostic = provider.diagnose_json_response(
+        {
+            "content": '{"proposal":{"decision":"approve"},"diagnostic_status":"ok"}',
+            "execution_meta": {"stop_reason": "end_turn"},
+        }
+    )
+
+    assert "Do not use tools" in prompt
+    assert "Return only a JSON object" in prompt
+    assert diagnostic["diagnostic_status"] == "ok"
+    assert diagnostic["json_proposal_available"] is True
+    assert diagnostic["proposal"] == {"decision": "approve"}
+
+
+def test_acp_provider_json_diagnostic_classifies_empty_content() -> None:
+    diagnostic = ACPBrainProvider().diagnose_json_response(
+        {"content": "", "execution_meta": {"stop_reason": "end_turn"}}
+    )
+
+    assert diagnostic["diagnostic_status"] == "blocked"
+    assert diagnostic["json_proposal_available"] is False
+    assert diagnostic["content_empty"] is True
+    assert diagnostic["stop_reason"] == "end_turn"
 
 
 def test_benchmark_run_cli_can_select_acp_provider(tmp_path: Path) -> None:
@@ -285,6 +314,74 @@ def test_benchmark_run_cli_forwards_nektar_adaptive_agent_options(
     assert status == 0
     assert captured["adaptive_agent"] is True
     assert captured["max_repair_attempts"] == 3
+
+
+def test_benchmark_run_cli_forwards_fealpy_brain_provider(tmp_path: Path, monkeypatch) -> None:
+    captured = {}
+
+    class FakeFealpyBenchmarkRunner:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+            self.runs_root = kwargs["runs_root"]
+
+        def run_case(self, case, lanes):
+            return []
+
+    monkeypatch.setattr("metaharness.cli.FealpyBenchmarkRunner", FakeFealpyBenchmarkRunner)
+
+    status = main(
+        [
+            "benchmark-run",
+            "--suite",
+            "fealpy-pde",
+            "--lanes",
+            "agent",
+            "--cases",
+            "poisson-2d-numpy",
+            "--runs-root",
+            str(tmp_path),
+            "--allow-real-claude",
+            "--claude-binary",
+            "missing-claude-for-test",
+        ]
+    )
+
+    assert status == 0
+    assert captured["brain_provider"] is not None
+    assert captured["adaptive_agent"] is False
+
+
+def test_fealpy_benchmark_run_cli_can_select_acp_provider(tmp_path: Path) -> None:
+    status = main(
+        [
+            "benchmark-run",
+            "--suite",
+            "fealpy-pde",
+            "--lanes",
+            "direct",
+            "--cases",
+            "poisson-2d-numpy",
+            "--runs-root",
+            str(tmp_path),
+            "--allow-real-claude",
+            "--brain-provider",
+            "acp",
+            "--acp-command",
+            "missing-acp-for-test",
+            "--acp-session-key",
+            "fealpy-test-session",
+        ]
+    )
+
+    assert status == 0
+    case_dir = tmp_path / "fealpy-pde-benchmark" / "direct" / "poisson-2d-numpy"
+    command = json.loads((case_dir / "acp_command.json").read_text())
+    prompt = (case_dir / "acp_prompt.txt").read_text()
+    summary = json.loads((case_dir / "summary.json").read_text())
+    assert command["command"] == ["missing-acp-for-test"]
+    assert command["session_key"] == "fealpy-test-session"
+    assert "solve_py" in prompt
+    assert summary["status"] == "failed"
 
 
 def test_benchmark_run_cli_rejects_unknown_lane(tmp_path: Path, capsys) -> None:

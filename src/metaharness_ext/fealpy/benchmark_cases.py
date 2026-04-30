@@ -15,6 +15,7 @@ def fealpy_case_catalog() -> dict[str, BenchmarkCaseSpec]:
             expected_metrics=["l2_error", "h1_error", "wall_time", "dof"],
             reference_metrics={
                 "l2_error": MetricReference(value=0.002, tolerance=0.1),
+                "h1_error": MetricReference(value=2.22, tolerance=5.0),
             },
             problem_definition={
                 "pde_family": "poisson",
@@ -36,6 +37,7 @@ def fealpy_case_catalog() -> dict[str, BenchmarkCaseSpec]:
             expected_metrics=["l2_error", "h1_error", "wall_time", "dof"],
             reference_metrics={
                 "l2_error": MetricReference(value=0.002, tolerance=0.1),
+                "h1_error": MetricReference(value=2.22, tolerance=5.0),
             },
             problem_definition={
                 "pde_family": "poisson",
@@ -58,6 +60,7 @@ def fealpy_case_catalog() -> dict[str, BenchmarkCaseSpec]:
             expected_metrics=["l2_error", "h1_error", "wall_time", "dof"],
             reference_metrics={
                 "l2_error": MetricReference(value=0.002, tolerance=0.1),
+                "h1_error": MetricReference(value=2.22, tolerance=5.0),
             },
             problem_definition={
                 "pde_family": "poisson",
@@ -80,6 +83,7 @@ def fealpy_case_catalog() -> dict[str, BenchmarkCaseSpec]:
             expected_metrics=["l2_error", "h1_error", "wall_time", "dof"],
             reference_metrics={
                 "l2_error": MetricReference(value=0.01, tolerance=0.1),
+                "h1_error": MetricReference(value=2.5, tolerance=1.5),
             },
             problem_definition={
                 "pde_family": "poisson",

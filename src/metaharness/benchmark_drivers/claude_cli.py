@@ -17,6 +17,7 @@ class ClaudeCLIConfig(BaseModel):
     model: str | None = None
     max_turns: int = 5
     permission_mode: str = "auto"
+    timeout_seconds: int = 600
     extra_args: list[str] = Field(default_factory=list)
 
 
@@ -85,7 +86,7 @@ class ClaudeCLIBrainProvider:
                 text=True,
                 capture_output=True,
                 check=False,
-                timeout=300,
+                timeout=self.config.timeout_seconds,
             )
         except OSError as exc:
             write_text(stdout_path, "")

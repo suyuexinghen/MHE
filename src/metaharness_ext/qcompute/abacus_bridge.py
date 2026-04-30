@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import math
 import re
 from pathlib import Path
@@ -112,6 +113,38 @@ class AbacusHSConversionPlan(BaseModel):
     unsupported_reason: str = (
         "Only validated proxy conversion is implemented; scientific conversion is blocked."
     )
+
+
+class AbacusHSApprovalManifest(BaseModel):
+    status: Literal["missing", "approved", "invalid"] = "missing"
+    approved_by: str | None = None
+    approval_role: str | None = None
+    fixture_refs: list[str] = Field(default_factory=list)
+    tolerance_table_ref: str | None = None
+    reference_observable: str | None = None
+    notes: list[str] = Field(default_factory=list)
+
+
+class AbacusHSPromotionGate(BaseModel):
+    status: Literal["blocked", "ready"] = "blocked"
+    promotion_ready: bool = False
+    required_artifacts: list[str] = Field(default_factory=list)
+    missing_evidence: list[str] = Field(default_factory=list)
+    missing_evidence_by_category: dict[str, list[str]] = Field(default_factory=dict)
+    claim_boundary_ok: bool = True
+    sentinel_must_remain_skipped: bool = True
+
+
+class AbacusHSReviewSignoff(BaseModel):
+    reviewer_backend: str = "deterministic_policy"
+    decision: Literal["approve", "block", "defer"] = "block"
+    claim_boundary_ok: bool = True
+    reviewer_evidence_only: bool = True
+    replaces_human_scientific_signoff: bool = False
+    sentinel_must_remain_skipped: bool = True
+    accepted_evidence: list[str] = Field(default_factory=list)
+    missing_evidence: list[str] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
 
 
 class AbacusHSBridgeStatus(BaseModel):
@@ -321,6 +354,100 @@ def build_abacus_hs_bridge_validation(
     )
 
 
+def build_abacus_hs_approval_manifest(
+    source_reference: str | dict[str, Any],
+) -> AbacusHSApprovalManifest:
+    for source_ref in _source_refs(source_reference):
+        path = Path(source_ref)
+        if path.exists() and path.name == "abacus_hs_approval.json":
+            return _parse_abacus_hs_approval_manifest(path)
+    return AbacusHSApprovalManifest(
+        notes=["No abacus_hs_approval.json approval manifest was provided."]
+    )
+
+
+def build_abacus_hs_review_signoff(
+    *,
+    bridge_status: AbacusHSBridgeStatus,
+    bridge_validation: AbacusHSEigenproblemValidation,
+    reviewer_backend: str = "deterministic_policy",
+) -> AbacusHSReviewSignoff:
+    accepted_evidence = ["bridge_status.json", "bridge_validation.json"]
+    missing_evidence = list(
+        dict.fromkeys([*bridge_validation.blockers, *bridge_status.missing_capabilities])
+    )
+    decision: Literal["approve", "block", "defer"] = "block" if missing_evidence else "defer"
+    return AbacusHSReviewSignoff(
+        reviewer_backend=reviewer_backend,
+        decision=decision,
+        claim_boundary_ok=True,
+        reviewer_evidence_only=True,
+        replaces_human_scientific_signoff=False,
+        sentinel_must_remain_skipped=True,
+        accepted_evidence=accepted_evidence,
+        missing_evidence=missing_evidence,
+        notes=[
+            "Reviewer signoff is evidence-review only and does not replace human scientific approval.",
+            "ACP-connected Claude Code may populate this schema after JSON diagnostic passes.",
+            "Production ABACUS H/S conversion remains blocked until missing evidence is resolved.",
+        ],
+    )
+
+
+def build_abacus_hs_promotion_gate(
+    *,
+    bridge_status: AbacusHSBridgeStatus,
+    bridge_validation: AbacusHSEigenproblemValidation,
+    review_signoff: AbacusHSReviewSignoff,
+    approval_manifest: AbacusHSApprovalManifest,
+) -> AbacusHSPromotionGate:
+    required_artifacts = [
+        "bridge_status.json",
+        "bridge_validation.json",
+        "review_signoff.json",
+        "abacus_hs_approval.json",
+        "production_converter_evidence",
+        "real_mode_repeat_summary",
+    ]
+    missing_evidence_by_category = {
+        "human_approval": [],
+        "scientific_validation": [],
+        "production_converter": [],
+        "real_repeat_evidence": ["real_mode_repeat_summary_missing"],
+    }
+    if approval_manifest.status != "approved":
+        missing_evidence_by_category["human_approval"].append(
+            "human_scientific_approval_manifest_missing"
+        )
+    for blocker in [*bridge_validation.blockers, *review_signoff.missing_evidence]:
+        if blocker in {
+            "administrator_approved_reference_fixture_missing",
+            "tolerance_table_missing",
+            "scientific_reviewer_signoff_missing",
+        }:
+            missing_evidence_by_category["scientific_validation"].append(blocker)
+        if blocker in {"production_converter_missing", "abacus_hs_to_fcidump_converter"}:
+            missing_evidence_by_category["production_converter"].append(blocker)
+    for capability in bridge_status.missing_capabilities:
+        missing_evidence_by_category["production_converter"].append(capability)
+    missing_evidence_by_category = {
+        category: list(dict.fromkeys(items))
+        for category, items in missing_evidence_by_category.items()
+    }
+    missing_evidence = list(
+        dict.fromkeys(item for items in missing_evidence_by_category.values() for item in items)
+    )
+    return AbacusHSPromotionGate(
+        status="ready" if not missing_evidence else "blocked",
+        promotion_ready=not missing_evidence,
+        required_artifacts=required_artifacts,
+        missing_evidence=missing_evidence,
+        missing_evidence_by_category=missing_evidence_by_category,
+        claim_boundary_ok=True,
+        sentinel_must_remain_skipped=bool(missing_evidence),
+    )
+
+
 def convert_abacus_hs_header_to_pauli_proxy(source_ref: str) -> AbacusHSConversionResult:
     metadata = parse_abacus_hs_matrix_ref(source_ref)
     if not metadata.get("exists"):
@@ -504,6 +631,33 @@ def _parse_diagonal_proxy_terms(path: Path, metadata: dict[str, Any]) -> list[fl
     if metadata.get("format_family") == "abacus_text_matrix":
         return _parse_text_matrix_row_starts(lines)
     return _parse_sparse_matrix_block_values(lines)
+
+
+def _parse_abacus_hs_approval_manifest(path: Path) -> AbacusHSApprovalManifest:
+    try:
+        payload = json.loads(path.read_text())
+        manifest = AbacusHSApprovalManifest.model_validate(payload)
+    except (ValueError, TypeError) as exc:
+        return AbacusHSApprovalManifest(
+            status="invalid",
+            notes=[f"approval_manifest_parse_failed: {exc}"],
+        )
+    missing = []
+    if not manifest.approved_by:
+        missing.append("approved_by_missing")
+    if not manifest.approval_role:
+        missing.append("approval_role_missing")
+    if not manifest.fixture_refs:
+        missing.append("fixture_refs_missing")
+    if not manifest.tolerance_table_ref:
+        missing.append("tolerance_table_ref_missing")
+    if not manifest.reference_observable:
+        missing.append("reference_observable_missing")
+    if missing:
+        return manifest.model_copy(
+            update={"status": "invalid", "notes": [*manifest.notes, *missing]}
+        )
+    return manifest.model_copy(update={"status": "approved"})
 
 
 def _parse_small_dense_hs_reference_fixture(text: str) -> dict[str, Any]:

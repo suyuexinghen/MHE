@@ -33,7 +33,7 @@ FealpyPdeFamily = Literal[
 
 FealpyBackend = Literal["numpy", "pytorch", "jax"]
 
-FealpySolverMethod = Literal["direct", "cg", "gmres", "minres", "bicgstab", "amg"]
+FealpySolverMethod = Literal["mumps", "scipy", "cupy"]
 
 FealpyFeSpaceType = Literal["Lagrange", "CrConforming", "FirstNedelec", "RaviartThomas", "HuZhang"]
 

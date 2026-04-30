@@ -31,6 +31,28 @@ class ACPBrainProvider:
     def propose(self, *, prompt: str, output_dir: Path) -> ClaudeCLIResult:
         return asyncio.run(self._propose(prompt=prompt, output_dir=output_dir))
 
+    def build_json_diagnostic_prompt(self, task: str) -> str:
+        return (
+            "You are connected through ACP for an MHE benchmark diagnostic. "
+            "Do not use tools. Return only a JSON object with keys: "
+            "proposal, diagnostic_status, tool_use_allowed, and notes. "
+            "Set diagnostic_status to ok if you can answer with JSON-only content. "
+            f"Task: {task}"
+        )
+
+    def diagnose_json_response(self, result: dict[str, Any]) -> dict[str, Any]:
+        proposal = self._extract_proposal(result)
+        return {
+            "transport": "acp",
+            "diagnostic_status": "ok" if proposal else "blocked",
+            "json_proposal_available": bool(proposal),
+            "content_empty": not bool(str(result.get("content", "")).strip()),
+            "proposal": proposal,
+            "stop_reason": result.get("execution_meta", {}).get("stop_reason")
+            if isinstance(result.get("execution_meta"), dict)
+            else None,
+        }
+
     async def _propose(self, *, prompt: str, output_dir: Path) -> ClaudeCLIResult:
         output_dir.mkdir(parents=True, exist_ok=True)
         prompt_path = write_text(output_dir / "acp_prompt.txt", prompt)

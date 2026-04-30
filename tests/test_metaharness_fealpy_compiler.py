@@ -107,10 +107,10 @@ def test_compiler_solver_method_wired() -> None:
     from metaharness_ext.fealpy.contracts import FealpySolverSpec
 
     spec = _spec()
-    spec.solver = FealpySolverSpec(method="cg")
+    spec.solver = FealpySolverSpec(method="scipy")
     compiler = FealpyCompilerComponent()
     plan = compiler.compile(spec)
-    assert "spsolve(A, F, solver='cg')" in plan.script_source
+    assert "spsolve(A, F, solver='scipy')" in plan.script_source
 
 
 def test_compiler_fe_space_type_in_script() -> None:

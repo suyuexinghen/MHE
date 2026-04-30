@@ -17,7 +17,7 @@ def _spec() -> FealpyProblemSpec:
         backend="numpy",
         mesh=FealpyMeshSpec(meshtype="tri", nx=8, ny=8),
         fe_degree=1,
-        solver=FealpySolverSpec(method="direct"),
+        solver=FealpySolverSpec(method="scipy"),
     )
 
 

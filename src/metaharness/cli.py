@@ -296,6 +296,7 @@ def _cmd_benchmark_run(args: argparse.Namespace) -> int:
             runner = FealpyBenchmarkRunner(
                 runs_root=runs_root,
                 allow_real_tools=args.allow_real_tools,
+                brain_provider=brain_provider,
                 adaptive_agent=args.adaptive_agent,
                 max_repair_attempts=args.max_repair_attempts,
             )
