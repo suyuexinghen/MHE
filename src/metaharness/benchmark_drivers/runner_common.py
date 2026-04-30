@@ -60,6 +60,11 @@ def write_lane_outputs(
     attempt_log: AttemptLog | None = None,
     skip_reason: str | None = None,
     error_message: str | None = None,
+    proposal_contract_status: str | None = None,
+    preflight_status: str | None = None,
+    failure_category: str | None = None,
+    repair_outcome: str | None = None,
+    diagnostics_files: list[str] | None = None,
     started_at: float | None = None,
 ) -> LaneSummary:
     output_dir = case_dir(runs_root, case.suite, lane, case.case_id)
@@ -77,8 +82,11 @@ def write_lane_outputs(
         ]
     )
     passed, diffs, missing = evaluate_metrics(case, metrics)
-    if status != "passed":
+    if status != "passed" or missing:
         passed = False
+        if status == "passed":
+            status = "failed"
+    diagnostics_files = diagnostics_files or []
     elapsed = None if started_at is None else time.perf_counter() - started_at
     summary = LaneSummary(
         case_id=case.case_id,
@@ -99,6 +107,11 @@ def write_lane_outputs(
         driver_time_seconds=elapsed,
         skip_reason=skip_reason,
         error_message=error_message,
+        proposal_contract_status=proposal_contract_status,
+        preflight_status=preflight_status,
+        failure_category=failure_category,
+        repair_outcome=repair_outcome,
+        diagnostics_files=diagnostics_files,
     )
     write_json(output_dir / "case_spec.json", case)
     write_json(output_dir / "metrics.json", metrics)

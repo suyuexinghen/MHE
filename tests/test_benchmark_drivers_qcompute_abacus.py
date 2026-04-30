@@ -7,8 +7,10 @@ from metaharness.benchmark_drivers.compare import write_comparison_outputs
 from metaharness.benchmark_drivers.qcompute_abacus_cases import get_qcompute_abacus_cases
 from metaharness.benchmark_drivers.qcompute_abacus_runner import QComputeAbacusBenchmarkRunner
 from metaharness_ext.qcompute.abacus_bridge import (
+    build_abacus_hs_bridge_status,
     build_abacus_hs_conversion_plan,
     convert_toy_abacus_hs_fixture_to_fcidump,
+    parse_abacus_hs_matrix_ref,
     parse_abacus_input_ref,
 )
 
@@ -77,6 +79,57 @@ def test_abacus_input_parser_records_hs_metadata(tmp_path: Path) -> None:
     assert metadata["bridge_parse_status"] == "metadata_parsed"
 
 
+def test_real_looking_abacus_hs_matrix_ref_records_artifact_metadata(tmp_path: Path) -> None:
+    hs_path = tmp_path / "hrs1_nao.csr.ref"
+    hs_path.write_text("real-looking sparse H/S artifact placeholder\n")
+
+    metadata = parse_abacus_hs_matrix_ref(str(hs_path))
+
+    assert metadata["exists"] is True
+    assert metadata["kind"] == "abacus_hs_matrix"
+    assert metadata["format_family"] == "abacus_sparse_csr"
+    assert metadata["matrix_role"] == "H"
+    assert metadata["parse_status"] == "metadata_only"
+    assert metadata["conversion_status"] == "unsupported"
+    assert metadata["bytes"] > 0
+
+
+def test_real_looking_abacus_hs_fixture_records_metadata_without_conversion(
+    tmp_path: Path,
+) -> None:
+    input_path = tmp_path / "INPUT"
+    input_path.write_text(
+        "INPUT_PARAMETERS\n"
+        "suffix silicon\n"
+        "calculation scf\n"
+        "basis_type lcao\n"
+        "gamma_only 0\n"
+        "nbands 8\n"
+        "out_mat_hs2 1\n"
+        "ks_solver genelpa\n"
+    )
+    hs_path = tmp_path / "OUT.silicon" / "data-HR-sparse_SPIN0.csr"
+    hs_path.parent.mkdir()
+    hs_path.write_text("real-looking sparse H/S artifact placeholder\n")
+
+    metadata = parse_abacus_input_ref(str(input_path))
+    bridge_status = build_abacus_hs_bridge_status(
+        case_id="abacus-hs-bridge-pending",
+        source_reference={"abacus_hs_source_refs": [str(input_path), str(hs_path)]},
+    )
+
+    assert metadata["parameters"]["suffix"] == ["silicon"]
+    assert metadata["parameters"]["nbands"] == ["8"]
+    assert metadata["hs_output_keys"] == ["out_mat_hs2"]
+    assert bridge_status.status == "converter_missing"
+    assert bridge_status.conversion_plan.status == "metadata_only"
+    assert bridge_status.promotion_ready is False
+    assert bridge_status.missing_capabilities == ["abacus_hs_to_fcidump_converter"]
+    assert bridge_status.failure_code == "converter_missing"
+    assert bridge_status.matrix_metadata[0]["format_family"] == "abacus_sparse_csr"
+    assert bridge_status.matrix_metadata[0]["conversion_status"] == "unsupported"
+
+
 def test_abacus_hs_conversion_plan_remains_metadata_only() -> None:
     plan = build_abacus_hs_conversion_plan(metadata_available=True)
 
@@ -119,6 +172,8 @@ def test_qcompute_abacus_bridge_case_is_explicitly_skipped(tmp_path: Path) -> No
     assert bridge_status["status"] == "converter_missing"
     assert bridge_status["promotion_ready"] is False
     assert bridge_status["missing_capabilities"] == ["abacus_hs_to_fcidump_converter"]
+    assert bridge_status["failure_code"] == "converter_missing"
+    assert "matrix_metadata" in bridge_status
     assert bridge_status["conversion_plan"]["status"] == "metadata_only"
     assert bridge_status["conversion_plan"]["target_format"] == "qcompute_pauli_dict"
     assert any(

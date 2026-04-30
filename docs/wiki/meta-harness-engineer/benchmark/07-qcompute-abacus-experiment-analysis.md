@@ -34,7 +34,7 @@ Manifest 记录的环境信息包括：
 | `pennylane` | available |
 | `abacus` binary | not found / `null` |
 
-这些信息只说明本地环境探测状态。由于本轮未开启 `--allow-real-tools`，即使 `qiskit` 与 `qiskit_aer` 可见，本报告中的 lane metrics 仍是 dry-run wiring metrics，不是 simulator 实测结果。
+这些信息只说明本地环境探测状态。由于本轮未开启 `--allow-real-tools`，即使 `qiskit` 与 `qiskit_aer` 可见，本报告中的 lane metrics 仍是 dry-run wiring metrics，不是 simulator 实测结果。若 real mode 下 `qiskit` 或 `qiskit_aer` 不可用，应报告为 dependency skip；若依赖可用但执行或 validation 失败，才可归类为 QCompute numerical/execution failure。QPU 可用性也必须单独报告，不能由本地 simulator dependency 推断。
 
 ## 7.3 Case 覆盖与 comparator verdict
 
@@ -121,6 +121,39 @@ unsupported_source_format: ABACUS H/S-to-FCIDUMP bridge is not implemented
 这是本轮最重要的 truthfulness guardrail：ABACUS `out_mat_hs` / `out_mat_hs2` source refs 已被记录，但不会被伪装成已支持的 FCIDUMP 或 qubit Hamiltonian input。
 
 后续实现已补充 `bridge_status.json`：runner 会从可读 ABACUS `INPUT` refs 中提取 `basis_type`、`gamma_only`、`ks_solver`、`out_mat_hs` / `out_mat_hs2` 等 metadata，用于证明 source format 被识别；同时写入 `conversion_plan`，定义 accepted artifacts、目标表示和 validation requirements。当前只有 toy `ABACUS_HS_TOY` fixture conversion 用于测试 FCIDUMP contract；真实 ABACUS H/S matrix 到 FCIDUMP 或 QCompute Pauli dictionary 的 converter 仍未实现，因此 `promotion_ready` 仍为 `false`。
+
+Reviewer 复查 `bridge_status.json` 时应优先确认这些字段：
+
+```json
+{
+  "status": "converter_missing",
+  "promotion_ready": false,
+  "missing_capabilities": ["abacus_hs_to_fcidump_converter"],
+  "failure_code": "converter_missing",
+  "matrix_metadata": [
+    {
+      "format_family": "abacus_sparse_csr",
+      "matrix_role": "H",
+      "parse_status": "metadata_only",
+      "conversion_status": "unsupported"
+    }
+  ],
+  "conversion_plan": {
+    "status": "metadata_only",
+    "target_format": "qcompute_pauli_dict"
+  },
+  "parsed_metadata": {
+    "input_refs": [
+      {
+        "parameters": {"basis_type": ["lcao"], "out_mat_hs2": ["1"]},
+        "hs_output_keys": ["out_mat_hs2"]
+      }
+    ]
+  }
+}
+```
+
+`source_refs.json` 同步嵌入 `bridge_status`，因此 reviewer 可以从同一个 lane output 目录同时追踪 source provenance 和 skip rationale。以上字段说明 bridge 已具备 metadata-aware unsupported path，但并不构成真实 H/S conversion 或 scientific validation。
 
 ## 7.5 Workflow lane observations
 

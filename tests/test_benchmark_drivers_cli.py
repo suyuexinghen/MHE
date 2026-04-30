@@ -372,7 +372,9 @@ def test_benchmark_compare_cli_writes_reports(tmp_path: Path) -> None:
     assert bundle["evidence_context"]["real_claude"] is False
     assert "Real tools: `False`" in report
     assert "Direct proposal" in report
+    assert "Direct preflight" in report
     assert "direct_proposal_source" in csv_text
+    assert "direct_preflight_status" in csv_text
 
 
 def test_benchmark_compare_manifest_records_observed_lanes(tmp_path: Path) -> None:

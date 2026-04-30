@@ -68,11 +68,14 @@ class AbacusHSBridgeStatus(BaseModel):
     ] = "converter_missing"
     source_refs: list[str] = Field(default_factory=list)
     parsed_metadata: dict[str, Any] = Field(default_factory=dict)
+    matrix_metadata: list[dict[str, Any]] = Field(default_factory=list)
     conversion_plan: AbacusHSConversionPlan = Field(default_factory=AbacusHSConversionPlan)
     promotion_ready: bool = False
     missing_capabilities: list[str] = Field(
         default_factory=lambda: ["abacus_hs_parser", "abacus_hs_to_fcidump_converter"]
     )
+    failure_code: str = "converter_missing"
+    skip_reason: str = "ABACUS H/S-to-FCIDUMP or qubit-Hamiltonian bridge is not implemented."
     reason: str = "ABACUS H/S-to-FCIDUMP or qubit-Hamiltonian bridge is not implemented."
 
 
@@ -84,17 +87,22 @@ def build_abacus_hs_bridge_status(
 ) -> AbacusHSBridgeStatus:
     source_refs = _source_refs(source_reference)
     parsed_metadata = parse_abacus_input_refs(source_refs)
+    matrix_metadata = parse_abacus_hs_matrix_refs(source_refs)
     metadata_available = any(
         ref.get("exists") and ref.get("hs_output_keys") for ref in parsed_metadata
     )
+    skip_reason = reason or AbacusHSBridgeStatus.model_fields["reason"].default
     return AbacusHSBridgeStatus(
         case_id=case_id,
         status="converter_missing" if metadata_available else "fixture_missing",
         source_refs=source_refs,
         parsed_metadata={"input_refs": parsed_metadata},
+        matrix_metadata=matrix_metadata,
         conversion_plan=build_abacus_hs_conversion_plan(metadata_available=metadata_available),
         missing_capabilities=["abacus_hs_to_fcidump_converter"],
-        reason=reason or AbacusHSBridgeStatus.model_fields["reason"].default,
+        failure_code="converter_missing" if metadata_available else "fixture_missing",
+        skip_reason=skip_reason,
+        reason=skip_reason,
     )
 
 
@@ -143,6 +151,39 @@ def parse_abacus_input_refs(source_refs: list[str]) -> list[dict[str, Any]]:
     return [parse_abacus_input_ref(source_ref) for source_ref in source_refs]
 
 
+def parse_abacus_hs_matrix_refs(source_refs: list[str]) -> list[dict[str, Any]]:
+    return [
+        metadata
+        for ref in source_refs
+        if (metadata := parse_abacus_hs_matrix_ref(ref))["exists"]
+        and metadata["format_family"] != "unknown"
+    ]
+
+
+def parse_abacus_hs_matrix_ref(source_ref: str) -> dict[str, Any]:
+    path = Path(source_ref)
+    metadata: dict[str, Any] = {
+        "path": source_ref,
+        "exists": path.exists(),
+        "kind": "abacus_hs_matrix",
+        "format_family": _matrix_format_family(path),
+        "matrix_role": _matrix_role(path),
+        "conversion_status": "unsupported",
+        "parse_status": "metadata_only" if path.exists() else "artifact_missing",
+    }
+    if not path.exists():
+        return metadata
+    metadata.update(
+        {
+            "artifact_name": path.name,
+            "suffix": path.suffix,
+            "is_sparse": path.suffix in {".csr", ".ref"} and "csr" in path.name.lower(),
+            "bytes": path.stat().st_size,
+        }
+    )
+    return metadata
+
+
 def parse_abacus_input_ref(source_ref: str) -> dict[str, Any]:
     path = Path(source_ref)
     metadata: dict[str, Any] = {
@@ -188,6 +229,24 @@ def _toy_matrix(lines: list[str], norb: int) -> list[list[float]]:
             if value != matrix[column_index][row_index]:
                 raise ValueError("h_matrix must be symmetric for toy FCIDUMP conversion")
     return matrix
+
+
+def _matrix_format_family(path: Path) -> str:
+    name = path.name.lower()
+    if name.endswith(".csr") or ".csr." in name:
+        return "abacus_sparse_csr"
+    if name.endswith(".txt") or ".txt." in name:
+        return "abacus_text_matrix"
+    return "unknown"
+
+
+def _matrix_role(path: Path) -> str:
+    name = path.name.lower()
+    if name.startswith(("h", "data-h")) or "-hr-" in name:
+        return "H"
+    if name.startswith(("s", "data-s")) or "-sr-" in name:
+        return "S"
+    return "unknown"
 
 
 def _source_refs(source_reference: str | dict[str, Any]) -> list[str]:

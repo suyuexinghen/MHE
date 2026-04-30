@@ -132,6 +132,11 @@ class LaneSummary(BaseModel):
     driver_time_seconds: float | None = None
     skip_reason: str | None = None
     error_message: str | None = None
+    proposal_contract_status: str | None = None
+    preflight_status: str | None = None
+    failure_category: str | None = None
+    repair_outcome: str | None = None
+    diagnostics_files: list[str] = Field(default_factory=list)
     flags: list[str] = Field(default_factory=list)
 
     @computed_field
@@ -170,4 +175,13 @@ class ComparisonRow(BaseModel):
     extension_evidence_count: int | None = None
     direct_evidence_count: int | None = None
     agent_evidence_count: int | None = None
+    direct_proposal_contract_status: str | None = None
+    agent_proposal_contract_status: str | None = None
+    direct_preflight_status: str | None = None
+    agent_preflight_status: str | None = None
+    direct_failure_category: str | None = None
+    agent_failure_category: str | None = None
+    direct_repair_outcome: str | None = None
+    agent_repair_outcome: str | None = None
+    agent_diagnostics_count: int | None = None
     verdict: str

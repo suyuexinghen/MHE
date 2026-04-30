@@ -47,6 +47,15 @@ FIELDNAMES = [
     "repeat_count",
     "direct_proposal_source",
     "agent_proposal_source",
+    "direct_proposal_contract_status",
+    "agent_proposal_contract_status",
+    "direct_preflight_status",
+    "agent_preflight_status",
+    "direct_failure_category",
+    "agent_failure_category",
+    "direct_repair_outcome",
+    "agent_repair_outcome",
+    "agent_diagnostics_count",
     "verdict",
 ]
 
@@ -117,6 +126,19 @@ def compare_suite(runs_root: Path, suite: BenchmarkSuite) -> list[ComparisonRow]
                 extension_evidence_count=None if extension is None else extension.evidence_count,
                 direct_evidence_count=None if direct is None else direct.evidence_count,
                 agent_evidence_count=None if agent is None else agent.evidence_count,
+                direct_proposal_contract_status=None
+                if direct is None
+                else direct.proposal_contract_status,
+                agent_proposal_contract_status=None
+                if agent is None
+                else agent.proposal_contract_status,
+                direct_preflight_status=None if direct is None else direct.preflight_status,
+                agent_preflight_status=None if agent is None else agent.preflight_status,
+                direct_failure_category=None if direct is None else direct.failure_category,
+                agent_failure_category=None if agent is None else agent.failure_category,
+                direct_repair_outcome=None if direct is None else direct.repair_outcome,
+                agent_repair_outcome=None if agent is None else agent.repair_outcome,
+                agent_diagnostics_count=None if agent is None else len(agent.diagnostics_files),
                 verdict=_verdict(extension, direct, agent),
             )
         )
@@ -253,6 +275,15 @@ def _enrich_rows(
                 "repeat_count": evidence_context["repeat_count"],
                 "direct_proposal_source": sources.get("direct", "none"),
                 "agent_proposal_source": sources.get("agent", "none"),
+                "direct_proposal_contract_status": row.get("direct_proposal_contract_status"),
+                "agent_proposal_contract_status": row.get("agent_proposal_contract_status"),
+                "direct_preflight_status": row.get("direct_preflight_status"),
+                "agent_preflight_status": row.get("agent_preflight_status"),
+                "direct_failure_category": row.get("direct_failure_category"),
+                "agent_failure_category": row.get("agent_failure_category"),
+                "direct_repair_outcome": row.get("direct_repair_outcome"),
+                "agent_repair_outcome": row.get("agent_repair_outcome"),
+                "agent_diagnostics_count": row.get("agent_diagnostics_count"),
             }
         )
     return enriched
@@ -271,8 +302,12 @@ def _verdict(
         return "capability_skip"
     if extension.passed and direct.passed and agent.passed:
         return "all_passed"
+    if extension.passed and not direct.passed and agent.repair_outcome == "repaired_success":
+        return "agent_repaired_success"
     if extension.passed and not direct.passed and agent.passed:
         return "agent_pipeline_advantage"
+    if agent.repair_outcome == "unrepaired_failure":
+        return "unrepaired_failure"
     if not extension.passed:
         return "extension_baseline_failed"
     return "workflow_gap"
@@ -290,13 +325,13 @@ def _comparison_markdown(
         f"- Real Claude: `{evidence_context['real_claude']}`",
         f"- Repeat count: `{evidence_context['repeat_count']}`",
         "",
-        "| Case | Extension | Direct | Agent | Direct proposal | Agent proposal | Verdict |",
-        "|---|---|---|---|---|---|---|",
+        "| Case | Extension | Direct | Agent | Direct proposal | Agent proposal | Direct preflight | Agent preflight | Agent repair | Verdict |",
+        "|---|---|---|---|---|---|---|---|---|---|",
     ]
     for row in rows:
         sources = evidence_context["proposal_sources"].get(row.case_id, {})
         lines.append(
-            f"| {row.case_id} | {row.extension_status} | {row.direct_status} | {row.agent_status} | {sources.get('direct', 'none')} | {sources.get('agent', 'none')} | {row.verdict} |"
+            f"| {row.case_id} | {row.extension_status} | {row.direct_status} | {row.agent_status} | {sources.get('direct', 'none')} | {sources.get('agent', 'none')} | {row.direct_preflight_status or 'none'} | {row.agent_preflight_status or 'none'} | {row.agent_repair_outcome or 'none'} | {row.verdict} |"
         )
     if evidence_context["repeat_rows"]:
         lines.extend(
@@ -346,13 +381,13 @@ def _analysis_markdown(
         "",
         "## Case verdicts",
         "",
-        "| Case | Extension | Direct | Agent | Direct proposal | Agent proposal | Verdict |",
-        "|---|---|---|---|---|---|---|",
+        "| Case | Extension | Direct | Agent | Direct proposal | Agent proposal | Direct preflight | Agent preflight | Agent repair | Verdict |",
+        "|---|---|---|---|---|---|---|---|---|---|",
     ]
     for row in rows:
         sources = evidence_context["proposal_sources"].get(row.case_id, {})
         lines.append(
-            f"| {row.case_id} | {row.extension_status} | {row.direct_status} | {row.agent_status} | {sources.get('direct', 'none')} | {sources.get('agent', 'none')} | {row.verdict} |"
+            f"| {row.case_id} | {row.extension_status} | {row.direct_status} | {row.agent_status} | {sources.get('direct', 'none')} | {sources.get('agent', 'none')} | {row.direct_preflight_status or 'none'} | {row.agent_preflight_status or 'none'} | {row.agent_repair_outcome or 'none'} | {row.verdict} |"
         )
     if evidence_context["repeat_rows"]:
         lines.extend(

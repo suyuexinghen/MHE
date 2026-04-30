@@ -194,6 +194,42 @@ bridge_status.json
 
 `bridge_status.json` records parsed ABACUS `INPUT` metadata such as `basis_type`, `gamma_only`, `ks_solver`, and H/S output flags (`out_mat_hs`, `out_mat_hs2`) when source refs are available. It also records a `conversion_plan` with accepted artifact names, target representation, and validation requirements. A toy `ABACUS_HS_TOY` fixture converter may exercise the FCIDUMP contract in tests, but real ABACUS H/S artifacts must still report `promotion_ready = false` until an H/S-to-FCIDUMP or H/S-to-qubit-Hamiltonian converter is implemented and scientifically validated.
 
+Reviewer-facing bridge evidence should expose the fields that justify the capability skip, for example:
+
+```json
+{
+  "status": "converter_missing",
+  "promotion_ready": false,
+  "missing_capabilities": ["abacus_hs_to_fcidump_converter"],
+  "failure_code": "converter_missing",
+  "matrix_metadata": [
+    {
+      "format_family": "abacus_sparse_csr",
+      "matrix_role": "H",
+      "parse_status": "metadata_only",
+      "conversion_status": "unsupported"
+    }
+  ],
+  "conversion_plan": {
+    "status": "metadata_only",
+    "target_format": "qcompute_pauli_dict",
+    "accepted_artifacts": ["INPUT", "out_mat_hs", "out_mat_hs2"]
+  },
+  "parsed_metadata": {
+    "input_refs": [
+      {
+        "exists": true,
+        "parameters": {"basis_type": ["lcao"], "out_mat_hs2": ["1"]},
+        "hs_output_keys": ["out_mat_hs2"],
+        "bridge_parse_status": "metadata_parsed"
+      }
+    ]
+  }
+}
+```
+
+`source_refs.json` duplicates the `bridge_status` payload beside the original source reference list so reviewers can audit both provenance and skip rationale from a single lane directory.
+
 Comparison outputs reuse the generic benchmark comparator:
 
 ```text

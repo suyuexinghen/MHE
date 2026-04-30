@@ -89,6 +89,7 @@ class OctaveBenchmarkRunner:
         prompt = f"Generate a standalone Octave solve.m for benchmark case {case.case_id}."
         claude_result = self.brain_provider.propose(prompt=prompt, output_dir=output_dir)
         attempt_log = self._claude_attempt_log(claude_result.error, "direct")
+        preflight = self._write_proposal_preflight(output_dir, case, "direct", claude_result)
         if claude_result.error:
             return write_lane_outputs(
                 runs_root=self.runs_root,
@@ -96,8 +97,15 @@ class OctaveBenchmarkRunner:
                 lane="direct",
                 status="failed",
                 attempt_log=attempt_log,
-                evidence_files=self._claude_evidence_files(claude_result),
+                evidence_files=[*self._claude_evidence_files(claude_result), preflight["path"]],
                 error_message=claude_result.error,
+                proposal_contract_status=preflight["proposal_contract_status"],
+                preflight_status=preflight["preflight_status"],
+                failure_category=preflight["failure_category"],
+            )
+        if preflight["preflight_status"] != "passed":
+            return self._preflight_failure_summary(
+                case, "direct", claude_result, attempt_log, preflight
             )
         if not self.allow_real_tools:
             metrics = {
@@ -119,9 +127,13 @@ class OctaveBenchmarkRunner:
                     claude_result.invocation.stderr_path,
                     claude_result.invocation.result_path or "",
                     claude_result.invocation.proposal_path or "",
+                    preflight["path"],
                     *self._write_direct_evidence(output_dir, case),
                 ],
                 attempt_log=attempt_log,
+                proposal_contract_status=preflight["proposal_contract_status"],
+                preflight_status=preflight["preflight_status"],
+                failure_category=preflight["failure_category"],
             )
         if shutil.which("octave-cli") is None:
             return write_lane_outputs(
@@ -136,8 +148,12 @@ class OctaveBenchmarkRunner:
                     claude_result.invocation.stderr_path,
                     claude_result.invocation.result_path or "",
                     claude_result.invocation.proposal_path or "",
+                    preflight["path"],
                 ],
                 skip_reason="octave-cli not found",
+                proposal_contract_status=preflight["proposal_contract_status"],
+                preflight_status=preflight["preflight_status"],
+                failure_category=preflight["failure_category"],
             )
         return self._run_direct_script_lane(
             case=case,
@@ -145,6 +161,7 @@ class OctaveBenchmarkRunner:
             output_dir=output_dir,
             claude_result=claude_result,
             attempt_log=attempt_log,
+            preflight=preflight,
         )
 
     def run_agent(self, case: BenchmarkCaseSpec) -> LaneSummary:
@@ -152,6 +169,7 @@ class OctaveBenchmarkRunner:
         prompt = f"Generate an Octave benchmark proposal for case {case.case_id}."
         claude_result = self.brain_provider.propose(prompt=prompt, output_dir=output_dir)
         attempt_log = self._claude_attempt_log(claude_result.error, "agent")
+        preflight = self._write_proposal_preflight(output_dir, case, "agent", claude_result)
         if claude_result.error:
             return write_lane_outputs(
                 runs_root=self.runs_root,
@@ -159,8 +177,15 @@ class OctaveBenchmarkRunner:
                 lane="agent",
                 status="failed",
                 attempt_log=attempt_log,
-                evidence_files=self._claude_evidence_files(claude_result),
+                evidence_files=[*self._claude_evidence_files(claude_result), preflight["path"]],
                 error_message=claude_result.error,
+                proposal_contract_status=preflight["proposal_contract_status"],
+                preflight_status=preflight["preflight_status"],
+                failure_category=preflight["failure_category"],
+            )
+        if preflight["preflight_status"] != "passed":
+            return self._preflight_failure_summary(
+                case, "agent", claude_result, attempt_log, preflight
             )
         if not self.allow_real_tools:
             metrics = {
@@ -182,8 +207,12 @@ class OctaveBenchmarkRunner:
                     claude_result.invocation.stderr_path,
                     claude_result.invocation.result_path or "",
                     claude_result.invocation.proposal_path or "",
+                    preflight["path"],
                 ],
                 attempt_log=attempt_log,
+                proposal_contract_status=preflight["proposal_contract_status"],
+                preflight_status=preflight["preflight_status"],
+                failure_category=preflight["failure_category"],
             )
         if shutil.which("octave-cli") is None:
             return write_lane_outputs(
@@ -198,8 +227,12 @@ class OctaveBenchmarkRunner:
                     claude_result.invocation.stderr_path,
                     claude_result.invocation.result_path or "",
                     claude_result.invocation.proposal_path or "",
+                    preflight["path"],
                 ],
                 skip_reason="octave-cli not found",
+                proposal_contract_status=preflight["proposal_contract_status"],
+                preflight_status=preflight["preflight_status"],
+                failure_category=preflight["failure_category"],
             )
         evidence_files = [
             claude_result.invocation.prompt_path,
@@ -207,6 +240,7 @@ class OctaveBenchmarkRunner:
             claude_result.invocation.stderr_path,
             claude_result.invocation.result_path or "",
             claude_result.invocation.proposal_path or "",
+            preflight["path"],
         ]
         if self.adaptive_agent:
             return self._run_adaptive_agent_lane(
@@ -215,6 +249,9 @@ class OctaveBenchmarkRunner:
                 initial_proposal=claude_result.proposal,
                 attempt_log=attempt_log,
                 evidence_files=evidence_files,
+                proposal_contract_status=preflight["proposal_contract_status"],
+                preflight_status=preflight["preflight_status"],
+                failure_category=preflight["failure_category"],
             )
         return self._run_extension_pipeline_lane(
             case=case,
@@ -222,6 +259,9 @@ class OctaveBenchmarkRunner:
             output_dir=output_dir,
             attempt_log=attempt_log,
             evidence_files=evidence_files,
+            proposal_contract_status=preflight["proposal_contract_status"],
+            preflight_status=preflight["preflight_status"],
+            failure_category=preflight["failure_category"],
         )
 
     def _run_extension_pipeline_lane(
@@ -233,6 +273,9 @@ class OctaveBenchmarkRunner:
         attempt_log: AttemptLog | None = None,
         evidence_files: list[str] | None = None,
         proposal: dict[str, Any] | None = None,
+        proposal_contract_status: str | None = None,
+        preflight_status: str | None = None,
+        failure_category: str | None = None,
     ) -> LaneSummary:
         started_at = time.perf_counter()
         try:
@@ -263,6 +306,9 @@ class OctaveBenchmarkRunner:
                 metrics=metrics,
                 evidence_files=[*(evidence_files or []), *evidence.evidence_files],
                 attempt_log=attempt_log,
+                proposal_contract_status=proposal_contract_status,
+                preflight_status=preflight_status,
+                failure_category=failure_category,
                 started_at=started_at,
             )
         except Exception as exc:
@@ -274,6 +320,9 @@ class OctaveBenchmarkRunner:
                 attempt_log=attempt_log,
                 evidence_files=evidence_files,
                 error_message=str(exc),
+                proposal_contract_status=proposal_contract_status,
+                preflight_status=preflight_status,
+                failure_category=failure_category or "execution_failed",
                 started_at=started_at,
             )
 
@@ -285,9 +334,13 @@ class OctaveBenchmarkRunner:
         initial_proposal: dict[str, Any],
         attempt_log: AttemptLog,
         evidence_files: list[str],
+        proposal_contract_status: str | None = None,
+        preflight_status: str | None = None,
+        failure_category: str | None = None,
     ) -> LaneSummary:
         current_proposal = initial_proposal
         diagnostics_files: list[str] = []
+        initial_summary: LaneSummary | None = None
         for repair_index in range(self.max_repair_attempts + 1):
             attempt_output_dir = (
                 output_dir if repair_index == 0 else output_dir / f"repair-{repair_index}"
@@ -299,8 +352,14 @@ class OctaveBenchmarkRunner:
                 attempt_log=attempt_log,
                 evidence_files=[*evidence_files, *diagnostics_files],
                 proposal=current_proposal,
+                proposal_contract_status=proposal_contract_status,
+                preflight_status=preflight_status,
+                failure_category=failure_category,
             )
+            if initial_summary is None:
+                initial_summary = summary
             if summary.passed or repair_index >= self.max_repair_attempts:
+                repair_outcome = self._repair_outcome(summary, initial_summary)
                 if attempt_output_dir != output_dir:
                     write_json(output_dir / "adaptive_final_summary.json", summary)
                     return write_lane_outputs(
@@ -316,8 +375,18 @@ class OctaveBenchmarkRunner:
                         attempt_log=attempt_log,
                         error_message=summary.error_message,
                         skip_reason=summary.skip_reason,
+                        proposal_contract_status=summary.proposal_contract_status,
+                        preflight_status=summary.preflight_status,
+                        failure_category=summary.failure_category,
+                        repair_outcome=repair_outcome,
+                        diagnostics_files=diagnostics_files,
                     )
-                return summary
+                return summary.model_copy(
+                    update={
+                        "repair_outcome": repair_outcome,
+                        "diagnostics_files": diagnostics_files,
+                    }
+                )
             diagnostics_path = self._write_adaptive_diagnostics(
                 output_dir,
                 case,
@@ -357,10 +426,36 @@ class OctaveBenchmarkRunner:
                 ]
             )
             if repair_result.error:
-                current_proposal = {}
-            else:
-                current_proposal = repair_result.proposal
-        return summary
+                return write_lane_outputs(
+                    runs_root=self.runs_root,
+                    case=case,
+                    lane="agent",
+                    status="failed",
+                    evidence_files=[*evidence_files, *diagnostics_files],
+                    attempt_log=attempt_log,
+                    error_message=repair_result.error,
+                    proposal_contract_status=proposal_contract_status,
+                    preflight_status=preflight_status,
+                    failure_category=self._claude_failure_category(repair_result.error),
+                    repair_outcome="unrepaired_failure",
+                    diagnostics_files=diagnostics_files,
+                )
+            current_proposal = repair_result.proposal
+        return summary.model_copy(
+            update={
+                "repair_outcome": self._repair_outcome(summary, initial_summary),
+                "diagnostics_files": diagnostics_files,
+            }
+        )
+
+    def _repair_outcome(
+        self, summary: LaneSummary, initial_summary: LaneSummary | None
+    ) -> str | None:
+        if summary.repair_count == 0:
+            return None
+        if summary.passed and initial_summary is not None and not initial_summary.passed:
+            return "repaired_success"
+        return "unrepaired_failure"
 
     def _run_direct_script_lane(
         self,
@@ -370,6 +465,7 @@ class OctaveBenchmarkRunner:
         output_dir: Path,
         claude_result,
         attempt_log: AttemptLog,
+        preflight: dict[str, Any],
     ) -> LaneSummary:
         started_at = time.perf_counter()
         script_path = output_dir / "solve.m"
@@ -382,6 +478,7 @@ class OctaveBenchmarkRunner:
             claude_result.invocation.stderr_path,
             claude_result.invocation.result_path or "",
             claude_result.invocation.proposal_path or "",
+            preflight["path"],
             str(script_path),
             str(stdout_path),
             str(stderr_path),
@@ -406,6 +503,9 @@ class OctaveBenchmarkRunner:
                 evidence_files=evidence_files,
                 attempt_log=attempt_log,
                 error_message=f"octave-cli timed out after {exc.timeout} seconds",
+                proposal_contract_status=preflight["proposal_contract_status"],
+                preflight_status=preflight["preflight_status"],
+                failure_category="execution_timeout",
                 started_at=started_at,
             )
         except OSError as exc:
@@ -419,6 +519,9 @@ class OctaveBenchmarkRunner:
                 evidence_files=evidence_files,
                 attempt_log=attempt_log,
                 error_message=str(exc),
+                proposal_contract_status=preflight["proposal_contract_status"],
+                preflight_status=preflight["preflight_status"],
+                failure_category="execution_failed",
                 started_at=started_at,
             )
         write_text(stdout_path, result.stdout)
@@ -434,6 +537,9 @@ class OctaveBenchmarkRunner:
                 evidence_files=evidence_files,
                 attempt_log=attempt_log,
                 error_message=f"invalid metrics.json: {exc}",
+                proposal_contract_status=preflight["proposal_contract_status"],
+                preflight_status=preflight["preflight_status"],
+                failure_category="validation_failed",
                 started_at=started_at,
             )
         return write_lane_outputs(
@@ -444,8 +550,88 @@ class OctaveBenchmarkRunner:
             metrics=metrics,
             evidence_files=evidence_files,
             attempt_log=attempt_log,
+            proposal_contract_status=preflight["proposal_contract_status"],
+            preflight_status=preflight["preflight_status"],
+            failure_category=None if result.returncode == 0 else "execution_failed",
             started_at=started_at,
         )
+
+    def _preflight_failure_summary(
+        self,
+        case: BenchmarkCaseSpec,
+        lane: BenchmarkLane,
+        claude_result,
+        attempt_log: AttemptLog,
+        preflight: dict[str, Any],
+    ) -> LaneSummary:
+        return write_lane_outputs(
+            runs_root=self.runs_root,
+            case=case,
+            lane=lane,
+            status="failed",
+            attempt_log=attempt_log,
+            evidence_files=[*self._claude_evidence_files(claude_result), preflight["path"]],
+            error_message=preflight["message"],
+            proposal_contract_status=preflight["proposal_contract_status"],
+            preflight_status=preflight["preflight_status"],
+            failure_category=preflight["failure_category"],
+        )
+
+    def _write_proposal_preflight(
+        self,
+        output_dir: Path,
+        case: BenchmarkCaseSpec,
+        lane: BenchmarkLane,
+        claude_result,
+    ) -> dict[str, Any]:
+        message = None
+        failure_category = None
+        proposal_contract_status = "passed"
+        if claude_result.error:
+            proposal_contract_status = "failed"
+            failure_category = self._claude_failure_category(claude_result.error)
+            message = claude_result.error
+        elif self._is_fake_claude_result(claude_result) and not claude_result.proposal:
+            proposal_contract_status = "not_checked"
+        elif not isinstance(claude_result.proposal, dict) or not claude_result.proposal:
+            proposal_contract_status = "failed"
+            failure_category = "proposal_contract_failed"
+            message = "Claude proposal must be a non-empty JSON object"
+        elif self._proposal_script(claude_result.proposal) is None:
+            proposal_contract_status = "failed"
+            failure_category = "proposal_contract_failed"
+            message = "Claude proposal must include one of solve_m, script, or octave_script"
+        preflight_status = (
+            "passed" if proposal_contract_status in {"passed", "not_checked"} else "failed"
+        )
+        payload = {
+            "case_id": case.case_id,
+            "lane": lane,
+            "proposal_contract_status": proposal_contract_status,
+            "preflight_status": preflight_status,
+            "failure_category": failure_category,
+            "message": message,
+            "required_script_fields": ["solve_m", "script", "octave_script"],
+            "expected_metrics": case.expected_metrics,
+            "claude_result_path": claude_result.invocation.result_path,
+            "proposal_path": claude_result.invocation.proposal_path,
+        }
+        path = write_json(output_dir / "proposal_preflight.json", payload)
+        return {**payload, "path": str(path)}
+
+    def _is_fake_claude_result(self, claude_result) -> bool:
+        return (
+            bool(claude_result.invocation.command)
+            and claude_result.invocation.command[0] == "fake-claude"
+        )
+
+    def _claude_failure_category(self, error: str) -> str:
+        lowered = error.lower()
+        if "maximum number of turns" in lowered or "max_turns" in lowered:
+            return "proposal_max_turns"
+        if "invalid claude json" in lowered:
+            return "proposal_invalid_json"
+        return "proposal_error_payload"
 
     def _claude_evidence_files(self, claude_result) -> list[str]:
         return [
@@ -520,6 +706,11 @@ class OctaveBenchmarkRunner:
                 "error_message": summary.error_message,
                 "proposal": proposal,
                 "evidence_files": summary.evidence_files,
+                "validation_delta": {
+                    "before_passed": summary.passed,
+                    "before_status": summary.status,
+                    "before_missing_metrics": summary.missing_metrics,
+                },
             },
         )
 

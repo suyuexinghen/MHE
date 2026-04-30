@@ -188,6 +188,42 @@ def test_comparator_records_incomplete_when_lane_missing(tmp_path: Path) -> None
     assert rows[0].verdict == "incomplete"
 
 
+def test_comparator_records_agent_repaired_success_verdict(tmp_path: Path) -> None:
+    case = BenchmarkCaseSpec(
+        case_id="repair-demo",
+        suite="octave-native",
+        task_family="demo",
+        description="repair demo case",
+        required_capabilities=["octave-cli"],
+        source_reference="source.m:1",
+        expected_metrics=["error"],
+        reference_metrics={"error": MetricReference(value=0.0, tolerance=1e-9)},
+    )
+    _write_passing_lane_summary(tmp_path, case, "extension")
+    _write_lane_summary(tmp_path, case, "direct", status="failed", passed=False)
+    agent_summary = LaneSummary(
+        case_id=case.case_id,
+        suite=case.suite,
+        lane="agent",
+        status="passed",
+        passed=True,
+        metrics={"error": 0.0},
+        evidence_files=["evidence.txt"],
+        repair_count=1,
+        repair_outcome="repaired_success",
+        diagnostics_files=["adaptive_diagnostics_1.json"],
+    )
+    write_json(
+        case_dir(tmp_path, case.suite, "agent", case.case_id) / "summary.json", agent_summary
+    )
+
+    rows = write_comparison_outputs(runs_root=tmp_path, suite="octave-native")
+
+    assert rows[0].verdict == "agent_repaired_success"
+    assert rows[0].agent_repair_outcome == "repaired_success"
+    assert rows[0].agent_diagnostics_count == 1
+
+
 def test_comparator_records_capability_skip(tmp_path: Path) -> None:
     case = BenchmarkCaseSpec(
         case_id="gated",

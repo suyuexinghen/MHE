@@ -83,8 +83,35 @@ def test_octave_direct_records_claude_error_evidence(tmp_path: Path) -> None:
 
     assert summary.status == "failed"
     assert "Reached maximum number of turns" in (summary.error_message or "")
+    assert summary.proposal_contract_status == "failed"
+    assert summary.preflight_status == "failed"
+    assert summary.failure_category == "proposal_max_turns"
     assert any(path.endswith("claude_stdout.json") for path in summary.evidence_files)
     assert any(path.endswith("claude_result.json") for path in summary.evidence_files)
+    assert any(path.endswith("proposal_preflight.json") for path in summary.evidence_files)
+
+
+def test_octave_direct_preflight_fails_missing_script(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "metaharness.benchmark_drivers.octave_runner.shutil.which", lambda _: "octave-cli"
+    )
+    case = octave_case_catalog()["sinc-values"]
+    runner = OctaveBenchmarkRunner(
+        runs_root=tmp_path,
+        allow_real_tools=True,
+        brain_provider=FakeClaudeCLIBrainProvider({"notes": "no script"}),
+    )
+
+    summary = runner.run_direct(case)
+
+    output_dir = tmp_path / "octave-native-benchmark" / "direct" / "sinc-values"
+    preflight = (output_dir / "proposal_preflight.json").read_text()
+    assert summary.status == "failed"
+    assert summary.proposal_contract_status == "failed"
+    assert summary.preflight_status == "failed"
+    assert summary.failure_category == "proposal_contract_failed"
+    assert "proposal_preflight.json" in "\n".join(summary.evidence_files)
+    assert "required_script_fields" in preflight
 
 
 def test_octave_direct_real_mode_uses_proposal_script(tmp_path: Path, monkeypatch) -> None:
@@ -213,6 +240,146 @@ def test_octave_adaptive_agent_records_repair_attempt(tmp_path: Path, monkeypatc
     assert summary.repair_count == 1
     assert summary.llm_calls == 2
     assert attempts["count"] == 2
+
+
+def test_octave_adaptive_agent_records_repaired_success_diagnostics(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "metaharness.benchmark_drivers.octave_runner.shutil.which", lambda _: "octave-cli"
+    )
+    attempts = {"count": 0}
+
+    def fake_run(command, **kwargs):
+        attempts["count"] += 1
+        output_dir = Path(kwargs["cwd"])
+        outputs = output_dir / "outputs"
+        outputs.mkdir(exist_ok=True)
+        if attempts["count"] > 1:
+            (outputs / "max_abs_error.txt").write_text("# name: max_abs_error\n# type: scalar\n0\n")
+            (outputs / "elapsed_seconds.txt").write_text(
+                "# name: elapsed_seconds\n# type: scalar\n0\n"
+            )
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr("metaharness_ext.octave.executor.subprocess.run", fake_run)
+    case = octave_case_catalog()["sinc-values"]
+    runner = OctaveBenchmarkRunner(
+        runs_root=tmp_path,
+        allow_real_tools=True,
+        adaptive_agent=True,
+        max_repair_attempts=1,
+        brain_provider=FakeClaudeCLIBrainProvider(
+            {"script": "max_abs_error = 0;\nelapsed_seconds = 0;"}
+        ),
+    )
+
+    summary = runner.run_agent(case)
+
+    diagnostics_path = (
+        tmp_path
+        / "octave-native-benchmark"
+        / "agent"
+        / "sinc-values"
+        / "adaptive_diagnostics_1.json"
+    )
+    assert summary.status == "passed"
+    assert summary.repair_outcome == "repaired_success"
+    assert summary.diagnostics_files == [str(diagnostics_path)]
+    assert summary.repair_count == 1
+    assert diagnostics_path.exists()
+    assert "before_missing_metrics" in diagnostics_path.read_text()
+
+
+def test_octave_adaptive_agent_records_unrepaired_failure(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "metaharness.benchmark_drivers.octave_runner.shutil.which", lambda _: "octave-cli"
+    )
+
+    def fake_run(command, **kwargs):
+        Path(kwargs["cwd"]).joinpath("outputs").mkdir(exist_ok=True)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr("metaharness_ext.octave.executor.subprocess.run", fake_run)
+    case = octave_case_catalog()["sinc-values"]
+    runner = OctaveBenchmarkRunner(
+        runs_root=tmp_path,
+        allow_real_tools=True,
+        adaptive_agent=True,
+        max_repair_attempts=1,
+        brain_provider=FakeClaudeCLIBrainProvider(
+            {"script": "max_abs_error = 0;\nelapsed_seconds = 0;"}
+        ),
+    )
+
+    summary = runner.run_agent(case)
+
+    assert summary.status == "failed"
+    assert summary.repair_outcome == "unrepaired_failure"
+    assert summary.repair_count == 1
+    assert len(summary.diagnostics_files) == 1
+
+
+def test_octave_adaptive_agent_stops_when_repair_proposal_errors(
+    tmp_path: Path, monkeypatch
+) -> None:
+    class ErrorOnRepairBrainProvider(FakeClaudeCLIBrainProvider):
+        def __init__(self) -> None:
+            super().__init__({"script": "max_abs_error = 0;\nelapsed_seconds = 0;"})
+            self.calls = 0
+
+        def propose(self, *, prompt: str, output_dir: Path) -> ClaudeCLIResult:
+            self.calls += 1
+            if self.calls == 1:
+                return super().propose(prompt=prompt, output_dir=output_dir)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            prompt_path = output_dir / "claude_prompt.txt"
+            stdout_path = output_dir / "claude_stdout.json"
+            stderr_path = output_dir / "claude_stderr.txt"
+            result_path = output_dir / "claude_result.json"
+            prompt_path.write_text(prompt)
+            stdout_path.write_text('{"is_error": true}')
+            stderr_path.write_text("repair failed")
+            result_path.write_text('{"is_error": true}')
+            return ClaudeCLIResult(
+                invocation=ClaudeInvocationRecord(
+                    binary="fake-claude",
+                    command=["fake-claude"],
+                    prompt_path=str(prompt_path),
+                    stdout_path=str(stdout_path),
+                    stderr_path=str(stderr_path),
+                    result_path=str(result_path),
+                    proposal_path=str(output_dir / "proposal.json"),
+                    return_code=1,
+                ),
+                result={"is_error": True},
+                error="Reached maximum number of turns (1)",
+            )
+
+    monkeypatch.setattr(
+        "metaharness.benchmark_drivers.octave_runner.shutil.which", lambda _: "octave-cli"
+    )
+
+    def fake_run(command, **kwargs):
+        Path(kwargs["cwd"]).joinpath("outputs").mkdir(exist_ok=True)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr("metaharness_ext.octave.executor.subprocess.run", fake_run)
+    case = octave_case_catalog()["sinc-values"]
+    runner = OctaveBenchmarkRunner(
+        runs_root=tmp_path,
+        allow_real_tools=True,
+        adaptive_agent=True,
+        max_repair_attempts=1,
+        brain_provider=ErrorOnRepairBrainProvider(),
+    )
+
+    summary = runner.run_agent(case)
+
+    assert summary.status == "failed"
+    assert summary.repair_outcome == "unrepaired_failure"
+    assert summary.failure_category == "proposal_max_turns"
+    assert summary.repair_count == 1
 
 
 def test_octave_agent_real_mode_writes_agent_summary(tmp_path: Path, monkeypatch) -> None:
