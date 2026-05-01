@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from metaharness_ext.pycfd.benchmark_cases import get_pycfd_cases, pycfd_case_catalog
+from metaharness_ext.pycfd.benchmark_cases import pycfd_case_catalog
 
 
 class TestPyCFDBenchmarkCases:
@@ -21,30 +21,33 @@ class TestPyCFDBenchmarkCases:
 
     def test_vortex_case_spec(self):
         spec = pycfd_case_catalog()["vortex-2d"]
-        assert spec.case_type == "vortex"
-        assert spec.mesh.nx == 64
-        assert spec.mesh.ny == 64
-        assert spec.mesh.mesh_type == "tri"
-        assert spec.flow.M_inf == 0.3
+        assert spec.case_id == "vortex-2d"
+        assert spec.problem_definition["case_type"] == "vortex"
+        assert spec.problem_definition["mesh"]["nx"] == 64
+        assert spec.problem_definition["mesh"]["ny"] == 64
+        assert spec.problem_definition["mesh"]["mesh_type"] == "tri"
+        assert spec.problem_definition["flow"]["M_inf"] == 0.3
 
     def test_airfoil_case_spec(self):
         spec = pycfd_case_catalog()["airfoil-2d"]
-        assert spec.case_type == "airfoil"
-        assert spec.flow.M_inf == 0.80
-        assert spec.flow.aoa == 1.25
-        assert spec.solver.use_limiter is True
+        assert spec.case_id == "airfoil-2d"
+        assert spec.problem_definition["case_type"] == "airfoil"
+        assert spec.problem_definition["flow"]["M_inf"] == 0.80
+        assert spec.problem_definition["flow"]["aoa"] == 1.25
+        assert spec.problem_definition["solver"]["use_limiter"] is True
 
     def test_shock_case_spec(self):
         spec = pycfd_case_catalog()["shock-diffraction-2d"]
-        assert spec.case_type == "shock_diffraction"
-        assert spec.flow.M_inf == 5.09
-        assert spec.solver.CFL == 0.5
+        assert spec.case_id == "shock-diffraction-2d"
+        assert spec.problem_definition["case_type"] == "shock_diffraction"
+        assert spec.problem_definition["flow"]["M_inf"] == 5.09
+        assert spec.problem_definition["solver"]["CFL"] == 0.5
 
-    def test_filter_by_case_type(self):
-        cases = get_pycfd_cases(case_types=["vortex", "mms"])
+    def test_filter_by_case_id(self):
+        cases = pycfd_case_catalog(case_ids=["vortex-2d", "mms-2d"])
         assert len(cases) == 2
-        assert all(v.case_type in ("vortex", "mms") for v in cases.values())
+        assert set(cases.keys()) == {"vortex-2d", "mms-2d"}
 
     def test_filter_empty_returns_all(self):
-        cases = get_pycfd_cases()
+        cases = pycfd_case_catalog()
         assert len(cases) == 5

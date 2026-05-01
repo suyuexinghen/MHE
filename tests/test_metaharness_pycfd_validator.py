@@ -75,3 +75,38 @@ class TestPyCFDValidator:
         a = _artifact(residual_l1=None, residual_l2=None)
         report = v.validate(a, plan_ref="p1")
         assert not report.passed
+
+    def test_tolerance_table_per_case_overrides_default(self):
+        v = PyCFDValidatorComponent(
+            residual_tolerance=1e-5,
+            tolerance_table={"vortex": 1e-2, "airfoil": 1e-3},
+        )
+        a = _artifact(case_type="vortex", residual_l1=5e-3, residual_l2=5e-3)
+        report = v.validate(a, plan_ref="p1")
+        assert report.passed
+        assert report.residual_tolerance == 1e-2
+
+    def test_tolerance_table_falls_back_to_default(self):
+        v = PyCFDValidatorComponent(
+            residual_tolerance=1e-5,
+            tolerance_table={"airfoil": 1e-3},
+        )
+        a = _artifact(case_type="vortex", residual_l1=1e-4, residual_l2=1e-4)
+        report = v.validate(a, plan_ref="p1")
+        assert not report.passed
+        assert report.residual_tolerance == 1e-5
+
+    def test_tolerance_table_different_cases_different_tolerances(self):
+        v = PyCFDValidatorComponent(
+            residual_tolerance=1e-5,
+            tolerance_table={"vortex": 1e-2, "cylinder": 1e-1},
+        )
+        a1 = _artifact(case_type="vortex", residual_l1=5e-3, residual_l2=5e-3)
+        r1 = v.validate(a1, plan_ref="p1")
+        assert r1.passed
+        assert r1.residual_tolerance == 1e-2
+
+        a2 = _artifact(case_type="cylinder", residual_l1=5e-2, residual_l2=5e-2)
+        r2 = v.validate(a2, plan_ref="p2")
+        assert r2.passed
+        assert r2.residual_tolerance == 1e-1

@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "status": "approved_with_limitations",
+  "approval_kind": "pycfd_pde_comparison_benchmark",
+  "approved_by": "suyuexinghen",
+  "approval_role": "project_lead_authorized_admin",
+  "approval_decision": "approved_with_limitations",
+  "approval_date": "2026-05-01",
+  "approved_scope": {
+    "benchmark_suites": ["pycfd-pde"],
+    "lanes": ["extension", "direct", "agent", "comparison"],
+    "case_types": [
+      "vortex-2d",
+      "airfoil-2d",
+      "cylinder-2d",
+      "mms-2d",
+      "shock-diffraction-2d"
+    ],
+    "comparison_outputs": [
+      "result_bundle.json",
+      "repeat_summary.json",
+      "run_manifest.json",
+      "manager_facing_report"
+    ],
+    "claim_scope": [
+      "workflow_reproducibility",
+      "real_pycfd_execution_evidence_when_present",
+      "lane_success_rate_when_real_direct_agent_runs_exist",
+      "schema_and_compiler_auditability"
+    ],
+    "excluded_claims": [
+      "cfd_solver_residual_convergence_without_tolerance_review",
+      "case_type_capability_claims_without_environment_probe",
+      "direct_lane_correctness_without_code_review"
+    ]
+  },
+  "evidence_refs": [
+    ".mhe/config.json",
+    ".mhe/benchmarks/comparison-approval.json",
+    "docs/wiki/meta-harness-engineer/benchmark/08-real-run-evidence-plan-analysis.md"
+  ],
+  "required_evidence": [
+    "real_tools_run_root",
+    "comparison_result_bundle",
+    "repeat_summary_when_claiming_stability",
+    "direct_and_agent_lane_evidence_when_claiming_comparison",
+    "compiler_generated_reference_script_as_ground_truth",
+    "PYCFD_SRC_PATH_environment_probe_report",
+    "residual_tolerance_table_per_case_type"
+  ],
+  "direct_lane_review_requirements": {
+    "review_required": true,
+    "review_items": [
+      "verify_generated_script_imports_PYCFD_SRC_PATH_correctly",
+      "verify_config_calls_run_pycfd_case_with_valid_dict",
+      "verify_mesh_parameters_match_case_type_requirements",
+      "verify_flux_and_limiter_selection_is_valid_for_flow_regime",
+      "verify_residual_norm_computation_is_present"
+    ],
+    "reference_source": "extension_lane_compiler_generated_script"
+  },
+  "non_replacement_rules": {
+    "acp_or_claude_review_replaces_admin_approval": false,
+    "ci_schema_pass_replaces_admin_approval": false,
+    "dry_run_replaces_real_tool_evidence": false,
+    "preflight_pass_replaces_code_review": false,
+    "residual_tolerance_pass_replaces_convergence_analysis": false
+  },
+  "notes": [
+    "Administrator approval is granted with limitations for pycfd-pde workflow/reporting claims.",
+    "Residual convergence, case capability, and direct-lane correctness still require the listed evidence and reviews.",
+    "PyCFD is not a pip package; real-run claims still require PYCFD_SRC_PATH and Solvers.py importability evidence."
+  ]
+}

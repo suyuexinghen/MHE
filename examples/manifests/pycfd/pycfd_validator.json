@@ -1,0 +1,68 @@
+{
+  "name": "pycfd_validator",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.pycfd.validator:PyCFDValidatorComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [
+      {
+        "name": "plan",
+        "type": "PyCFDRunPlan",
+        "required": false,
+        "description": "Optional plan reference for context."
+      },
+      {
+        "name": "artifact",
+        "type": "PyCFDRunArtifact",
+        "required": true,
+        "description": "Accept a run artifact with computed residual norms.",
+        "cardinality": "one"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "validation_report",
+        "type": "PyCFDValidationReport",
+        "mode": "sync",
+        "description": "Return validation report with L1/L2 residual tolerance checks and issues."
+      }
+    ],
+    "events": [],
+    "provides": [
+      {
+        "name": "pycfd.validate.report",
+        "description": "Validate PyCFD run artifacts against L1/L2 residual tolerances."
+      }
+    ],
+    "requires": [],
+    "slots": [
+      {
+        "slot": "pycfd_validator.primary",
+        "binding": "primary",
+        "required": true
+      }
+    ]
+  },
+  "safety": {
+    "protected": true,
+    "mutability": "mutable",
+    "sandbox_profile": "read-only",
+    "hot_swap": false
+  },
+  "policy": {
+    "sandbox": {
+      "tier": "read-only"
+    },
+    "credentials": {
+      "requires_subject": false,
+      "allow_inline_credentials": false,
+      "required_claims": []
+    }
+  },
+  "state_schema_version": 1,
+  "provides": [
+    "pycfd.validate.report"
+  ],
+  "bins": []
+}

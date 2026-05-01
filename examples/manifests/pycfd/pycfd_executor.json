@@ -1,0 +1,82 @@
+{
+  "name": "pycfd_executor",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.pycfd.executor:PyCFDExecutorComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [
+      {
+        "name": "plan",
+        "type": "PyCFDRunPlan",
+        "required": true,
+        "description": "Accept a compiled run plan containing the solver script.",
+        "cardinality": "one"
+      },
+      {
+        "name": "environment",
+        "type": "PyCFDEnvironmentReport",
+        "required": false,
+        "description": "Optional environment report for availability gating."
+      }
+    ],
+    "outputs": [
+      {
+        "name": "artifact",
+        "type": "PyCFDRunArtifact",
+        "mode": "sync",
+        "description": "Return run artifact with residual norms, wall time, and mesh statistics."
+      }
+    ],
+    "events": [],
+    "provides": [
+      {
+        "name": "pycfd.execute.run",
+        "description": "Execute PyCFD FVM solver script and collect residual metrics."
+      }
+    ],
+    "requires": [
+      {
+        "name": "pycfd.compile",
+        "description": "Require script compilation before execution."
+      }
+    ],
+    "slots": [
+      {
+        "slot": "pycfd_executor.primary",
+        "binding": "primary",
+        "required": true
+      }
+    ]
+  },
+  "safety": {
+    "protected": false,
+    "mutability": "mutable",
+    "sandbox_profile": "workspace-write",
+    "hot_swap": true
+  },
+  "policy": {
+    "sandbox": {
+      "tier": "workspace-write"
+    },
+    "credentials": {
+      "requires_subject": false,
+      "allow_inline_credentials": false,
+      "required_claims": []
+    }
+  },
+  "state_schema_version": 1,
+  "provides": [
+    "pycfd.execute.run"
+  ],
+  "requires": [
+    "pycfd.compile"
+  ],
+  "deps": {
+    "components": [],
+    "capabilities": [
+      "pycfd.compile"
+    ]
+  },
+  "bins": []
+}

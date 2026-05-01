@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from metaharness_ext.pycfd.benchmark_cases import get_pycfd_cases, pycfd_case_catalog  # noqa: F401
+from metaharness_ext.pycfd.benchmark_cases import pycfd_case_catalog  # noqa: F401
 from metaharness_ext.pycfd.benchmark_runner import PyCFDBenchmarkRunner  # noqa: F401
 from metaharness_ext.pycfd.capabilities import (  # noqa: F401
     CANONICAL_CAPABILITIES,

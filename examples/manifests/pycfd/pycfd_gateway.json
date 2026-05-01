@@ -1,0 +1,82 @@
+{
+  "name": "pycfd_gateway",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.pycfd.gateway:PyCFDGatewayComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [
+      {
+        "name": "task",
+        "type": "PyCFDProblemSpec",
+        "required": false,
+        "description": "Accept a PyCFD problem specification for 2D Euler FVM benchmark tasks.",
+        "cardinality": "one"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "task",
+        "type": "PyCFDProblemSpec",
+        "mode": "sync",
+        "description": "Emit the normalized PyCFD task specification for downstream probing and compilation."
+      }
+    ],
+    "events": [],
+    "provides": [
+      {
+        "name": "pycfd.task.issue",
+        "description": "Issue PyCFD 2D Euler FVM benchmark tasks."
+      }
+    ],
+    "requires": [
+      {
+        "name": "pycfd.environment.probe",
+        "description": "Require environment readiness before compilation."
+      },
+      {
+        "name": "pycfd.compile",
+        "description": "Require script compilation for accepted task specifications."
+      }
+    ],
+    "slots": [
+      {
+        "slot": "pycfd_gateway.primary",
+        "binding": "primary",
+        "required": true
+      }
+    ]
+  },
+  "safety": {
+    "protected": false,
+    "mutability": "mutable",
+    "sandbox_profile": "workspace-write",
+    "hot_swap": true
+  },
+  "policy": {
+    "sandbox": {
+      "tier": "workspace-write"
+    },
+    "credentials": {
+      "requires_subject": false,
+      "allow_inline_credentials": false,
+      "required_claims": []
+    }
+  },
+  "state_schema_version": 1,
+  "provides": [
+    "pycfd.task.issue"
+  ],
+  "requires": [
+    "pycfd.environment.probe",
+    "pycfd.compile"
+  ],
+  "deps": {
+    "components": [],
+    "capabilities": [
+      "pycfd.environment.probe",
+      "pycfd.compile"
+    ]
+  },
+  "bins": []
+}

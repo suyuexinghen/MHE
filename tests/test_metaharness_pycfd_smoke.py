@@ -26,6 +26,7 @@ def require_real_pycfd():
 
 
 class TestPyCFDSmoke:
+    @pytest.mark.pycfd
     def test_environment_probe_real(self, pycfd_src_path, require_real_pycfd):
         from metaharness_ext.pycfd.environment import PyCFDEnvironmentProbeComponent
 
@@ -34,6 +35,7 @@ class TestPyCFDSmoke:
         assert report.available
         assert report.pycfd_src_path
 
+    @pytest.mark.pycfd
     def test_compiler_generates_runnable_script(self, pycfd_src_path, require_real_pycfd):
         from metaharness_ext.pycfd.compiler import PyCFDCompilerComponent
         from metaharness_ext.pycfd.contracts import PyCFDProblemSpec
@@ -44,6 +46,7 @@ class TestPyCFDSmoke:
         assert plan.plan_id
         assert "run_pycfd_case" in plan.script_source
 
+    @pytest.mark.pycfd
     def test_full_pipeline_vortex(self, pycfd_src_path, require_real_pycfd):
         from metaharness_ext.pycfd.compiler import PyCFDCompilerComponent
         from metaharness_ext.pycfd.contracts import PyCFDProblemSpec

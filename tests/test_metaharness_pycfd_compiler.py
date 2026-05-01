@@ -32,19 +32,19 @@ class TestPyCFDCompiler:
         compiler = PyCFDCompilerComponent(pycfd_src_path="/tmp/pycfd")
         spec = PyCFDProblemSpec(task_id="vtx", case_type="vortex")
         plan = compiler.compile(spec, run_id="r1", workspace_dir="/tmp/ws")
-        assert '"case_type": "vortex"' in plan.script_source
-        assert '"flowtype": "vortex"' in plan.script_source
-        assert '"solver_type": "explicit_unsteady_solver"' in plan.script_source
+        assert "'case_type': 'vortex'" in plan.script_source
+        assert "'flowtype': 'vortex'" in plan.script_source
+        assert "'solver_type': 'explicit_unsteady_solver'" in plan.script_source
 
     def test_shock_script_contains_expected_config(self):
         compiler = PyCFDCompilerComponent(pycfd_src_path="/tmp/pycfd")
         spec = PyCFDProblemSpec(task_id="shk", case_type="shock_diffraction")
         plan = compiler.compile(spec, run_id="r1", workspace_dir="/tmp/ws")
-        assert '"case_type": "shock_diffraction"' in plan.script_source
-        assert '"flowtype": "shock-diffraction"' in plan.script_source
+        assert "'case_type': 'shock_diffraction'" in plan.script_source
+        assert "'flowtype': 'shock-diffraction'" in plan.script_source
 
     def test_mms_script_adds_compute_te_mms(self):
         compiler = PyCFDCompilerComponent(pycfd_src_path="/tmp/pycfd")
         spec = PyCFDProblemSpec(task_id="m", case_type="mms")
         plan = compiler.compile(spec, run_id="r1", workspace_dir="/tmp/ws")
-        assert '"compute_te_mms": true' in plan.script_source
+        assert "'compute_te_mms': True" in plan.script_source

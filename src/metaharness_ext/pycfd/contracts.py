@@ -177,6 +177,7 @@ class PyCFDRunArtifact(BaseModel):
     run_id: str
     task_id: str
     plan_ref: str
+    case_type: PyCFDCaseType = "vortex"
     status: PyCFDRunArtifactStatus = "unavailable"
     return_code: int | None = None
     error_message: str | None = None

@@ -13,7 +13,7 @@
 ## 1. Current State Snapshot
 
 - **Code truth**: Extension fully implemented at `src/metaharness_ext/pycfd/` (15 production files).
-- **Docs truth**: Blueprint analysis at `docs/blueprint/pycfd_blueprint.md`.
+- **Docs truth**: Blueprint analysis at `docs/wiki/meta-harness-engineer/blueprint/09-pycfd-extension-blueprint.md`.
 - **Upstream PyCFD**: `run_pycfd_case()` function added to `Solvers.py` for JSON output.
 
 ## 2. Execution Order (Completed)
@@ -69,26 +69,27 @@ Phase 0 (PyCFD prep) → Phase 1 (Contracts+Env) → Phase 2 (Compiler+Executor)
 
 ### Phase 4: Benchmark Runner
 - **Status**: complete
-- **Goal**: 3-lane benchmark comparison (extension/direct/agent)
+- **Goal**: 3-lane benchmark comparison (extension/direct/agent) with Claude CLI integration
 - **Key tasks**:
   - `benchmark_cases.py` — `pycfd_case_catalog()` with 5 cases ✓
-  - `benchmark_runner.py` — 3-lane runner with dry-run mode ✓
+  - `benchmark_runner.py` — Full 3-lane runner with ClaudeCLIBrainProvider, `FakeClaudeCLIBrainProvider`, direct lane (script generation + subprocess execution), agent lane (spec proposal + preflight + repair attempts), extension lane (full MHE pipeline) ✓
+  - `pycfd-pde` suite added to shared `BenchmarkSuite` and `SUITE_DIRS` ✓
   - Tests: benchmark cases (7 tests), benchmark runner (5 tests) ✓
-- **Acceptance**: Benchmark runner produces comparison results across all 3 lanes ✓
+- **Acceptance**: All 3 lanes produce `LaneSummary` results; dry-run mode passes ✓
 
 ### Phase 5: Study + Governance
 - **Status**: complete
-- **Goal**: Parameter sweeps and MHE core governance integration
+- **Goal**: Parameter sweeps and full MHE core governance integration with runtime backends
 - **Key tasks**:
   - `study.py` — parameter sweep component with Cartesian product generation ✓
-  - `governance.py` — MHE core governance adapter (SessionEvent bridging) ✓
-  - Tests: study (6 tests), governance (5 tests), smoke (3 tests) ✓
+  - `governance.py` — Full MHE core governance adapter with `SessionStore`, `AuditLog`, `ProvGraph` runtime injection; `build_candidate_record()` with `GraphSnapshot`/`CandidateRecord`; `build_session_events()` via `make_session_event`; `emit_runtime_evidence()` with runtime backend integration ✓
+  - Tests: study (6 tests), governance (11 tests including session store, prov graph, audit log, candidate record, policy gate issues), smoke (3 tests) ✓
 - **Acceptance**: All tests passing, ruff clean ✓
 
 ## 4. Test Results
 
 ```
-74 passed, 3 skipped (smoke tests requiring MHE_RUN_REAL_PYCFD=1) in 1.48s
+80 passed, 3 skipped (smoke tests requiring MHE_RUN_REAL_PYCFD=1) in 1.50s
 ruff check: All checks passed
 ```
 
@@ -106,9 +107,9 @@ ruff check: All checks passed
 | test_metaharness_pycfd_benchmark_cases.py | 7 | ✓ |
 | test_metaharness_pycfd_benchmark_runner.py | 5 | ✓ |
 | test_metaharness_pycfd_study.py | 6 | ✓ |
-| test_metaharness_pycfd_governance.py | 5 | ✓ |
+| test_metaharness_pycfd_governance.py | 11 | ✓ |
 | test_metaharness_pycfd_smoke.py | 3 | skipped (opt-in) |
-| **Total** | **77** | **74 passed, 3 skipped** |
+| **Total** | **83** | **80 passed, 3 skipped** |
 
 ### Production File Summary
 

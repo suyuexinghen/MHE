@@ -1,0 +1,68 @@
+{
+  "name": "pycfd_compiler",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.pycfd.compiler:PyCFDCompilerComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [
+      {
+        "name": "task",
+        "type": "PyCFDProblemSpec",
+        "required": true,
+        "description": "Accept a validated PyCFD problem spec for script generation.",
+        "cardinality": "one"
+      },
+      {
+        "name": "environment",
+        "type": "PyCFDEnvironmentReport",
+        "required": false,
+        "description": "Optional environment report for prerequisite checking."
+      }
+    ],
+    "outputs": [
+      {
+        "name": "plan",
+        "type": "PyCFDRunPlan",
+        "mode": "sync",
+        "description": "Return a compiled run plan with generated Python solver script."
+      }
+    ],
+    "events": [],
+    "provides": [
+      {
+        "name": "pycfd.compile",
+        "description": "Compile PyCFD problem specs into executable solver scripts."
+      }
+    ],
+    "requires": [],
+    "slots": [
+      {
+        "slot": "pycfd_compiler.primary",
+        "binding": "primary",
+        "required": true
+      }
+    ]
+  },
+  "safety": {
+    "protected": false,
+    "mutability": "mutable",
+    "sandbox_profile": "read-only",
+    "hot_swap": true
+  },
+  "policy": {
+    "sandbox": {
+      "tier": "read-only"
+    },
+    "credentials": {
+      "requires_subject": false,
+      "allow_inline_credentials": false,
+      "required_claims": []
+    }
+  },
+  "state_schema_version": 1,
+  "provides": [
+    "pycfd.compile"
+  ],
+  "bins": []
+}

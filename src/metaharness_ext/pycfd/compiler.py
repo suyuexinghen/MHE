@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import hashlib
-import json
+from pprint import pformat
 
 from metaharness_ext.pycfd.contracts import PyCFDProblemSpec, PyCFDRunPlan
-from metaharness_ext.pycfd.types import PyCFDCaseType
 
 _TEMPLATE_HEADER = '''"""Auto-generated PyCFD solver script — MHE PyCFD Compiler."""
 import json, os, sys, time
@@ -20,62 +19,6 @@ _config = {config_json}
 if __name__ == "__main__":
     _result = run_pycfd_case(_config)
 '''
-
-_CASE_DEFAULTS: dict[PyCFDCaseType, dict] = {
-    "vortex": {
-        "mesh_xb": -10.0,
-        "mesh_xe": 10.0,
-        "mesh_yb": -10.0,
-        "mesh_ye": 10.0,
-        "M_inf": 0.3,
-        "t_final": 1.0,
-        "dt": 0.01,
-        "flowtype": "vortex",
-    },
-    "airfoil": {
-        "mesh_xb": -5.0,
-        "mesh_xe": 15.0,
-        "mesh_yb": -5.0,
-        "mesh_ye": 5.0,
-        "M_inf": 0.80,
-        "aoa": 1.25,
-        "t_final": 100.0,
-        "dt": 0.1,
-        "flowtype": "freestream",
-    },
-    "cylinder": {
-        "mesh_xb": -10.0,
-        "mesh_xe": 20.0,
-        "mesh_yb": -10.0,
-        "mesh_ye": 10.0,
-        "M_inf": 0.3,
-        "t_final": 100.0,
-        "dt": 0.1,
-        "flowtype": "freestream",
-    },
-    "mms": {
-        "mesh_xb": -1.0,
-        "mesh_xe": 1.0,
-        "mesh_yb": -1.0,
-        "mesh_ye": 1.0,
-        "M_inf": 0.3,
-        "t_final": 1.0,
-        "dt": 0.01,
-        "flowtype": "mms",
-        "compute_te_mms": True,
-    },
-    "shock_diffraction": {
-        "mesh_xb": 0.0,
-        "mesh_xe": 1.0,
-        "mesh_yb": 0.0,
-        "mesh_ye": 1.0,
-        "M_inf": 5.09,
-        "t_final": 0.7,
-        "dt": 0.01,
-        "flowtype": "shock-diffraction",
-    },
-}
-
 
 class PyCFDCompilerComponent:
     """Compiles a PyCFDProblemSpec into a self-contained solver script."""
@@ -112,20 +55,13 @@ class PyCFDCompilerComponent:
     def _render_script(self, spec: PyCFDProblemSpec) -> str:
         config = self._build_config(spec)
         pycfd_src = self._resolve_src_path()
-        config_json = json.dumps(config, indent=2)
-        return _TEMPLATE_HEADER.format(pycfd_src=pycfd_src, config_json=config_json)
+        config_repr = pformat(config, indent=2, width=100, sort_dicts=False)
+        return _TEMPLATE_HEADER.format(pycfd_src=pycfd_src, config_json=config_repr)
 
     def _build_config(self, spec: PyCFDProblemSpec) -> dict:
         config: dict = {
             "case_type": spec.case_type,
             "project_name": spec.task_id.replace("-", "_"),
-            "mesh_type": spec.mesh.mesh_type,
-            "mesh_nx": spec.mesh.nx,
-            "mesh_ny": spec.mesh.ny,
-            "mesh_xb": spec.mesh.xb,
-            "mesh_xe": spec.mesh.xe,
-            "mesh_yb": spec.mesh.yb,
-            "mesh_ye": spec.mesh.ye,
             "M_inf": spec.flow.M_inf,
             "aoa": spec.flow.aoa,
             "gamma": spec.flow.gamma,

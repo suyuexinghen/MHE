@@ -1,0 +1,46 @@
+{
+  "status": "approved_with_limitations",
+  "approval_kind": "qcompute_abacus_benchmark_promotion",
+  "approved_by": "suyuexinghen",
+  "approval_role": "project_lead_authorized_admin",
+  "approval_decision": "approved_with_limitations",
+  "approval_date": "2026-05-01",
+  "approved_scope": {
+    "benchmark_suites": ["qcompute-abacus"],
+    "cases": [
+      "h2-fcidump-vqe-proxy",
+      "h2-fcidump-jw-vs-bk",
+      "abacus-hs-bridge-pending"
+    ],
+    "lanes": ["extension", "direct", "agent", "comparison"],
+    "comparison_outputs": [
+      "result_bundle.json",
+      "repeat_summary.json",
+      "manager_facing_report"
+    ],
+    "claim_scope": [
+      "workflow_evidence_completeness",
+      "schema_and_artifact_auditability",
+      "capability_skip_truthfulness"
+    ],
+    "excluded_claims": [
+      "production_abacus_hs_conversion_available",
+      "scientifically_validated_abacus_hs_to_qcompute_hamiltonian",
+      "quantum_advantage",
+      "numerical_superiority_over_direct_or_agent_lanes"
+    ]
+  },
+  "evidence_refs": [
+    ".mhe/config.json",
+    ".mhe/benchmarks/comparison-approval.json",
+    ".mhe/approvals/abacus_hs_approval.json",
+    "docs/wiki/meta-harness-engineer/benchmark/reports/qcompute-abacus-real-capability-roadmap-report.md",
+    "tests/test_benchmark_drivers_qcompute_abacus.py"
+  ],
+  "notes": [
+    "Suite-level administrator approval is granted only for qcompute-abacus workflow/reporting and truthful skipped-sentinel evidence.",
+    "This does not replace ABACUS H/S scientific approval in .mhe/approvals/abacus_hs_approval.json.",
+    "abacus-hs-bridge-pending must remain skipped until scientific validation, production converter evidence, and real repeated evidence are complete.",
+    "ACP/Claude reviewer evidence and CI checks cannot replace human/admin or scientific approval."
+  ]
+}

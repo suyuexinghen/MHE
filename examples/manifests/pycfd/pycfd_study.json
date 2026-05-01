@@ -1,0 +1,88 @@
+{
+  "name": "pycfd_study",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.pycfd.study:PyCFDStudyComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [
+      {
+        "name": "study",
+        "type": "PyCFDStudySpec",
+        "required": true,
+        "description": "Accept a PyCFD study spec defining parameter sweeps for residual analysis.",
+        "cardinality": "one"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "report",
+        "type": "PyCFDStudyReport",
+        "mode": "sync",
+        "description": "Return study report with trials, best parameters, and residual analysis."
+      }
+    ],
+    "events": [],
+    "provides": [
+      {
+        "name": "pycfd.study.run",
+        "description": "Run PyCFD parameter sweep studies for residual sensitivity testing."
+      }
+    ],
+    "requires": [
+      {
+        "name": "pycfd.compile",
+        "description": "Require script compilation for each trial."
+      },
+      {
+        "name": "pycfd.execute.run",
+        "description": "Require executor for each trial run."
+      },
+      {
+        "name": "pycfd.validate.report",
+        "description": "Require validator for each trial validation."
+      }
+    ],
+    "slots": [
+      {
+        "slot": "pycfd_study.primary",
+        "binding": "primary",
+        "required": true
+      }
+    ]
+  },
+  "safety": {
+    "protected": false,
+    "mutability": "mutable",
+    "sandbox_profile": "workspace-write",
+    "hot_swap": false
+  },
+  "policy": {
+    "sandbox": {
+      "tier": "workspace-write"
+    },
+    "credentials": {
+      "requires_subject": false,
+      "allow_inline_credentials": false,
+      "required_claims": []
+    }
+  },
+  "state_schema_version": 1,
+  "provides": [
+    "pycfd.study.run"
+  ],
+  "requires": [
+    "pycfd.compile",
+    "pycfd.execute.run",
+    "pycfd.validate.report"
+  ],
+  "deps": {
+    "components": [],
+    "capabilities": [
+      "pycfd.compile",
+      "pycfd.execute.run",
+      "pycfd.validate.report"
+    ]
+  },
+  "bins": []
+}

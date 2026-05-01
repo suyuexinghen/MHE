@@ -28,6 +28,7 @@ class PyCFDExecutorComponent:
             run_id=plan.run_id,
             task_id=plan.task_id,
             plan_ref=plan.plan_id,
+            case_type=plan.spec.case_type,
             status="unavailable",
         )
 
