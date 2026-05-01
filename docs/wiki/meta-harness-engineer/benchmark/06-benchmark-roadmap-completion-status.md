@@ -132,7 +132,14 @@ Purpose: compare direct Claude and MHE agent workflow outcomes after real solver
 ```bash
 PYTHONPATH=src python -m metaharness.cli benchmark-run --suite octave-native --lanes direct,agent --cases sinc-values,roots-cubic --runs-root .runs/octave-real-claude-repeat --allow-real-tools --allow-real-claude --claude-model cc-gpt-5.5 --claude-max-turns 12 --repeat 3 --adaptive-agent --max-repair-attempts 1
 PYTHONPATH=src python -m metaharness.cli benchmark-compare --suite octave-native --runs-root .runs/octave-real-claude-repeat --allow-real-tools --allow-real-claude --claude-model cc-gpt-5.5 --claude-max-turns 12 --repeat 3
+
+NEKTAR_BIN=/home/linden/usr/nektar/nektar-5.9.0/bin
+CLAUDE_BIN=/var/tmp/npm-cache/_npx/becf7b9e49303068/node_modules/.bin/claude
+PATH="$NEKTAR_BIN:$PATH" PYTHONPATH=src python -m metaharness.cli benchmark-run --suite nektar-pde --lanes direct,agent --cases advection-1d,advdiff-2d,advdiff-imex-2d --runs-root /var/tmp/mhe-runs/nektar-phase-c-real-claude-repeat --allow-real-tools --allow-real-claude --claude-binary "$CLAUDE_BIN" --claude-model cc-gpt-5.5 --claude-max-turns 10 --repeat 3
+PATH="$NEKTAR_BIN:$PATH" PYTHONPATH=src python -m metaharness.cli benchmark-compare --suite nektar-pde --runs-root /var/tmp/mhe-runs/nektar-phase-c-real-claude-repeat --allow-real-tools --allow-real-claude --claude-binary "$CLAUDE_BIN" --claude-model cc-gpt-5.5 --claude-max-turns 10 --repeat 3
 ```
+
+For repeated Nektar Phase C runs, prefer `/var/tmp/mhe-runs/<run-id>` when `/home` is space-constrained, set the Nektar solver `PATH` explicitly, and pass an executable Claude binary with `--claude-binary` instead of relying on a shell alias.
 
 Acceptance: if Claude still reaches `proposal_max_turns`, report that as proposal-budget evidence. If proposals execute, compare pass rate, repair outcome, diagnostics count, elapsed time, and evidence completeness; do not claim numerical superiority unless repeated real solver metrics support it.
 

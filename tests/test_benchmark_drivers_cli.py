@@ -533,7 +533,8 @@ def test_benchmark_compare_cli_writes_reports(tmp_path: Path) -> None:
     assert bundle["evidence_context"]["real_tools"] is False
     assert bundle["evidence_context"]["real_claude"] is False
     assert "Real tools: `False`" in report
-    assert "Approval gate: `blocked`" in report
+    assert bundle["approval_status"] == "approved_with_limitations"
+    assert "Approval gate: `approved_with_limitations`" in report
     assert "## Approval gate" in report
     assert "Direct proposal" in report
     assert "Direct preflight" in report

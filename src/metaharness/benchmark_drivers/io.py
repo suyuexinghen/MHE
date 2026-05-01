@@ -14,6 +14,7 @@ SUITE_DIRS: dict[BenchmarkSuite, str] = {
     "nektar-pde": "nektar-pde-benchmark",
     "qcompute-abacus": "qcompute-abacus-benchmark",
     "fealpy-pde": "fealpy-pde-benchmark",
+    "pycfd-pde": "pycfd-pde-benchmark",
 }
 
 

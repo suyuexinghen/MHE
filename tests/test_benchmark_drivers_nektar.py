@@ -4,7 +4,7 @@ import subprocess
 from pathlib import Path
 
 from metaharness.benchmark_drivers.claude_cli import ClaudeCLIResult, FakeClaudeCLIBrainProvider
-from metaharness.benchmark_drivers.io import write_json, write_text
+from metaharness.benchmark_drivers.io import read_json, write_json, write_text
 from metaharness.benchmark_drivers.models import (
     BenchmarkCaseSpec,
     ClaudeInvocationRecord,
@@ -55,6 +55,94 @@ def test_parse_nektar_tst_extracts_executable_parameters_and_metrics(tmp_path: P
         "l2_error_u": (0.001, 1e-8),
         "linf_error_u": (0.002, 2e-8),
     }
+
+
+def test_nektar_preflight_executes_tester_when_real_tools_are_allowed(
+    tmp_path: Path, monkeypatch
+) -> None:
+    tst_path = tmp_path / "case.tst"
+    tst_path.write_text(
+        """
+        <test>
+          <executable>ADRSolver</executable>
+          <parameters>case.xml</parameters>
+          <metrics>
+            <metric type="L2"><value variable="u" tolerance="1e-8">0.00135233</value></metric>
+          </metrics>
+        </test>
+        """
+    )
+    monkeypatch.setattr(
+        "metaharness.benchmark_drivers.nektar_runner.shutil.which",
+        lambda binary: binary,
+    )
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append((command, kwargs))
+        return subprocess.CompletedProcess(command, 0, "tester ok\n", "")
+
+    monkeypatch.setattr("metaharness.benchmark_drivers.nektar_runner.subprocess.run", fake_run)
+    case = BenchmarkCaseSpec(
+        case_id="fixture",
+        suite="nektar-pde",
+        task_family="nektar_pde",
+        description="fixture case",
+        required_capabilities=["nektar_adr_solver"],
+        source_reference={"tst": str(tst_path)},
+        expected_metrics=["l2_error_u"],
+        reference_metrics={"l2_error_u": MetricReference(value=0.00135233, tolerance=1e-8)},
+    )
+    runner = NektarBenchmarkRunner(runs_root=tmp_path / "runs", allow_real_tools=True)
+
+    runner.run_case(case, [])
+
+    summary = read_json(
+        tmp_path / "runs" / "nektar-pde-benchmark" / "preflight" / "fixture" / "tester_summary.json"
+    )
+    assert calls[0][0] == ["Tester", str(tst_path)]
+    assert calls[0][1]["cwd"] == tst_path.parent
+    assert summary["preflight_executed"] is True
+    assert summary["tester_return_code"] == 0
+    assert summary["status"] == "ready"
+    assert (
+        tmp_path / "runs" / "nektar-pde-benchmark" / "preflight" / "fixture" / "tester.stdout.log"
+    ).read_text() == "tester ok\n"
+
+
+def test_nektar_preflight_dry_run_only_probes_tools(tmp_path: Path, monkeypatch) -> None:
+    tst_path = tmp_path / "case.tst"
+    tst_path.write_text("<test><executable>ADRSolver</executable></test>")
+    monkeypatch.setattr(
+        "metaharness.benchmark_drivers.nektar_runner.shutil.which",
+        lambda binary: binary,
+    )
+
+    def fake_run(command, **kwargs):
+        raise AssertionError("dry-run preflight must not execute Tester")
+
+    monkeypatch.setattr("metaharness.benchmark_drivers.nektar_runner.subprocess.run", fake_run)
+    case = BenchmarkCaseSpec(
+        case_id="fixture",
+        suite="nektar-pde",
+        task_family="nektar_pde",
+        description="fixture case",
+        required_capabilities=["nektar_adr_solver"],
+        source_reference={"tst": str(tst_path)},
+        expected_metrics=[],
+    )
+    runner = NektarBenchmarkRunner(runs_root=tmp_path / "runs")
+
+    runner.run_case(case, [])
+
+    summary = read_json(
+        tmp_path / "runs" / "nektar-pde-benchmark" / "preflight" / "fixture" / "tester_summary.json"
+    )
+    assert summary["preflight_executed"] is False
+    assert summary["status"] == "available"
+    assert (
+        tmp_path / "runs" / "nektar-pde-benchmark" / "preflight" / "fixture" / "tester.stdout.log"
+    ).read_text() == ""
 
 
 def test_nektar_direct_real_mode_replays_tst_session_xml(tmp_path: Path, monkeypatch) -> None:
@@ -423,5 +511,17 @@ def test_nektar_capability_gated_extension_dry_run_is_skipped(tmp_path: Path) ->
 
     summary = runner.run_extension(case)
 
+    output_dir = tmp_path / "nektar-pde-benchmark" / "extension" / "euler-1d"
+    capability_status = read_json(output_dir / "capability_status.json")
+    source_refs = read_json(output_dir / "source_refs.json")
     assert summary.status == "skipped"
     assert summary.skip_reason == "capability gated for current extension dispatch"
+    assert str(output_dir / "capability_status.json") in summary.evidence_files
+    assert str(output_dir / "source_refs.json") in summary.evidence_files
+    assert capability_status["promotion_ready"] is False
+    assert capability_status["missing_capabilities"] == [
+        "nektar_compressible_solver_extension_dispatch"
+    ]
+    assert capability_status["plan_status"] == "extension_dispatch_unverified"
+    assert capability_status["solver_binary"] == "CompressibleFlowSolver"
+    assert source_refs["source_reference"] == case.source_reference

@@ -101,8 +101,8 @@ def fealpy_case_catalog() -> dict[str, BenchmarkCaseSpec]:
             case_id="stokes-2d-numpy",
             suite="fealpy-pde",
             task_family="fealpy_pde",
-            description="2D Stokes flow, Taylor-Hood P2/P1, numpy backend",
-            required_capabilities=["fealpy_numpy"],
+            description="2D Stokes flow, Taylor-Hood P2/P1, numpy backend — BLOCKED: upstream fealpy ViscousWorkIntegrator broadcasting error",
+            required_capabilities=["fealpy_stokes"],
             source_reference={},
             expected_metrics=["l2_error", "h1_error", "wall_time", "dof"],
             problem_definition={
@@ -114,13 +114,14 @@ def fealpy_case_catalog() -> dict[str, BenchmarkCaseSpec]:
                 "ny": 8,
                 "fe_degree": 2,
             },
+            capability_gated=True,
         ),
         BenchmarkCaseSpec(
             case_id="darcy-2d-numpy",
             suite="fealpy-pde",
             task_family="fealpy_pde",
-            description="2D Darcy flow, Raviart-Thomas P0/P0 mixed, numpy backend",
-            required_capabilities=["fealpy_numpy"],
+            description="2D Darcy flow, Raviart-Thomas P0/P0 mixed, numpy backend — BLOCKED: fealpy has no 'darcy' model (use darcyforchheimer, different API)",
+            required_capabilities=["fealpy_darcy_mixed"],
             source_reference={},
             expected_metrics=["wall_time", "dof"],
             problem_definition={
@@ -132,13 +133,14 @@ def fealpy_case_catalog() -> dict[str, BenchmarkCaseSpec]:
                 "ny": 8,
                 "fe_degree": 0,
             },
+            capability_gated=True,
         ),
         BenchmarkCaseSpec(
             case_id="linear_elasticity-2d-numpy",
             suite="fealpy-pde",
             task_family="fealpy_pde",
-            description="2D linear elasticity, Hu-Zhang elements, numpy backend",
-            required_capabilities=["fealpy_numpy"],
+            description="2D linear elasticity, Hu-Zhang elements, numpy backend — BLOCKED: HuZhangFESpace2d lacks scalar_space required by LinearElasticityIntegrator",
+            required_capabilities=["fealpy_linear_elasticity"],
             source_reference={},
             expected_metrics=["l2_error", "h1_error", "wall_time", "dof"],
             problem_definition={
@@ -150,13 +152,14 @@ def fealpy_case_catalog() -> dict[str, BenchmarkCaseSpec]:
                 "ny": 8,
                 "fe_degree": 1,
             },
+            capability_gated=True,
         ),
         BenchmarkCaseSpec(
             case_id="curlcurl-2d-numpy",
             suite="fealpy-pde",
             task_family="fealpy_pde",
-            description="2D Maxwell curl-curl, Nedelec edge elements, numpy backend",
-            required_capabilities=["fealpy_numpy"],
+            description="2D Maxwell curl-curl, Nedelec edge elements, numpy backend — BLOCKED: upstream fealpy set_dirichlet_bc passes 3 args but solution() takes 2",
+            required_capabilities=["fealpy_curlcurl"],
             source_reference={},
             expected_metrics=["l2_error", "h1_error", "wall_time", "dof"],
             problem_definition={
@@ -168,6 +171,7 @@ def fealpy_case_catalog() -> dict[str, BenchmarkCaseSpec]:
                 "ny": 8,
                 "fe_degree": 1,
             },
+            capability_gated=True,
         ),
     ]
     return {case.case_id: case for case in cases}

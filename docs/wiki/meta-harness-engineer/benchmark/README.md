@@ -17,10 +17,12 @@
 | [07-QCompute × ABACUS Hamiltonian Proxy 实验分析报告](07-qcompute-abacus-experiment-analysis.md) | 汇总 qcompute-abacus dry-run benchmark 结果、H2 proxy、H/S bridge sentinel 与 real-run backlog | MHE / QCompute / ABACUS 维护者 |
 | [08-Benchmark Roadmap Completion Status](06-benchmark-roadmap-completion-status.md) | 对照 `01` / `02` / `03` roadmap 的实现状态、产物路径、acceptance criteria 和后续 real-run 协议 | MHE 维护者 |
 | [09-Real-run Evidence Plan and Deeper Benchmark Analysis](08-real-run-evidence-plan-analysis.md) | 规划下一阶段 real solver / real Claude repeated runs，并汇总 2026-04-30 dry-run repeat smoke 与后续报告边界 | MHE 维护者 / 项目管理者 |
+| [10-Nektar PDE Benchmark Work Report](reports/nektar-pde-work-report-20260501.md) | 汇总 Nektar PDE benchmark 工作进展、证据边界、风险分析与下一步行动建议 | MHE 维护者 / 项目管理者 |
+| [11-Benchmark Approval-Gating Work Report](reports/approval-gating-work-report.md) | 汇总 benchmark comparison 管理员认可 gate、suite approval manifests、ABACUS scientific blocker 与下一步行动建议 | MHE 维护者 / 项目管理者 |
 
 ## 写作边界
 
 - 只记录 benchmark 任务设计、实验协议、交付物和报告结构。
 - 不在本目录承诺某个 extension 已完成未验证能力。
 - 不把 Nektar++ mesh utility 测试误写成 PDE solver benchmark；`utilities/NekMesh/Tests/Nektar++` 可作为 mesh/geometry 参考，但 PDE 方程 benchmark 应优先参考 solver tests。
-- 实验产物默认写入 `.runs/`，报告再引用 summary JSON 与 evidence 文件。
+- 实验产物默认写入 `.runs/`；空间受限的重复 real-run 可写入 `/var/tmp/mhe-runs/<run-id>`，报告必须显式引用外部 run root、summary JSON 与 evidence 文件。

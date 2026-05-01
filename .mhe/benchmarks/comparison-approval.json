@@ -34,6 +34,18 @@
     },
     {
       "when": {
+        "suite": "pycfd-pde"
+      },
+      "requires": ["pycfd_pde_benchmark_admin_approval"]
+    },
+    {
+      "when": {
+        "suite": "qcompute-abacus"
+      },
+      "requires": ["qcompute_abacus_benchmark_admin_approval"]
+    },
+    {
+      "when": {
         "suite": "qcompute-abacus",
         "case_id": "abacus-hs-bridge-pending",
         "source_format": "abacus_hs_matrix"

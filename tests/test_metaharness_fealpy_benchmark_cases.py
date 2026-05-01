@@ -76,20 +76,36 @@ class TestFealpyCaseCatalog:
 
     def test_capability_gated_cases_marked(self):
         catalog = fealpy_case_catalog()
-        gated = ["poisson-2d-pytorch", "poisson-2d-jax", "poisson-3d-numpy"]
+        gated = [
+            "poisson-2d-pytorch",
+            "poisson-2d-jax",
+            "poisson-3d-numpy",
+            "stokes-2d-numpy",
+            "darcy-2d-numpy",
+            "linear_elasticity-2d-numpy",
+            "curlcurl-2d-numpy",
+        ]
         for case_id in gated:
             assert catalog[case_id].capability_gated is True, f"{case_id} should be gated"
 
     def test_numpy_cases_not_capability_gated(self):
         catalog = fealpy_case_catalog()
+        # Only poisson-2d-numpy is ungated — other PDE families are blocked by
+        # compiler-template vs installed-fealpy API mismatches.
         for case_id in [
             "poisson-2d-numpy",
+        ]:
+            assert not catalog[case_id].capability_gated, f"{case_id} should not be gated"
+
+    def test_blocked_pde_families_are_capability_gated(self):
+        catalog = fealpy_case_catalog()
+        for case_id in [
             "stokes-2d-numpy",
             "darcy-2d-numpy",
             "linear_elasticity-2d-numpy",
             "curlcurl-2d-numpy",
         ]:
-            assert not catalog[case_id].capability_gated, f"{case_id} should not be gated"
+            assert catalog[case_id].capability_gated, f"{case_id} should be gated"
 
     def test_stokes_case_uses_fe_degree_2(self):
         catalog = fealpy_case_catalog()

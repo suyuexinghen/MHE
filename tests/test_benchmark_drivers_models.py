@@ -227,6 +227,99 @@ def test_comparator_writes_metric_detail_tables(tmp_path: Path) -> None:
     )
 
 
+def test_comparator_writes_preflight_summary_tables(tmp_path: Path) -> None:
+    case = BenchmarkCaseSpec(
+        case_id="advdiff-2d",
+        suite="nektar-pde",
+        task_family="nektar_pde",
+        description="Nektar preflight case",
+        required_capabilities=["nektar_adr_solver"],
+        source_reference="source.tst",
+        expected_metrics=["l2_error_u"],
+        reference_metrics={"l2_error_u": MetricReference(value=0.00135233, tolerance=1e-8)},
+    )
+    for lane in ["extension", "direct", "agent"]:
+        _write_passing_lane_summary(tmp_path, case, lane)
+    write_json(
+        tmp_path / "nektar-pde-benchmark" / "preflight" / "advdiff-2d" / "tester_summary.json",
+        {
+            "case_id": "advdiff-2d",
+            "status": "ready",
+            "preflight_executed": True,
+            "tester_available": True,
+            "solver_available": True,
+            "tst_available": True,
+            "reference_metric_count": 2,
+            "tester_return_code": 0,
+            "alternative_validation": None,
+        },
+    )
+
+    write_comparison_outputs(runs_root=tmp_path, suite="nektar-pde")
+
+    comparison_dir = tmp_path / "nektar-pde-benchmark" / "comparison"
+    report = (comparison_dir / "comparison_report.md").read_text()
+    analysis = (
+        tmp_path / "nektar-pde-benchmark" / "reports" / "nektar-pde-analysis-report.md"
+    ).read_text()
+    bundle = json.loads((comparison_dir / "result_bundle.json").read_text())
+    assert "## Preflight summaries" in report
+    assert "| advdiff-2d | ready | True | True | True | True | 2 | 0 | none |" in report
+    assert "## Preflight summaries" in analysis
+    assert bundle["evidence_context"]["preflight_rows"][0]["status"] == "ready"
+
+
+def test_comparator_writes_capability_gate_tables(tmp_path: Path) -> None:
+    case = BenchmarkCaseSpec(
+        case_id="euler-1d",
+        suite="nektar-pde",
+        task_family="nektar_pde",
+        description="Nektar capability gate case",
+        required_capabilities=["nektar_compressible_solver"],
+        source_reference={"tst": "Euler1D.tst", "xml": "Euler1D.xml"},
+        expected_metrics=["l2_error_rho"],
+        reference_metrics={"l2_error_rho": MetricReference(value=1.98838e-6, tolerance=1e-8)},
+        problem_definition={
+            "solver_family": "compressible",
+            "solver_binary": "CompressibleFlowSolver",
+        },
+        capability_gated=True,
+    )
+    _write_lane_summary(tmp_path, case, "extension", status="skipped", passed=False)
+    write_json(
+        tmp_path / "nektar-pde-benchmark" / "extension" / "euler-1d" / "source_refs.json",
+        {"case_id": "euler-1d", "source_reference": case.source_reference},
+    )
+    write_json(
+        tmp_path / "nektar-pde-benchmark" / "extension" / "euler-1d" / "capability_status.json",
+        {
+            "case_id": "euler-1d",
+            "status": "capability_gated",
+            "promotion_ready": False,
+            "missing_capabilities": ["nektar_compressible_solver_extension_dispatch"],
+            "solver_binary": "CompressibleFlowSolver",
+            "solver_family": "compressible",
+            "plan_status": "extension_dispatch_unverified",
+        },
+    )
+
+    write_comparison_outputs(runs_root=tmp_path, suite="nektar-pde")
+
+    comparison_dir = tmp_path / "nektar-pde-benchmark" / "comparison"
+    report = (comparison_dir / "comparison_report.md").read_text()
+    analysis = (
+        tmp_path / "nektar-pde-benchmark" / "reports" / "nektar-pde-analysis-report.md"
+    ).read_text()
+    bundle = json.loads((comparison_dir / "result_bundle.json").read_text())
+    capability_rows = bundle["evidence_context"]["capability_gate_rows"]
+    assert "## Capability gates" in report
+    assert "## Capability gates" in analysis
+    assert "nektar_compressible_solver_extension_dispatch" in report
+    assert capability_rows[0]["case_id"] == "euler-1d"
+    assert capability_rows[0]["promotion_ready"] is False
+    assert capability_rows[0]["source_refs_path"].endswith("source_refs.json")
+
+
 def test_comparator_writes_blocked_approval_gate_from_policy(tmp_path: Path) -> None:
     case = BenchmarkCaseSpec(
         case_id="demo",

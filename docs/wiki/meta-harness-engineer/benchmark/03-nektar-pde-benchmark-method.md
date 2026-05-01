@@ -94,12 +94,14 @@ Solver:    ADRSolver (#1, #3, #4) / DiffusionSolver (#2) / IncNavierStokesSolver
 
 MHE Nektar extension 已原生支持 `ADRSolver` 和 `IncNavierStokesSolver`（`CAP_NEKTAR_SOLVE_ADR`、`CAP_NEKTAR_SOLVE_INCNS`）。`DiffusionSolver` 和 `CompressibleFlowSolver` 可通过 `NektarSessionPlan` 的 `solver_binary` 字段指定，但 agent lane 的 solver family dispatch 可能需适配。
 
+当 extension lane 因 `capability_gated=true` 跳过 case 时，runner 必须写出 reviewer-facing skip artifacts：`source_refs.json` 保留 `.tst` / `.xml` provenance，`capability_status.json` 记录 `promotion_ready=false`、`missing_capabilities`、`solver_binary` 和 `plan_status="extension_dispatch_unverified"`。这些 artifact 证明跳过是显式能力边界，而不是静默漏跑。
+
 ## 3.4 目录结构
 
-所有实验产物写入 `.runs/`，不写入仓库根目录：
+默认实验产物写入 `.runs/`，不写入仓库根目录。小规模 dry-run 或需要随 checkout 保留的短 smoke 仍优先使用 `.runs/`；重复真实 solver / real Claude run 如果遇到 `/home` 空间压力，使用 `/var/tmp/mhe-runs/<run-id>` 作为 durable external root，并在报告中记录该根目录。
 
 ```text
-.runs/nektar-pde-benchmark/
+<runs-root>/nektar-pde-benchmark/
   specs/
     advection-1d.json
     diffusion-2d.json
@@ -117,6 +119,8 @@ MHE Nektar extension 已原生支持 `ADRSolver` 和 `IncNavierStokesSolver`（`
       metrics.json
       validation.json
       evidence.json
+      source_refs.json                 # capability-gated skips only
+      capability_status.json           # capability-gated skips only
       attempt_log.json
       summary.json
   direct/
@@ -482,7 +486,7 @@ passed = error_diff <= tolerance
 }
 ```
 
-如果 Tester 不可用，可以用 solver command + `.tst` metric extraction 做等价 preflight，但必须在 `tester_summary.json` 中标记 `tester_available=false` 和替代验证方式。
+当前 runner 在 `--allow-real-tools`、`Tester` 可执行且 `.tst` 存在时会执行 `Tester <case.tst>`，保存 stdout/stderr，并在 `tester_summary.json` 中记录 `preflight_executed`、`tester_command`、`tester_return_code` 和 `status=ready|reference_failed|reference_timeout`。如果 Tester 不可用，可以用 solver command + `.tst` metric extraction 做等价 preflight，但必须在 `tester_summary.json` 中标记 `tester_available=false` 和替代验证方式。
 
 ### Summary Schema 校验
 
@@ -548,6 +552,8 @@ Comparator 读取三条 lane 的 summary，但 workflow 优势判断主要比较
 ```text
 case_id,solver_family,pde_type,extension_status,direct_status,agent_status,extension_passed,direct_passed,agent_passed,direct_l2_error_ref_diff,agent_l2_error_ref_diff,direct_linf_error_ref_diff,agent_linf_error_ref_diff,direct_attempts,agent_attempts,direct_repairs,agent_repairs,direct_llm_calls,agent_llm_calls,extension_driver_time,direct_driver_time,agent_driver_time,extension_evidence_count,direct_evidence_count,agent_evidence_count,verdict
 ```
+
+Generated comparison and analysis reports must also include reviewer-facing preflight rows when `preflight/<case_id>/tester_summary.json` exists, including `status`, `preflight_executed`, tool availability, reference metric count, and `tester_return_code`.
 
 Comparator verdict 规则：
 

@@ -197,7 +197,7 @@ def write_comparison_outputs(
         manifest=manifest.model_dump(mode="json"),
         repeat_summary=repeat_summary,
     )
-    approval_gate = _approval_gate_context(
+    approval_gate = evaluate_approval_gate(
         config_root=approval_config_root or Path(".mhe"),
         suite=suite,
         rows=rows,
@@ -207,7 +207,15 @@ def write_comparison_outputs(
     write_csv(comp_dir / "summary_table.csv", enriched_row_payloads, FIELDNAMES)
     write_json(
         comp_dir / "result_bundle.json",
-        {"suite": suite, "evidence_context": evidence_context, "rows": row_payloads},
+        {
+            "suite": suite,
+            "approval_status": approval_gate["status"],
+            "approval_profiles": approval_gate.get("approved_profiles", []),
+            "blocked_profiles": approval_gate.get("blocked_profiles", []),
+            "excluded_claims": approval_gate.get("excluded_claims", []),
+            "evidence_context": evidence_context,
+            "rows": row_payloads,
+        },
     )
     write_json(comp_dir / "approval_gate.json", approval_gate)
     write_json(comp_dir / "run_manifest.json", manifest)
@@ -276,8 +284,97 @@ def _evidence_context(
         "repeat_count": claude_cli.get("repeat_count", 1),
         "proposal_sources": proposal_sources,
         "metric_rows": _metric_detail_rows(grouped),
+        "preflight_rows": _preflight_rows(runs_root, suite),
+        "capability_gate_rows": _capability_gate_rows(runs_root, suite),
         "repeat_rows": [] if repeat_summary is None else repeat_summary.get("rows", []),
     }
+
+
+def _preflight_rows(runs_root: Path, suite: BenchmarkSuite) -> list[dict[str, Any]]:
+    preflight_root = suite_root(runs_root, suite) / "preflight"
+    if not preflight_root.exists():
+        return []
+    rows: list[dict[str, Any]] = []
+    for summary_path in sorted(preflight_root.glob("*/tester_summary.json")):
+        try:
+            summary = read_json(summary_path)
+        except (JSONDecodeError, OSError):
+            rows.append(
+                {
+                    "case_id": summary_path.parent.name,
+                    "status": "schema_failed",
+                    "preflight_executed": False,
+                    "tester_available": None,
+                    "solver_available": None,
+                    "tst_available": None,
+                    "reference_metric_count": None,
+                    "tester_return_code": None,
+                    "alternative_validation": None,
+                }
+            )
+            continue
+        rows.append(
+            {
+                "case_id": summary.get("case_id", summary_path.parent.name),
+                "status": summary.get("status"),
+                "preflight_executed": summary.get("preflight_executed", False),
+                "tester_available": summary.get("tester_available"),
+                "solver_available": summary.get("solver_available"),
+                "tst_available": summary.get("tst_available"),
+                "reference_metric_count": summary.get("reference_metric_count"),
+                "tester_return_code": summary.get("tester_return_code"),
+                "alternative_validation": summary.get("alternative_validation"),
+            }
+        )
+    return rows
+
+
+def _capability_gate_rows(runs_root: Path, suite: BenchmarkSuite) -> list[dict[str, Any]]:
+    root = suite_root(runs_root, suite)
+    rows: list[dict[str, Any]] = []
+    for lane in ["extension", "direct", "agent"]:
+        lane_root = root / lane
+        if not lane_root.exists():
+            continue
+        for status_path in sorted(lane_root.glob("*/capability_status.json")):
+            source_refs_path = status_path.parent / "source_refs.json"
+            try:
+                status = read_json(status_path)
+            except (JSONDecodeError, OSError) as exc:
+                rows.append(
+                    {
+                        "case_id": status_path.parent.name,
+                        "lane": lane,
+                        "status": "schema_failed",
+                        "promotion_ready": False,
+                        "missing_capabilities": [f"capability_status_unreadable: {exc}"],
+                        "solver_binary": None,
+                        "solver_family": None,
+                        "plan_status": None,
+                        "source_refs_path": str(source_refs_path)
+                        if source_refs_path.exists()
+                        else None,
+                        "capability_status_path": str(status_path),
+                    }
+                )
+                continue
+            rows.append(
+                {
+                    "case_id": status.get("case_id", status_path.parent.name),
+                    "lane": lane,
+                    "status": status.get("status"),
+                    "promotion_ready": status.get("promotion_ready", False),
+                    "missing_capabilities": status.get("missing_capabilities", []),
+                    "solver_binary": status.get("solver_binary"),
+                    "solver_family": status.get("solver_family"),
+                    "plan_status": status.get("plan_status"),
+                    "source_refs_path": str(source_refs_path)
+                    if source_refs_path.exists()
+                    else None,
+                    "capability_status_path": str(status_path),
+                }
+            )
+    return rows
 
 
 def _metric_detail_rows(grouped: dict[str, dict[str, LaneSummary]]) -> list[dict[str, Any]]:
@@ -306,8 +403,12 @@ def _metric_detail_rows(grouped: dict[str, dict[str, LaneSummary]]) -> list[dict
     return metric_rows
 
 
-def _approval_gate_context(
-    *, config_root: Path, suite: BenchmarkSuite, rows: list[ComparisonRow]
+def evaluate_approval_gate(
+    *,
+    config_root: Path,
+    suite: BenchmarkSuite,
+    rows: list[ComparisonRow] | None = None,
+    case_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     config_path = config_root / "config.json"
     policy_path = config_root / "benchmarks" / "comparison-approval.json"
@@ -335,7 +436,9 @@ def _approval_gate_context(
     profiles = config.get("approval", {}).get("profiles", {})
     required_profiles = list(policy.get("required_approval_profiles", []))
     for conditional in policy.get("conditional_approval_profiles", []):
-        if _approval_condition_matches(conditional.get("when", {}), suite, rows):
+        if _approval_condition_matches(
+            conditional.get("when", {}), suite, rows or [], case_ids or []
+        ):
             required_profiles.extend(conditional.get("requires", []))
     required_profiles = list(dict.fromkeys(required_profiles))
     profile_results = {
@@ -344,6 +447,19 @@ def _approval_gate_context(
         )
         for profile_name in required_profiles
     }
+    approved_profiles = [
+        profile_name for profile_name, result in profile_results.items() if result["satisfied"]
+    ]
+    blocked_profiles = [
+        profile_name for profile_name, result in profile_results.items() if not result["satisfied"]
+    ]
+    excluded_claims = list(
+        dict.fromkeys(
+            claim
+            for result in profile_results.values()
+            for claim in result.get("excluded_claims", [])
+        )
+    )
     missing_evidence_by_category: dict[str, list[str]] = {
         "human_approval": [],
         "scientific_validation": [],
@@ -363,11 +479,26 @@ def _approval_gate_context(
         for category, blockers in missing_evidence_by_category.items()
     }
     approval_ready = not any(missing_evidence_by_category.values())
+    approval_decisions = {
+        result.get("approval_decision")
+        for result in profile_results.values()
+        if result["satisfied"]
+    }
+    status = "blocked"
+    if approval_ready:
+        status = (
+            "approved_with_limitations"
+            if "approved_with_limitations" in approval_decisions
+            else "approved"
+        )
     return {
-        "status": "approved" if approval_ready else "blocked",
+        "status": status,
         "approval_ready": approval_ready,
         "policy_id": policy.get("policy_id"),
         "required_profiles": required_profiles,
+        "approved_profiles": approved_profiles,
+        "blocked_profiles": blocked_profiles,
+        "excluded_claims": excluded_claims,
         "profile_results": profile_results,
         "missing_evidence_by_category": missing_evidence_by_category,
         "claim_boundary": (
@@ -378,12 +509,16 @@ def _approval_gate_context(
 
 
 def _approval_condition_matches(
-    condition: dict[str, Any], suite: BenchmarkSuite, rows: list[ComparisonRow]
+    condition: dict[str, Any],
+    suite: BenchmarkSuite,
+    rows: list[ComparisonRow],
+    case_ids: list[str],
 ) -> bool:
     if condition.get("suite") not in {None, suite}:
         return False
     case_id = condition.get("case_id")
-    if case_id is not None and all(row.case_id != case_id for row in rows):
+    observed_case_ids = list(dict.fromkeys([*(row.case_id for row in rows), *case_ids]))
+    if case_id is not None and case_id not in observed_case_ids:
         return False
     return True
 
@@ -427,8 +562,12 @@ def _approval_profile_result(
     missing_fields = [field for field in required_fields if not manifest.get(field)]
     status = str(manifest.get("status", "unknown"))
     decision = manifest.get("approval_decision")
-    decision_satisfied = "approval_decision" not in required_fields or decision == "approved"
-    satisfied = not missing_fields and status in {"approved", "valid"} and decision_satisfied
+    grantable_decisions = {"approved", "approved_with_limitations"}
+    grantable_statuses = {"approved", "approved_with_limitations", "valid"}
+    decision_satisfied = (
+        "approval_decision" not in required_fields or decision in grantable_decisions
+    )
+    satisfied = not missing_fields and status in grantable_statuses and decision_satisfied
     missing_evidence = [] if satisfied else [f"{profile_name}_not_approved"]
     missing_evidence.extend(f"{profile_name}_{field}_missing" for field in missing_fields)
     return {
@@ -443,6 +582,7 @@ def _approval_profile_result(
         "missing_evidence_by_category": _approval_missing_evidence_by_category(
             profile_name, missing_evidence
         ),
+        "excluded_claims": manifest.get("approved_scope", {}).get("excluded_claims", []),
     }
 
 
@@ -594,6 +734,43 @@ def _metric_markdown_lines(evidence_context: dict[str, Any]) -> list[str]:
     return lines
 
 
+def _capability_gate_markdown_lines(evidence_context: dict[str, Any]) -> list[str]:
+    capability_gate_rows = evidence_context.get("capability_gate_rows", [])
+    if not capability_gate_rows:
+        return []
+    lines = [
+        "",
+        "## Capability gates",
+        "",
+        "| Case | Lane | Status | Promotion ready | Missing capabilities | Solver | Family | Plan status |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
+    for gate_row in capability_gate_rows:
+        missing = ", ".join(gate_row.get("missing_capabilities", [])) or "none"
+        lines.append(
+            f"| {gate_row['case_id']} | {gate_row['lane']} | {gate_row.get('status')} | {gate_row.get('promotion_ready')} | {missing} | {gate_row.get('solver_binary') or 'none'} | {gate_row.get('solver_family') or 'none'} | {gate_row.get('plan_status') or 'none'} |"
+        )
+    return lines
+
+
+def _preflight_markdown_lines(evidence_context: dict[str, Any]) -> list[str]:
+    preflight_rows = evidence_context.get("preflight_rows", [])
+    if not preflight_rows:
+        return []
+    lines = [
+        "",
+        "## Preflight summaries",
+        "",
+        "| Case | Status | Executed | Tester | Solver | TST | Reference metrics | Tester return code | Alternative validation |",
+        "|---|---|---|---|---|---|---:|---:|---|",
+    ]
+    for preflight_row in preflight_rows:
+        lines.append(
+            f"| {preflight_row['case_id']} | {preflight_row.get('status')} | {preflight_row.get('preflight_executed')} | {preflight_row.get('tester_available')} | {preflight_row.get('solver_available')} | {preflight_row.get('tst_available')} | {preflight_row.get('reference_metric_count')} | {preflight_row.get('tester_return_code')} | {preflight_row.get('alternative_validation') or 'none'} |"
+        )
+    return lines
+
+
 def _comparison_markdown(
     suite: BenchmarkSuite, rows: list[ComparisonRow], evidence_context: dict[str, Any]
 ) -> str:
@@ -616,6 +793,8 @@ def _comparison_markdown(
             f"| {row.case_id} | {row.extension_status} | {row.direct_status} | {row.agent_status} | {sources.get('direct', 'none')} | {sources.get('agent', 'none')} | {row.direct_preflight_status or 'none'} | {row.agent_preflight_status or 'none'} | {row.agent_repair_outcome or 'none'} | {row.verdict} |"
         )
     lines.extend(_metric_markdown_lines(evidence_context))
+    lines.extend(_preflight_markdown_lines(evidence_context))
+    lines.extend(_capability_gate_markdown_lines(evidence_context))
     lines.extend(_approval_markdown_lines(evidence_context))
     if evidence_context["repeat_rows"]:
         lines.extend(
@@ -675,6 +854,8 @@ def _analysis_markdown(
             f"| {row.case_id} | {row.extension_status} | {row.direct_status} | {row.agent_status} | {sources.get('direct', 'none')} | {sources.get('agent', 'none')} | {row.direct_preflight_status or 'none'} | {row.agent_preflight_status or 'none'} | {row.agent_repair_outcome or 'none'} | {row.verdict} |"
         )
     lines.extend(_metric_markdown_lines(evidence_context))
+    lines.extend(_preflight_markdown_lines(evidence_context))
+    lines.extend(_capability_gate_markdown_lines(evidence_context))
     lines.extend(_approval_markdown_lines(evidence_context))
     if evidence_context["repeat_rows"]:
         lines.extend(

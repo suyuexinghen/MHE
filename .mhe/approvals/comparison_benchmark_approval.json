@@ -1,21 +1,40 @@
 {
-  "status": "pending_admin_review",
+  "status": "approved_with_limitations",
   "approval_kind": "comparison_benchmark_promotion",
-  "approved_by": null,
-  "approval_role": null,
-  "approval_decision": null,
+  "approved_by": "suyuexinghen",
+  "approval_role": "project_lead_authorized_admin",
+  "approval_decision": "approved_with_limitations",
+  "approval_date": "2026-05-01",
   "approved_scope": {
     "benchmark_suites": ["*"],
     "comparison_outputs": [
       "result_bundle.json",
       "repeat_summary.json",
       "manager_facing_report"
+    ],
+    "claim_scope": [
+      "workflow_evidence_completeness",
+      "schema_and_artifact_auditability",
+      "capability_skip_truthfulness",
+      "non_claim_boundary_reporting"
+    ],
+    "excluded_claims": [
+      "numerical_solver_superiority",
+      "runtime_performance_superiority",
+      "scientific_correctness_without_domain_review",
+      "dry_run_as_real_solver_evidence"
     ]
   },
-  "evidence_refs": [],
+  "evidence_refs": [
+    ".mhe/config.json",
+    ".mhe/benchmarks/comparison-approval.json",
+    "docs/wiki/meta-harness-engineer/benchmark/08-real-run-evidence-plan-analysis.md",
+    "docs/wiki/meta-harness-engineer/benchmark/reports/qcompute-abacus-real-capability-roadmap-report.md"
+  ],
   "notes": [
-    "This file enables administrator approval gating for comparison benchmarks but does not grant approval.",
-    "An authorized human/admin must fill approved_by, approval_role, approval_decision, and evidence_refs before promotion claims are allowed.",
-    "ACP/Claude reviewer evidence and CI checks cannot replace this approval."
+    "Administrator approval is granted only for comparison benchmark workflow/reporting gates and scoped manager-facing claims listed in approved_scope.claim_scope.",
+    "This approval does not grant numerical solver superiority, scientific correctness, or performance superiority claims.",
+    "Suite-specific manifests and scientific manifests remain independently required where configured.",
+    "ACP/Claude reviewer evidence and CI checks cannot replace human/admin approval."
   ]
 }

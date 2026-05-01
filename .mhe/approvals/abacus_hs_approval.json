@@ -6,8 +6,9 @@
   "tolerance_table_ref": null,
   "reference_observable": null,
   "notes": [
-    "Template only: this does not grant administrator or scientific approval.",
-    "Fill approved_by, approval_role, fixture_refs, tolerance_table_ref, and reference_observable after an authorized human/scientific review.",
-    "Even when this manifest becomes approved, production converter evidence and real repeated benchmark evidence are still required."
+    "Not granted: ABACUS H/S scientific approval requires real fixture_refs, a reviewed tolerance_table_ref, and a concrete reference_observable.",
+    "Benchmark-admin approval has been granted separately for qcompute-abacus workflow/reporting claims only.",
+    "This scientific manifest must remain invalid until an authorized human/scientific reviewer supplies the required evidence.",
+    "Even after scientific approval, production converter evidence and real repeated benchmark evidence remain required."
   ]
 }

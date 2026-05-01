@@ -13,7 +13,7 @@ from typing import Any
 from metaharness import __version__
 from metaharness.benchmark_drivers.acp_provider import ACPBrainConfig, ACPBrainProvider
 from metaharness.benchmark_drivers.claude_cli import ClaudeCLIBrainProvider, ClaudeCLIConfig
-from metaharness.benchmark_drivers.compare import write_comparison_outputs
+from metaharness.benchmark_drivers.compare import evaluate_approval_gate, write_comparison_outputs
 from metaharness.benchmark_drivers.io import specs_dir, write_json
 from metaharness.benchmark_drivers.models import BenchmarkLane, BenchmarkSuite
 from metaharness.benchmark_drivers.nektar_cases import get_nektar_cases
@@ -35,6 +35,8 @@ from metaharness_ext.ai4pde.case_parser import Ai4PdeCaseXmlError, parse_ai4pde_
 from metaharness_ext.ai4pde.demo import AI4PDECaseDemoHarness
 from metaharness_ext.fealpy.benchmark_cases import get_fealpy_cases
 from metaharness_ext.fealpy.benchmark_runner import FealpyBenchmarkRunner
+from metaharness_ext.pycfd.benchmark_cases import pycfd_case_catalog
+from metaharness_ext.pycfd.benchmark_runner import PyCFDBenchmarkRunner
 
 
 def _cmd_demo(args: argparse.Namespace) -> int:
@@ -300,6 +302,16 @@ def _cmd_benchmark_run(args: argparse.Namespace) -> int:
                 adaptive_agent=args.adaptive_agent,
                 max_repair_attempts=args.max_repair_attempts,
             )
+        elif suite == "pycfd-pde":
+            cases = list(pycfd_case_catalog(case_ids).values())
+            runner = PyCFDBenchmarkRunner(
+                runs_root=runs_root,
+                allow_real_tools=args.allow_real_tools,
+                pycfd_src_path=args.pycfd_src_path,
+                brain_provider=brain_provider,
+                adaptive_agent=args.adaptive_agent,
+                max_repair_attempts=args.max_repair_attempts,
+            )
         else:
             cases = get_qcompute_abacus_cases(case_ids)
             runner = QComputeAbacusBenchmarkRunner(
@@ -360,6 +372,26 @@ def _cmd_benchmark_compare(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_benchmark_approval_check(args: argparse.Namespace) -> int:
+    case_ids = [case_id for case_id in args.cases.split(",") if case_id]
+    gate = evaluate_approval_gate(
+        config_root=Path(args.config_root),
+        suite=args.suite,
+        case_ids=case_ids,
+    )
+    json.dump(gate, sys.stdout, indent=2, sort_keys=True)
+    sys.stdout.write("\n")
+    if args.strict:
+        return 0 if gate["approval_ready"] else 1
+    malformed_statuses = {"not_configured", "invalid"}
+    if gate["status"] in malformed_statuses:
+        return 1
+    for result in gate.get("profile_results", {}).values():
+        if result.get("status") in {"missing"} or result.get("manifest") is None:
+            return 1
+    return 0
+
+
 def _cmd_version(_: argparse.Namespace) -> int:
     print(__version__)
     return 0
@@ -405,7 +437,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     benchmark_run.add_argument(
         "--suite",
-        choices=["octave-native", "nektar-pde", "qcompute-abacus", "fealpy-pde"],
+        choices=["octave-native", "nektar-pde", "qcompute-abacus", "fealpy-pde", "pycfd-pde"],
         required=True,
     )
     benchmark_run.add_argument("--lanes", default="extension,direct,agent")
@@ -433,6 +465,7 @@ def build_parser() -> argparse.ArgumentParser:
     benchmark_run.add_argument("--acp-sdk-root", default=None)
     benchmark_run.add_argument("--allow-real-tools", action="store_true")
     benchmark_run.add_argument("--allow-real-claude", action="store_true")
+    benchmark_run.add_argument("--pycfd-src-path", default=None)
     benchmark_run.add_argument("--repeat", type=int, default=1)
     benchmark_run.add_argument("--adaptive-agent", action="store_true")
     benchmark_run.add_argument("--max-repair-attempts", type=int, default=1)
@@ -443,7 +476,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     benchmark_compare.add_argument(
         "--suite",
-        choices=["octave-native", "nektar-pde", "qcompute-abacus", "fealpy-pde"],
+        choices=["octave-native", "nektar-pde", "qcompute-abacus", "fealpy-pde", "pycfd-pde"],
         required=True,
     )
     benchmark_compare.add_argument("--runs-root", default=".runs")
@@ -459,6 +492,23 @@ def build_parser() -> argparse.ArgumentParser:
     benchmark_compare.add_argument("--allow-real-claude", action="store_true")
     benchmark_compare.add_argument("--repeat", type=int, default=1)
     benchmark_compare.set_defaults(func=_cmd_benchmark_compare)
+
+    approval_check = subparsers.add_parser(
+        "benchmark-approval-check", help="Validate benchmark comparison approval gates"
+    )
+    approval_check.add_argument(
+        "--suite",
+        choices=["octave-native", "nektar-pde", "qcompute-abacus", "fealpy-pde", "pycfd-pde"],
+        required=True,
+    )
+    approval_check.add_argument("--cases", default="")
+    approval_check.add_argument("--config-root", default=".mhe")
+    approval_check.add_argument(
+        "--strict",
+        action="store_true",
+        help="Exit nonzero when required approval profiles are intentionally blocked",
+    )
+    approval_check.set_defaults(func=_cmd_benchmark_approval_check)
 
     version = subparsers.add_parser("version", help="Print the package version")
     version.set_defaults(func=_cmd_version)

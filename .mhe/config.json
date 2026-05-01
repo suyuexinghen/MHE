@@ -68,6 +68,38 @@
           "human_or_authorized_admin_required": true
         }
       },
+      "pycfd_pde_benchmark_admin_approval": {
+        "required": true,
+        "manifest": ".mhe/approvals/pycfd_pde_benchmark_approval.json",
+        "required_fields": [
+          "approved_by",
+          "approval_role",
+          "approved_scope",
+          "evidence_refs",
+          "approval_decision"
+        ],
+        "non_replacement_rules": {
+          "acp_reviewer_can_satisfy": false,
+          "ci_can_satisfy": false,
+          "human_or_authorized_admin_required": true
+        }
+      },
+      "qcompute_abacus_benchmark_admin_approval": {
+        "required": true,
+        "manifest": ".mhe/approvals/qcompute_abacus_benchmark_approval.json",
+        "required_fields": [
+          "approved_by",
+          "approval_role",
+          "approved_scope",
+          "evidence_refs",
+          "approval_decision"
+        ],
+        "non_replacement_rules": {
+          "acp_reviewer_can_satisfy": false,
+          "ci_can_satisfy": false,
+          "human_or_authorized_admin_required": true
+        }
+      },
       "abacus_hs_scientific": {
         "required": true,
         "manifest": ".mhe/approvals/abacus_hs_approval.json",

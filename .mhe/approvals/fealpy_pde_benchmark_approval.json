@@ -1,10 +1,11 @@
 {
   "version": 1,
-  "status": "pending_admin_review",
+  "status": "approved_with_limitations",
   "approval_kind": "fealpy_pde_comparison_benchmark",
-  "approved_by": null,
-  "approval_role": null,
-  "approval_decision": null,
+  "approved_by": "suyuexinghen",
+  "approval_role": "project_lead_authorized_admin",
+  "approval_decision": "approved_with_limitations",
+  "approval_date": "2026-05-01",
   "approved_scope": {
     "benchmark_suites": ["fealpy-pde"],
     "lanes": ["extension", "direct", "agent", "comparison"],
@@ -23,13 +24,21 @@
     ],
     "claim_scope": [
       "workflow_reproducibility",
-      "real_fealpy_execution_evidence",
+      "real_fealpy_execution_evidence_when_present",
       "lane_success_rate_when_real_direct_agent_runs_exist",
-      "pde_solver_numerical_accuracy",
-      "backend_capability_claims"
+      "schema_and_compiler_auditability"
+    ],
+    "excluded_claims": [
+      "pde_solver_numerical_accuracy_without_tolerance_review",
+      "backend_capability_claims_without_installed_api_verification",
+      "direct_lane_correctness_without_code_review"
     ]
   },
-  "evidence_refs": [],
+  "evidence_refs": [
+    ".mhe/config.json",
+    ".mhe/benchmarks/comparison-approval.json",
+    "docs/wiki/meta-harness-engineer/benchmark/08-real-run-evidence-plan-analysis.md"
+  ],
   "required_evidence": [
     "real_tools_run_root",
     "comparison_result_bundle",
@@ -57,10 +66,7 @@
     "preflight_pass_replaces_code_review": false
   },
   "notes": [
-    "Template only: this enables administrator approval gating for fealpy-pde comparison benchmarks but does not grant approval.",
-    "An authorized human/admin must fill approved_by, approval_role, approval_decision, and evidence_refs before promotion or manager-facing claims are allowed.",
-    "Approval is necessary but not sufficient; repeated real solver evidence across lanes remains required.",
-    "Direct lane generated code review is especially critical: Claude may hallucinate fealpy API imports that do not exist in the installed version.",
-    "The extension lane compiler output serves as ground truth for API surface and numerical reference values."
+    "Administrator approval is granted with limitations for fealpy-pde workflow/reporting claims.",
+    "Numerical accuracy, backend capability, and direct-lane correctness still require the listed evidence and reviews."
   ]
 }

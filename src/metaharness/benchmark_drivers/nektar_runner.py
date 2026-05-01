@@ -287,13 +287,15 @@ class NektarBenchmarkRunner:
         preflight_status: str | None = None,
     ) -> LaneSummary:
         if case.capability_gated:
+            output_dir = case_dir(self.runs_root, case.suite, lane, case.case_id)
+            capability_evidence = self._write_capability_skip_artifacts(output_dir, case)
             return write_lane_outputs(
                 runs_root=self.runs_root,
                 case=case,
                 lane=lane,
                 status="skipped",
                 attempt_log=attempt_log,
-                evidence_files=extra_evidence_files or [],
+                evidence_files=[*(extra_evidence_files or []), *capability_evidence],
                 skip_reason="capability gated for current extension dispatch",
                 proposal_contract_status=proposal_contract_status,
                 preflight_status=preflight_status,
@@ -595,6 +597,7 @@ class NektarBenchmarkRunner:
             case.problem_definition.get("solver_binary", "ADRSolver")
         )
         solver_available = shutil.which(solver_binary) is not None
+        tst_available = tst_path.exists() if tst_path is not None else False
         summary = {
             "case_id": case.case_id,
             "tester_available": tester_available,
@@ -602,13 +605,46 @@ class NektarBenchmarkRunner:
             "solver_binary": solver_binary,
             "solver_available": solver_available,
             "tst_path": raw_tst_path or None,
-            "tst_available": tst_path.exists() if tst_path is not None else False,
+            "tst_available": tst_available,
             "reference_metric_count": len(test_spec.reference_metrics),
             "real_tools_allowed": self.allow_real_tools,
+            "preflight_executed": False,
             "status": "available" if tester_available or solver_available else "unavailable",
         }
-        write_text(output_dir / "tester.stdout.log", "")
-        write_text(output_dir / "tester.stderr.log", "")
+        stdout = ""
+        stderr = ""
+        if self.allow_real_tools and tester_available and tst_available and tst_path is not None:
+            command = ["Tester", str(tst_path)]
+            try:
+                result = subprocess.run(
+                    command,
+                    cwd=tst_path.parent,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=120,
+                )
+                stdout = result.stdout
+                stderr = result.stderr
+                tester_return_code = result.returncode
+                status = "ready" if result.returncode == 0 else "reference_failed"
+            except subprocess.TimeoutExpired as exc:
+                stdout = exc.stdout or ""
+                stderr = exc.stderr or ""
+                tester_return_code = None
+                status = "reference_timeout"
+            summary.update(
+                {
+                    "tester_command": command,
+                    "tester_return_code": tester_return_code,
+                    "preflight_executed": True,
+                    "status": status,
+                }
+            )
+        elif self.allow_real_tools and not tst_available:
+            summary["status"] = "missing_files"
+        write_text(output_dir / "tester.stdout.log", stdout)
+        write_text(output_dir / "tester.stderr.log", stderr)
         write_json(output_dir / "tester_summary.json", summary)
 
     def _claude_attempt_log(self, error: str | None, lane: BenchmarkLane) -> AttemptLog:
@@ -634,13 +670,48 @@ class NektarBenchmarkRunner:
         evidence_path = write_json(
             output_dir / "evidence.json", {"case_id": case.case_id, "dry_run": True}
         )
-        return [
+        evidence_files = [
             str(session_path),
             str(stdout_path),
             str(stderr_path),
             str(validation_path),
             str(evidence_path),
         ]
+        if case.capability_gated:
+            evidence_files.extend(self._write_capability_skip_artifacts(output_dir, case))
+        return evidence_files
+
+    def _write_capability_skip_artifacts(
+        self, output_dir: Path, case: BenchmarkCaseSpec
+    ) -> list[str]:
+        solver_binary = str(case.problem_definition.get("solver_binary", "unknown"))
+        missing_capabilities = [
+            f"{capability}_extension_dispatch" for capability in case.required_capabilities
+        ]
+        source_refs_path = write_json(
+            output_dir / "source_refs.json",
+            {
+                "case_id": case.case_id,
+                "source_reference": case.source_reference,
+                "status": "capability_gated",
+                "reason": "capability gated for current extension dispatch",
+                "solver_binary": solver_binary,
+            },
+        )
+        capability_status_path = write_json(
+            output_dir / "capability_status.json",
+            {
+                "case_id": case.case_id,
+                "status": "capability_gated",
+                "promotion_ready": False,
+                "missing_capabilities": missing_capabilities,
+                "solver_binary": solver_binary,
+                "solver_family": case.problem_definition.get("solver_family"),
+                "plan_status": "extension_dispatch_unverified",
+                "source_reference": case.source_reference,
+            },
+        )
+        return [str(source_refs_path), str(capability_status_path)]
 
     def _write_direct_evidence(self, output_dir: Path, case: BenchmarkCaseSpec) -> list[str]:
         session_path = write_text(output_dir / "session.xml", "<NEKTAR />\n")

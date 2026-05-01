@@ -36,6 +36,92 @@ def _case() -> BenchmarkCaseSpec:
     )
 
 
+def _patch_pipeline(monkeypatch, tmp_path: Path) -> None:
+    """Patch FEALPy pipeline components to succeed with known-good metrics."""
+    monkeypatch.setattr(
+        "metaharness_ext.fealpy.benchmark_runner.FealpyEnvironmentProbeComponent",
+        lambda: type(
+            "Fake",
+            (),
+            {
+                "probe": lambda self, spec: FealpyEnvironmentReport(
+                    task_id=spec.task_id,
+                    available=True,
+                    status="available",
+                    available_backends=["numpy"],
+                )
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        "metaharness_ext.fealpy.benchmark_runner.FealpyCompilerComponent",
+        lambda: type(
+            "Fake",
+            (),
+            {
+                "compile": lambda self, spec, environment=None: FealpyRunPlan(
+                    plan_id="p-1",
+                    task_id=spec.task_id,
+                    run_id="r-1",
+                    spec=spec,
+                    workspace_dir=str(tmp_path / "workspace"),
+                    script_source="print('{}')",
+                )
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        "metaharness_ext.fealpy.benchmark_runner.FealpyExecutorComponent",
+        lambda: type(
+            "Fake",
+            (),
+            {
+                "execute_plan": lambda self, plan, environment=None: FealpyRunArtifact(
+                    artifact_id="a-1",
+                    run_id=plan.run_id,
+                    task_id=plan.task_id,
+                    plan_ref=plan.plan_id,
+                    status="completed",
+                    l2_error=0.0,
+                    h1_error=0.0,
+                    wall_time_seconds=0.1,
+                    dof_count=144,
+                    summary_metrics={
+                        "l2_error": 0.0,
+                        "h1_error": 0.0,
+                        "wall_time": 0.1,
+                        "dof": 144,
+                    },
+                )
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        "metaharness_ext.fealpy.benchmark_runner.FealpyValidatorComponent",
+        lambda: type(
+            "Fake",
+            (),
+            {
+                "validate": lambda self, a, p, **kw: FealpyValidationReport(
+                    task_id=a.task_id,
+                    plan_ref=p.plan_id,
+                    artifact_ref=a.artifact_id,
+                    passed=True,
+                    status=FealpyValidationStatus.EXECUTED,
+                    l2_passed=True,
+                    h1_passed=True,
+                    summary_metrics={
+                        "l2_error": 0.0,
+                        "h1_error": 0.0,
+                        "wall_time": 0.1,
+                        "dof": 144,
+                    },
+                )
+            },
+        )(),
+    )
+
+
 def test_fealpy_runner_dry_run_writes_all_lane_summaries(tmp_path: Path) -> None:
     runner = FealpyBenchmarkRunner(runs_root=tmp_path, allow_real_tools=False)
 
@@ -223,6 +309,37 @@ def test_fealpy_agent_unknown_spec_field_fails_preflight(tmp_path: Path, monkeyp
     assert "unknown FealpyProblemSpec fields" in (summary.error_message or "")
 
 
+def test_fealpy_agent_null_fields_coerced_to_defaults(tmp_path: Path, monkeypatch) -> None:
+    """Claude proposals with explicit null for non-nullable fields must not fail."""
+    runner = FealpyBenchmarkRunner(
+        runs_root=tmp_path,
+        allow_real_tools=True,
+        brain_provider=FakeClaudeCLIBrainProvider(
+            {
+                "spec_patch": {
+                    "dt": None,
+                    "num_time_steps": None,
+                    "time_integrator": None,
+                    "solver": None,
+                    "fe_degree": None,
+                    "fe_space_type": None,
+                    "adaptive_refinement": None,
+                    "timeout_seconds": None,
+                }
+            }
+        ),
+    )
+    monkeypatch.setattr(runner, "_fealpy_available", lambda: True)
+
+    _patch_pipeline(monkeypatch, tmp_path)
+
+    summary = runner.run_agent(_case())
+
+    assert summary.status == "passed", f"expected passed, got {summary.error_message}"
+    assert summary.preflight_status == "passed"
+    assert summary.proposal_contract_status == "valid"
+
+
 def test_fealpy_direct_timeout_is_solver_failure(tmp_path: Path, monkeypatch) -> None:
     runner = FealpyBenchmarkRunner(
         runs_root=tmp_path,
@@ -240,3 +357,105 @@ def test_fealpy_direct_timeout_is_solver_failure(tmp_path: Path, monkeypatch) ->
 
     assert summary.status == "failed"
     assert summary.failure_category == "solver_failure"
+
+
+class TestAdaptiveAgent:
+    def test_adaptive_agent_bumps_repair_attempts(self) -> None:
+        runner = FealpyBenchmarkRunner(
+            runs_root=Path("/tmp"),
+            adaptive_agent=True,
+            max_repair_attempts=1,  # default — should be bumped
+        )
+        assert runner.max_repair_attempts == 3
+
+    def test_adaptive_agent_respects_explicit_max(self) -> None:
+        runner = FealpyBenchmarkRunner(
+            runs_root=Path("/tmp"),
+            adaptive_agent=True,
+            max_repair_attempts=5,
+        )
+        assert runner.max_repair_attempts == 5
+
+    def test_no_adaptive_agent_keeps_default(self) -> None:
+        runner = FealpyBenchmarkRunner(
+            runs_root=Path("/tmp"),
+            adaptive_agent=False,
+        )
+        assert runner.max_repair_attempts == 1
+
+
+class TestPreflightRepair:
+    """Proposal validation failures can be repaired when max_repair_attempts > 0."""
+
+    def test_preflight_repair_succeeds_on_second_attempt(self, tmp_path: Path, monkeypatch) -> None:
+        """First proposal invalid (fe_degree=-1), repair proposal valid → passes."""
+        call_count = [0]
+
+        class TwoShotProvider:
+            def propose(self, prompt, output_dir):
+                call_count[0] += 1
+                proposal = (
+                    {"spec_patch": {"fe_degree": -1}}  # invalid, Pydantic rejects
+                    if call_count[0] == 1
+                    else {"spec_patch": {"fe_degree": 1}}  # valid
+                )
+                return FakeClaudeCLIBrainProvider(proposal).propose(
+                    prompt=prompt, output_dir=output_dir
+                )
+
+        runner = FealpyBenchmarkRunner(
+            runs_root=tmp_path,
+            allow_real_tools=True,
+            brain_provider=TwoShotProvider(),
+            max_repair_attempts=1,
+        )
+        monkeypatch.setattr(runner, "_fealpy_available", lambda: True)
+
+        _patch_pipeline(monkeypatch, tmp_path)
+
+        summary = runner.run_agent(_case())
+
+        assert summary.status == "passed", f"expected passed, got {summary.error_message}"
+        assert summary.preflight_status == "passed"
+        assert call_count[0] == 2  # original + repair
+
+    def test_preflight_repair_fails_when_both_invalid(self, tmp_path: Path, monkeypatch) -> None:
+        """Repair also produces invalid spec → fails with proposal_failure."""
+        runner = FealpyBenchmarkRunner(
+            runs_root=tmp_path,
+            allow_real_tools=True,
+            brain_provider=FakeClaudeCLIBrainProvider({"spec_patch": {"fe_degree": -1}}),
+            max_repair_attempts=1,
+        )
+        monkeypatch.setattr(runner, "_fealpy_available", lambda: True)
+
+        summary = runner.run_agent(_case())
+
+        assert summary.status == "failed"
+        assert summary.preflight_status == "failed"
+        assert summary.failure_category == "proposal_failure"
+
+    def test_no_repair_when_max_zero(self, tmp_path: Path, monkeypatch) -> None:
+        """When max_repair_attempts=0, preflight failure returns immediately."""
+        call_count = [0]
+
+        class CountingProvider:
+            def propose(self, prompt, output_dir):
+                call_count[0] += 1
+                return FakeClaudeCLIBrainProvider({"spec_patch": {"fe_degree": -1}}).propose(
+                    prompt=prompt, output_dir=output_dir
+                )
+
+        runner = FealpyBenchmarkRunner(
+            runs_root=tmp_path,
+            allow_real_tools=True,
+            brain_provider=CountingProvider(),
+            max_repair_attempts=0,
+        )
+        monkeypatch.setattr(runner, "_fealpy_available", lambda: True)
+
+        summary = runner.run_agent(_case())
+
+        assert summary.status == "failed"
+        assert summary.preflight_status == "failed"
+        assert call_count[0] == 1  # only original call, no repair attempted

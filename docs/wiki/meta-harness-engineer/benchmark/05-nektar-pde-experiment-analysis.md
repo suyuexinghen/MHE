@@ -140,13 +140,43 @@ The next Phase C expansion ran `advdiff-2d` from `/tmp/mhe-runs/nektar-phase-c-a
 | `advdiff-2d` | direct | 3 / 3 | 3.8848362009739503 | 3 | none |
 | `advdiff-2d` | agent | 3 / 3 | 3.884060522017535 | 3 | none |
 
-All successful direct and agent repeats produced matching `l2_error_u` and `linf_error_u` values for their cases. This proves the real-Claude lanes are wired to stable executable Nektar workflows for `advection-1d` and `advdiff-2d` under the bounded prompt contract. It still does not prove broad Nektar superiority; extension/direct/agent comparison claims require more cases, retained artifacts, and administrator-approved report scope.
+The durable run-root policy for larger repeated runs is now:
 
-## 5.10 Backlog
+- Prefer repository-local `.runs/` only for small dry-runs or artifacts that must stay with the checkout.
+- Use `/var/tmp/mhe-runs/<run-id>` for real repeated runs when `/home` is space-constrained; it is on the root filesystem, has substantially more free space, and is less volatile than `/tmp`.
+- Record external run roots in reports because they are not automatically preserved by git or repo-local cleanup.
+- Set solver/tool PATH explicitly when using an external run root so preflight and subprocess execution see the same Nektar binaries.
 
-1. Free workspace storage or choose a durable non-`/home` run root before more repeated real runs.
-2. Expand Phase C to `advdiff-imex-2d`, preserving bounded prompt/preflight artifacts.
-3. Add per-variable L2/Linf tables to the generated report.
-4. Execute native `Tester` or equivalent solver command for each additional case and record real preflight stdout/stderr.
-5. Implement or validate Nektar extension replay coverage before expanding to DiffusionSolver, IncNavierStokesSolver, and CompressibleFlowSolver.
-6. Keep `diffusion-2d` and `euler-1d` capability-gated until extension dispatch support is verified.
+The next Phase C expansion ran `advdiff-imex-2d` from `/var/tmp/mhe-runs/nektar-phase-c-advdiff-imex2d-path-20260501`. It used real tools, real Claude proposals through an `npx`-resolved Claude Code binary, explicit Nektar PATH, `--claude-max-turns 10`, and `--repeat 3`:
+
+| Case | Lane | Passed / Runs | Median elapsed seconds | LLM calls | Flags |
+|---|---|---:|---:|---:|---|
+| `advdiff-imex-2d` | direct | 3 / 3 | 3.3364970340044238 | 3 | none |
+| `advdiff-imex-2d` | agent | 3 / 3 | 4.394983109959867 | 3 | none |
+
+A first attempt in the same durable root family correctly failed/skipped before solver execution because the raw `claude` alias was not an executable for subprocesses and `ADRSolver` was not on PATH. The successful rerun used an explicit Claude executable and explicit Nektar PATH; these should be part of future real-run commands.
+
+All successful direct and agent repeats produced matching `l2_error_u` and `linf_error_u` values for their cases. This proves the real-Claude lanes are wired to stable executable Nektar workflows for `advection-1d`, `advdiff-2d`, and `advdiff-imex-2d` under the bounded prompt contract. It still does not prove broad Nektar superiority; extension/direct/agent comparison claims require more cases, retained artifacts, and administrator-approved report scope.
+
+## 5.10 Capability gate refresh evidence
+
+A safe dry-run refresh for the remaining CompressibleFlowSolver sentinel was generated without real external tools:
+
+- Run root: `.runs/nektar-capability-skip-refresh`
+- Compare bundle: `.runs/nektar-capability-skip-refresh/nektar-pde-benchmark/comparison/result_bundle.json`
+- Generated report: `.runs/nektar-capability-skip-refresh/nektar-pde-benchmark/comparison/comparison_report.md`
+- Real tools: `false`
+- Real Claude proposals: `false`
+
+| Case | Lane | Status | Promotion ready | Missing capabilities | Solver | Plan status |
+|---|---|---|---|---|---|---|
+| `euler-1d` | extension | capability_gated | false | `nektar_compressible_solver_extension_dispatch` | `CompressibleFlowSolver` | extension_dispatch_unverified |
+
+The generated comparison report now includes a `## Capability gates` section, and `result_bundle.json` includes `evidence_context.capability_gate_rows`. This makes the `euler-1d` skip reviewer-facing: the source `.tst` / `.xml` references are preserved in `source_refs.json`, while `capability_status.json` records `promotion_ready=false` until CompressibleFlowSolver extension dispatch is validated.
+
+## 5.11 Backlog
+
+1. Execute real-mode `Tester` preflight for each additional case and archive `tester.stdout.log` / `tester.stderr.log`; the runner now executes `Tester` when `--allow-real-tools` is set and generated reports surface `tester_summary.json` preflight rows.
+2. Implement or validate Nektar extension replay coverage before expanding to DiffusionSolver, IncNavierStokesSolver, and CompressibleFlowSolver.
+3. Keep `euler-1d` capability-gated until CompressibleFlowSolver extension dispatch support is verified; skipped extension cases now preserve `source_refs.json` and `capability_status.json` with `promotion_ready=false` and missing dispatch capabilities.
+4. Preserve `/var/tmp/mhe-runs/<run-id>` external run roots or copy their comparison bundles before cleanup.

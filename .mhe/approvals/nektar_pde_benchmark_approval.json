@@ -1,10 +1,11 @@
 {
   "version": 1,
-  "status": "pending_admin_review",
+  "status": "approved_with_limitations",
   "approval_kind": "nektar_pde_comparison_benchmark",
-  "approved_by": null,
-  "approval_role": null,
-  "approval_decision": null,
+  "approved_by": "suyuexinghen",
+  "approval_role": "project_lead_authorized_admin",
+  "approval_decision": "approved_with_limitations",
+  "approval_date": "2026-05-01",
   "approved_scope": {
     "benchmark_suites": ["nektar-pde"],
     "lanes": ["extension", "direct", "agent", "comparison"],
@@ -16,11 +17,19 @@
     ],
     "claim_scope": [
       "workflow_reproducibility",
-      "real_nektar_execution_evidence",
+      "real_nektar_execution_evidence_when_present",
       "lane_success_rate_when_real_direct_agent_runs_exist"
+    ],
+    "excluded_claims": [
+      "pde_solver_superiority_without_real_comparable_runs",
+      "dry_run_as_real_solver_evidence"
     ]
   },
-  "evidence_refs": [],
+  "evidence_refs": [
+    ".mhe/config.json",
+    ".mhe/benchmarks/comparison-approval.json",
+    "docs/wiki/meta-harness-engineer/benchmark/08-real-run-evidence-plan-analysis.md"
+  ],
   "required_evidence": [
     "real_tools_run_root",
     "comparison_result_bundle",
@@ -34,8 +43,7 @@
     "dry_run_replaces_real_tool_evidence": false
   },
   "notes": [
-    "Template only: this enables administrator approval gating for nektar-pde comparison benchmarks but does not grant approval.",
-    "An authorized human/admin must fill approved_by, approval_role, approval_decision, and evidence_refs before promotion or manager-facing superiority claims are allowed.",
-    "Approval is necessary but not sufficient; repeated real solver evidence and truthful lane separation remain required."
+    "Administrator approval is granted with limitations for nektar-pde benchmark comparison reporting.",
+    "Approval is necessary but not sufficient; repeated real solver evidence and truthful lane separation remain required for superiority claims."
   ]
 }

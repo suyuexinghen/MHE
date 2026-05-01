@@ -54,6 +54,8 @@ class FealpyBenchmarkRunner:
         self.brain_provider = brain_provider or FakeClaudeCLIBrainProvider()
         self.adaptive_agent = adaptive_agent
         self.max_repair_attempts = max(0, max_repair_attempts)
+        if adaptive_agent and max_repair_attempts <= 1:
+            self.max_repair_attempts = 3
 
     def run_case(self, case: BenchmarkCaseSpec, lanes: list[BenchmarkLane]) -> list[LaneSummary]:
         summaries: list[LaneSummary] = []
@@ -88,7 +90,12 @@ class FealpyBenchmarkRunner:
     def run_direct(self, case: BenchmarkCaseSpec) -> LaneSummary:
         output_dir = case_dir(self.runs_root, case.suite, "direct", case.case_id)
         prompt = self._fealpy_direct_prompt(case)
-        claude_result = self.brain_provider.propose(prompt=prompt, output_dir=output_dir)
+        claude_result: ClaudeCLIResult | None = None
+        for retry in range(self.max_repair_attempts + 1):
+            claude_result = self.brain_provider.propose(prompt=prompt, output_dir=output_dir)
+            if not claude_result.error:
+                break
+        assert claude_result is not None
         attempt_log = self._claude_attempt_log(claude_result.error, "direct")
         preflight = self._write_proposal_preflight(output_dir, case, "direct", claude_result)
         if claude_result.error:
@@ -99,7 +106,7 @@ class FealpyBenchmarkRunner:
                 status="failed",
                 attempt_log=attempt_log,
                 evidence_files=[*self._claude_evidence_files(claude_result), preflight["path"]],
-                error_message=claude_result.error,
+                error_message=f"(after {self.max_repair_attempts + 1} attempts) {claude_result.error}",
                 proposal_contract_status=preflight["proposal_contract_status"],
                 preflight_status=preflight["preflight_status"],
                 failure_category=preflight["failure_category"],
@@ -150,7 +157,13 @@ class FealpyBenchmarkRunner:
     def run_agent(self, case: BenchmarkCaseSpec) -> LaneSummary:
         output_dir = case_dir(self.runs_root, case.suite, "agent", case.case_id)
         prompt = self._fealpy_agent_prompt(case)
-        claude_result = self.brain_provider.propose(prompt=prompt, output_dir=output_dir)
+        # Retry Claude call on transient errors (e.g. max-turns exceeded)
+        claude_result: ClaudeCLIResult | None = None
+        for retry in range(self.max_repair_attempts + 1):
+            claude_result = self.brain_provider.propose(prompt=prompt, output_dir=output_dir)
+            if not claude_result.error:
+                break
+        assert claude_result is not None  # unreachable — loop always runs at least once
         attempt_log = self._claude_attempt_log(claude_result.error, "agent")
         preflight = self._write_proposal_preflight(output_dir, case, "agent", claude_result)
         if claude_result.error:
@@ -161,15 +174,26 @@ class FealpyBenchmarkRunner:
                 status="failed",
                 attempt_log=attempt_log,
                 evidence_files=[*self._claude_evidence_files(claude_result), preflight["path"]],
-                error_message=claude_result.error,
+                error_message=f"(after {self.max_repair_attempts + 1} attempts) {claude_result.error}",
                 proposal_contract_status=preflight["proposal_contract_status"],
                 preflight_status=preflight["preflight_status"],
                 failure_category=preflight["failure_category"],
             )
         if preflight["preflight_status"] != "passed":
-            return self._preflight_failure_summary(
-                case, "agent", claude_result, attempt_log, preflight
-            )
+            if self.max_repair_attempts > 0:
+                repaired = self._propose_agent_preflight_repair(
+                    case, output_dir, claude_result, preflight
+                )
+                if repaired is not None and repaired.get("preflight_status") == "passed":
+                    preflight = repaired
+                else:
+                    return self._preflight_failure_summary(
+                        case, "agent", claude_result, attempt_log, preflight
+                    )
+            else:
+                return self._preflight_failure_summary(
+                    case, "agent", claude_result, attempt_log, preflight
+                )
         if not self.allow_real_tools:
             return write_lane_outputs(
                 runs_root=self.runs_root,
@@ -252,6 +276,17 @@ class FealpyBenchmarkRunner:
         spec = FealpyProblemSpec(task_id="bench-probe")
         return FealpyEnvironmentProbeComponent().probe(spec).available
 
+    @staticmethod
+    def _coerce(v: Any, default: Any) -> Any:
+        """Return *default* when *v* is ``None``, otherwise *v*.
+
+        Claude proposals often set optional fields to explicit ``null``,
+        which survives ``dict.get(key, default)`` and causes a Pydantic
+        type error.  This helper turns ``None`` → *default* while
+        preserving falsy-but-valid values (0, False, empty string).
+        """
+        return default if v is None else v
+
     def _build_spec(
         self,
         case: BenchmarkCaseSpec,
@@ -274,20 +309,20 @@ class FealpyBenchmarkRunner:
                 nz=mesh_payload.get("nz", problem.get("nz")),
                 h=mesh_payload.get("h", problem.get("h")),
             ),
-            fe_degree=problem.get("fe_degree", 1),
-            fe_space_type=problem.get("fe_space_type", "Lagrange"),
-            solver=problem.get("solver", {}),
-            adaptive_refinement=problem.get("adaptive_refinement", 0),
-            dt=max(float(problem.get("dt", 0.01) or 0.01), 0.01),
-            num_time_steps=problem.get("num_time_steps", 100),
-            time_integrator=problem.get("time_integrator", "implicit_euler"),
-            timeout_seconds=problem.get("timeout_seconds", 300),
-            promotion_metadata=problem.get("promotion_metadata", {}),
+            fe_degree=self._coerce(problem.get("fe_degree"), 1),
+            fe_space_type=self._coerce(problem.get("fe_space_type"), "Lagrange"),
+            solver=self._coerce(problem.get("solver"), {}),
+            adaptive_refinement=self._coerce(problem.get("adaptive_refinement"), 0),
+            dt=max(float(self._coerce(problem.get("dt"), 0.01)), 0.01),
+            num_time_steps=self._coerce(problem.get("num_time_steps"), 100),
+            time_integrator=self._coerce(problem.get("time_integrator"), "implicit_euler"),
+            timeout_seconds=self._coerce(problem.get("timeout_seconds"), 300),
+            promotion_metadata=self._coerce(problem.get("promotion_metadata"), {}),
             graph_metadata={
-                **problem.get("graph_metadata", {}),
+                **self._coerce(problem.get("graph_metadata"), {}),
                 "benchmark_workspace": str(output_dir / "workspace"),
             },
-            evidence_refs=problem.get("evidence_refs", []),
+            evidence_refs=self._coerce(problem.get("evidence_refs"), []),
         )
 
     def _run_extension_pipeline_lane(
@@ -478,7 +513,12 @@ class FealpyBenchmarkRunner:
             "fe_degree (int), fe_space_type (Lagrange/FirstNedelec/RaviartThomas/HuZhang), "
             "solver (nest: method (mumps/scipy/cupy), max_iterations, atol, rtol), "
             "adaptive_refinement (int), dt (float), num_time_steps (int), "
-            "time_integrator (implicit_euler), timeout_seconds (int). "
+            "time_integrator (str), timeout_seconds (int). "
+            "CRITICAL: every field in fealpy_spec must have a concrete value — "
+            "NEVER use null for dt, num_time_steps, time_integrator, solver, fe_degree, "
+            "fe_space_type, adaptive_refinement, timeout_seconds. "
+            "For a steady-state Poisson problem use: dt=0.01, num_time_steps=100, "
+            "time_integrator='implicit_euler'. "
             f"Current: {json.dumps(problem, sort_keys=True)}. "
             'Return: {"fealpy_spec": {...}} or {"spec_patch": {...}}'
         )
@@ -520,6 +560,32 @@ class FealpyBenchmarkRunner:
             return self._build_spec(case, output_dir, merged)
         except ValidationError:
             return None
+
+    def _preflight_repair_prompt(self, case: BenchmarkCaseSpec, preflight: dict[str, Any]) -> str:
+        messages = preflight.get("messages", [])
+        return (
+            "Return only a JSON object with a fealpy_spec or spec_patch, no markdown. "
+            f"The previous proposal for case {case.case_id} failed validation: "
+            f"{'; '.join(messages)}. "
+            "Fix the spec so every required field has a concrete value — "
+            "NEVER use null for dt, num_time_steps, time_integrator, solver, "
+            "fe_degree, fe_space_type, adaptive_refinement, timeout_seconds. "
+            f"Current problem: {json.dumps(case.problem_definition, sort_keys=True)}. "
+            'Return: {"fealpy_spec": {...}} or {"spec_patch": {...}}'
+        )
+
+    def _propose_agent_preflight_repair(
+        self,
+        case: BenchmarkCaseSpec,
+        output_dir: Path,
+        claude_result: ClaudeCLIResult,
+        preflight: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        prompt = self._preflight_repair_prompt(case, preflight)
+        repair_result = self.brain_provider.propose(prompt=prompt, output_dir=output_dir)
+        if repair_result.error:
+            return None
+        return self._write_proposal_preflight(output_dir, case, "agent", repair_result)
 
     def _claude_attempt_log(self, error: str | None, lane: BenchmarkLane) -> AttemptLog:
         status = "failed" if error else "passed"
