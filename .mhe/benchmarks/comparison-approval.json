@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "policy_id": "comparison_benchmarks_require_admin_approval",
+  "applies_to": {
+    "benchmark_suites": ["*"],
+    "comparison_outputs": [
+      "result_bundle.json",
+      "repeat_summary.json",
+      "manager_facing_report"
+    ],
+    "lanes": ["extension", "direct", "agent", "comparison"]
+  },
+  "required_approval_profiles": [
+    "benchmark_promotion_admin_approval"
+  ],
+  "conditional_approval_profiles": [
+    {
+      "when": {
+        "suite": "octave-native"
+      },
+      "requires": ["octave_native_benchmark_admin_approval"]
+    },
+    {
+      "when": {
+        "suite": "nektar-pde"
+      },
+      "requires": ["nektar_pde_benchmark_admin_approval"]
+    },
+    {
+      "when": {
+        "suite": "fealpy-pde"
+      },
+      "requires": ["fealpy_pde_benchmark_admin_approval"]
+    },
+    {
+      "when": {
+        "suite": "qcompute-abacus",
+        "case_id": "abacus-hs-bridge-pending",
+        "source_format": "abacus_hs_matrix"
+      },
+      "requires": ["abacus_hs_scientific"]
+    }
+  ],
+  "promotion_gate_categories": [
+    "human_approval",
+    "scientific_validation",
+    "production_converter",
+    "real_repeat_evidence"
+  ],
+  "sentinel_rules": {
+    "abacus-hs-bridge-pending": {
+      "must_remain_skipped_until_all_categories_clear": true,
+      "required_gate_artifact": "promotion_gate.json"
+    }
+  },
+  "non_replacement_rules": {
+    "acp_or_claude_review_may_add_review_signoff": true,
+    "acp_or_claude_review_replaces_human_approval": false,
+    "ci_schema_pass_replaces_scientific_approval": false
+  }
+}

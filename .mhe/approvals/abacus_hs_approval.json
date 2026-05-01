@@ -1,0 +1,13 @@
+{
+  "status": "invalid",
+  "approved_by": null,
+  "approval_role": null,
+  "fixture_refs": [],
+  "tolerance_table_ref": null,
+  "reference_observable": null,
+  "notes": [
+    "Template only: this does not grant administrator or scientific approval.",
+    "Fill approved_by, approval_role, fixture_refs, tolerance_table_ref, and reference_observable after an authorized human/scientific review.",
+    "Even when this manifest becomes approved, production converter evidence and real repeated benchmark evidence are still required."
+  ]
+}

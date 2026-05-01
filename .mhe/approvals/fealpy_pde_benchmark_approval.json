@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "status": "pending_admin_review",
+  "approval_kind": "fealpy_pde_comparison_benchmark",
+  "approved_by": null,
+  "approval_role": null,
+  "approval_decision": null,
+  "approved_scope": {
+    "benchmark_suites": ["fealpy-pde"],
+    "lanes": ["extension", "direct", "agent", "comparison"],
+    "pde_families": [
+      "poisson",
+      "stokes",
+      "darcy",
+      "linear_elasticity",
+      "curlcurl"
+    ],
+    "comparison_outputs": [
+      "result_bundle.json",
+      "repeat_summary.json",
+      "run_manifest.json",
+      "manager_facing_report"
+    ],
+    "claim_scope": [
+      "workflow_reproducibility",
+      "real_fealpy_execution_evidence",
+      "lane_success_rate_when_real_direct_agent_runs_exist",
+      "pde_solver_numerical_accuracy",
+      "backend_capability_claims"
+    ]
+  },
+  "evidence_refs": [],
+  "required_evidence": [
+    "real_tools_run_root",
+    "comparison_result_bundle",
+    "repeat_summary_when_claiming_stability",
+    "direct_and_agent_lane_evidence_when_claiming_comparison",
+    "compiler_generated_reference_script_as_ground_truth",
+    "installed_fealpy_api_surface_import_verification",
+    "tolerance_table_per_pde_family"
+  ],
+  "direct_lane_review_requirements": {
+    "review_required": true,
+    "review_items": [
+      "verify_generated_imports_match_installed_fealpy_api",
+      "verify_solver_method_matches_available_backends",
+      "verify_mesh_construction_is_correct_for_meshtype",
+      "verify_boundary_condition_application",
+      "verify_error_norm_computation"
+    ],
+    "reference_source": "extension_lane_compiler_generated_script"
+  },
+  "non_replacement_rules": {
+    "acp_or_claude_review_replaces_admin_approval": false,
+    "ci_schema_pass_replaces_admin_approval": false,
+    "dry_run_replaces_real_tool_evidence": false,
+    "preflight_pass_replaces_code_review": false
+  },
+  "notes": [
+    "Template only: this enables administrator approval gating for fealpy-pde comparison benchmarks but does not grant approval.",
+    "An authorized human/admin must fill approved_by, approval_role, approval_decision, and evidence_refs before promotion or manager-facing claims are allowed.",
+    "Approval is necessary but not sufficient; repeated real solver evidence across lanes remains required.",
+    "Direct lane generated code review is especially critical: Claude may hallucinate fealpy API imports that do not exist in the installed version.",
+    "The extension lane compiler output serves as ground truth for API surface and numerical reference values."
+  ]
+}

@@ -1,0 +1,95 @@
+{
+  "version": 1,
+  "approval": {
+    "default_policy": "comparison_benchmarks_require_admin_approval",
+    "benchmark_policy_ref": ".mhe/benchmarks/comparison-approval.json",
+    "profiles": {
+      "benchmark_promotion_admin_approval": {
+        "required": true,
+        "manifest": ".mhe/approvals/comparison_benchmark_approval.json",
+        "required_fields": [
+          "approved_by",
+          "approval_role",
+          "approved_scope",
+          "evidence_refs",
+          "approval_decision"
+        ],
+        "non_replacement_rules": {
+          "acp_reviewer_can_satisfy": false,
+          "ci_can_satisfy": false,
+          "human_or_authorized_admin_required": true
+        }
+      },
+      "octave_native_benchmark_admin_approval": {
+        "required": true,
+        "manifest": ".mhe/approvals/octave_native_benchmark_approval.json",
+        "required_fields": [
+          "approved_by",
+          "approval_role",
+          "approved_scope",
+          "evidence_refs",
+          "approval_decision"
+        ],
+        "non_replacement_rules": {
+          "acp_reviewer_can_satisfy": false,
+          "ci_can_satisfy": false,
+          "human_or_authorized_admin_required": true
+        }
+      },
+      "nektar_pde_benchmark_admin_approval": {
+        "required": true,
+        "manifest": ".mhe/approvals/nektar_pde_benchmark_approval.json",
+        "required_fields": [
+          "approved_by",
+          "approval_role",
+          "approved_scope",
+          "evidence_refs",
+          "approval_decision"
+        ],
+        "non_replacement_rules": {
+          "acp_reviewer_can_satisfy": false,
+          "ci_can_satisfy": false,
+          "human_or_authorized_admin_required": true
+        }
+      },
+      "fealpy_pde_benchmark_admin_approval": {
+        "required": true,
+        "manifest": ".mhe/approvals/fealpy_pde_benchmark_approval.json",
+        "required_fields": [
+          "approved_by",
+          "approval_role",
+          "approved_scope",
+          "evidence_refs",
+          "approval_decision"
+        ],
+        "non_replacement_rules": {
+          "acp_reviewer_can_satisfy": false,
+          "ci_can_satisfy": false,
+          "human_or_authorized_admin_required": true
+        }
+      },
+      "abacus_hs_scientific": {
+        "required": true,
+        "manifest": ".mhe/approvals/abacus_hs_approval.json",
+        "required_fields": [
+          "approved_by",
+          "approval_role",
+          "fixture_refs",
+          "tolerance_table_ref",
+          "reference_observable"
+        ],
+        "non_replacement_rules": {
+          "acp_reviewer_can_satisfy": false,
+          "ci_can_satisfy": false,
+          "human_or_authorized_admin_required": true
+        }
+      }
+    }
+  },
+  "claim_boundaries": {
+    "admin_approval_is_necessary_not_sufficient": true,
+    "acp_reviewer_evidence_only": true,
+    "ci_validates_schema_not_scientific_truth": true,
+    "sentinel_cases_remain_skipped_until_promotion_gate_ready": true
+  }
+}
