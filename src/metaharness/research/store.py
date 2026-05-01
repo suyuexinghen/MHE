@@ -11,6 +11,7 @@ from metaharness.sdk.research import (
     EvidenceBundle,
     ExperimentPlan,
     Hypothesis,
+    ResearchDossier,
     ResearchQuestion,
 )
 from metaharness.sdk.review import EvidenceReview
@@ -22,6 +23,7 @@ _RECORD_MODELS: dict[str, type[BaseModel]] = {
     "evidence": EvidenceBundle,
     "decision": Decision,
     "review": EvidenceReview,
+    "dossier": ResearchDossier,
 }
 
 T = TypeVar("T", bound=BaseModel)
@@ -52,6 +54,9 @@ class ResearchStore:
     def record_review(self, review: EvidenceReview) -> None:
         self._append("review", review)
 
+    def record_dossier(self, dossier: ResearchDossier) -> None:
+        self._append("dossier", dossier)
+
     def list_hypotheses(self, question_id: str) -> list[Hypothesis]:
         return [
             record
@@ -79,6 +84,13 @@ class ResearchStore:
             record
             for record in self._records("review", EvidenceReview)
             if record.evidence_bundle_id == evidence_bundle_id
+        ]
+
+    def dossiers_for(self, question_id: str) -> list[ResearchDossier]:
+        return [
+            record
+            for record in self._records("dossier", ResearchDossier)
+            if record.question_id == question_id
         ]
 
     def _append(self, record_type: str, payload: BaseModel) -> None:

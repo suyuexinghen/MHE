@@ -31,6 +31,18 @@ class EvidenceStatus(StrEnum):
     SKIPPED = "skipped"
 
 
+class EvidenceQuality(StrEnum):
+    HIGH = "high"
+    INCONCLUSIVE = "inconclusive"
+    EXECUTION_FAILURE = "execution_failure"
+
+
+class ReproducibilityTier(StrEnum):
+    DETERMINISTIC = "deterministic"
+    SINGLE_RUN = "single_run"
+    UNVERIFIED = "unverified"
+
+
 class DecisionOutcome(StrEnum):
     ADVANCE = "ADVANCE"
     REFINE = "REFINE"
@@ -136,3 +148,44 @@ class ResearchConclusion(BaseModel):
     supported_hypotheses: list[str] = Field(default_factory=list)
     refuted_hypotheses: list[str] = Field(default_factory=list)
     status: ResearchQuestionStatus
+
+
+class DossierClaim(BaseModel):
+    """Traceable statement in a research dossier."""
+
+    claim_id: str
+    statement: str
+    hypothesis_ids: list[str] = Field(default_factory=list)
+    evidence_bundle_ids: list[str] = Field(default_factory=list)
+    baseline_refs: list[str] = Field(default_factory=list)
+    confidence: float = Field(ge=0.0, le=1.0)
+    evidence_quality: EvidenceQuality
+    reproducibility_tier: ReproducibilityTier
+
+    @model_validator(mode="after")
+    def claim_must_be_traceable(self) -> "DossierClaim":
+        if not self.evidence_bundle_ids and not self.baseline_refs:
+            raise ValueError("dossier claims must cite evidence bundles or SOTA baselines")
+        return self
+
+
+class NegativeResultCluster(BaseModel):
+    """Grouped dead-end evidence for avoiding repeated failed research paths."""
+
+    cluster_id: str
+    domain_tags: dict[str, Any] = Field(default_factory=dict)
+    metric_schema: str | None = None
+    failure_category: str | None = None
+    evidence_bundle_ids: list[str] = Field(default_factory=list)
+    refuted_hypothesis_ids: list[str] = Field(default_factory=list)
+    repeated_dead_end: bool = False
+
+
+class ResearchDossier(BaseModel):
+    """Minimal traceable dossier for a completed MVP research loop."""
+
+    dossier_id: str
+    question_id: str
+    claims: list[DossierClaim] = Field(default_factory=list)
+    negative_result_clusters: list[NegativeResultCluster] = Field(default_factory=list)
+    conclusion: ResearchConclusion
