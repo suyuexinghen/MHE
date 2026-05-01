@@ -22,6 +22,7 @@ class HypothesisStatus(StrEnum):
     TESTING = "testing"
     SUPPORTED = "supported"
     REFUTED = "refuted"
+    SUPERSEDED = "superseded"
 
 
 class EvidenceStatus(StrEnum):
@@ -70,6 +71,13 @@ class Hypothesis(BaseModel):
     statement: str
     prediction: dict[str, dict[str, Any]] = Field(default_factory=dict)
     status: HypothesisStatus = HypothesisStatus.PROPOSED
+    parent_hypothesis_id: str | None = None
+    estimated_information_gain: float = Field(default=0.0, ge=0.0)
+    estimated_cost: float = Field(default=1.0, gt=0.0)
+
+    @property
+    def cost_benefit_ratio(self) -> float:
+        return self.estimated_information_gain / self.estimated_cost
 
 
 class ExperimentPlan(BaseModel):
