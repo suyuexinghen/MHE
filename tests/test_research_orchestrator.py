@@ -55,7 +55,13 @@ def test_research_orchestrator_advances_supported_hypothesis(tmp_path) -> None:
         _question(),
         hypotheses=[hypothesis],
         plans=[plan],
-        summaries={plan.plan_id: {"status": "passed", "metrics": {"l2_error": 0.002}, "failure_category": None}},
+        summaries={
+            plan.plan_id: {
+                "status": "passed",
+                "metrics": {"l2_error": 0.002},
+                "failure_category": None,
+            }
+        },
         artifact_refs={plan.plan_id: "summary.json"},
     )
 
@@ -71,13 +77,21 @@ def test_research_orchestrator_advances_supported_hypothesis(tmp_path) -> None:
 def test_research_orchestrator_refines_refuted_hypothesis(tmp_path) -> None:
     hypothesis = _hypothesis(threshold=0.001)
     plan = _plan(hypothesis)
-    orchestrator = ResearchOrchestrator(ResearchStore(tmp_path), budget=ResearchBudget(max_experiments=1))
+    orchestrator = ResearchOrchestrator(
+        ResearchStore(tmp_path), budget=ResearchBudget(max_experiments=1)
+    )
 
     run = orchestrator.pursue(
         _question(),
         hypotheses=[hypothesis],
         plans=[plan],
-        summaries={plan.plan_id: {"status": "passed", "metrics": {"l2_error": 0.002}, "failure_category": None}},
+        summaries={
+            plan.plan_id: {
+                "status": "passed",
+                "metrics": {"l2_error": 0.002},
+                "failure_category": None,
+            }
+        },
     )
 
     assert run.decisions[0].decision == DecisionOutcome.REFINE
@@ -88,16 +102,28 @@ def test_research_orchestrator_refines_refuted_hypothesis(tmp_path) -> None:
 def test_research_orchestrator_stops_at_experiment_budget(tmp_path) -> None:
     hypothesis = _hypothesis()
     plan = _plan(hypothesis)
-    second_plan = plan.model_copy(update={"plan_id": "plan-fealpy-poisson-direct", "lane": "direct"})
-    orchestrator = ResearchOrchestrator(ResearchStore(tmp_path), budget=ResearchBudget(max_experiments=1))
+    second_plan = plan.model_copy(
+        update={"plan_id": "plan-fealpy-poisson-direct", "lane": "direct"}
+    )
+    orchestrator = ResearchOrchestrator(
+        ResearchStore(tmp_path), budget=ResearchBudget(max_experiments=1)
+    )
 
     run = orchestrator.pursue(
         _question(),
         hypotheses=[hypothesis],
         plans=[plan, second_plan],
         summaries={
-            plan.plan_id: {"status": "passed", "metrics": {"l2_error": 0.002}, "failure_category": None},
-            second_plan.plan_id: {"status": "passed", "metrics": {"l2_error": 0.003}, "failure_category": None},
+            plan.plan_id: {
+                "status": "passed",
+                "metrics": {"l2_error": 0.002},
+                "failure_category": None,
+            },
+            second_plan.plan_id: {
+                "status": "passed",
+                "metrics": {"l2_error": 0.003},
+                "failure_category": None,
+            },
         },
     )
 

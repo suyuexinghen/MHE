@@ -35,7 +35,9 @@ def summary_to_evidence_bundle(
     supports: list[str] = []
     refutes: list[str] = []
     confidence = 1.0 if status == EvidenceStatus.PASSED else 0.0
-    confidence_method = "deterministic_metric_threshold" if status == EvidenceStatus.PASSED else "execution_failed"
+    confidence_method = (
+        "deterministic_metric_threshold" if status == EvidenceStatus.PASSED else "execution_failed"
+    )
 
     if status == EvidenceStatus.PASSED:
         satisfied = _prediction_satisfied(metrics, hypothesis.prediction)
@@ -129,7 +131,9 @@ def _numeric_metrics(raw_metrics: Any) -> dict[str, float]:
     return metrics
 
 
-def _prediction_satisfied(metrics: dict[str, float], prediction: dict[str, dict[str, Any]]) -> bool | None:
+def _prediction_satisfied(
+    metrics: dict[str, float], prediction: dict[str, dict[str, Any]]
+) -> bool | None:
     verdicts: list[bool] = []
     for metric_name, constraint in prediction.items():
         if metric_name not in metrics:

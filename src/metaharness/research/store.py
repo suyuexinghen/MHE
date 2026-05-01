@@ -72,7 +72,9 @@ class ResearchStore:
         ]
 
     def decision_history(self, question_id: str) -> list[Decision]:
-        hypothesis_ids = {hypothesis.hypothesis_id for hypothesis in self.list_hypotheses(question_id)}
+        hypothesis_ids = {
+            hypothesis.hypothesis_id for hypothesis in self.list_hypotheses(question_id)
+        }
         return [
             record
             for record in self._records("decision", Decision)

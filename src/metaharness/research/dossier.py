@@ -46,12 +46,16 @@ class NegativeResultAggregator:
             groups.setdefault(_cluster_key(bundle), []).append(bundle)
         return [self._cluster_for(items) for items in groups.values()]
 
-    def is_repeated_dead_end(self, evidence: list[EvidenceBundle], candidate: EvidenceBundle) -> bool:
+    def is_repeated_dead_end(
+        self, evidence: list[EvidenceBundle], candidate: EvidenceBundle
+    ) -> bool:
         if not _is_negative_result(candidate):
             return False
         candidate_key = _cluster_key(candidate)
         matching_count = sum(
-            1 for bundle in evidence if _is_negative_result(bundle) and _cluster_key(bundle) == candidate_key
+            1
+            for bundle in evidence
+            if _is_negative_result(bundle) and _cluster_key(bundle) == candidate_key
         )
         return matching_count >= self.repeat_threshold
 

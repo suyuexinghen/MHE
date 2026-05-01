@@ -56,7 +56,11 @@ def _evidence(
         confidence_method="deterministic_metric_threshold"
         if status == EvidenceStatus.PASSED
         else "execution_failed",
-        domain_tags={"suite": "fealpy-pde", "case_id": "poisson-2d-numpy", "metric_schema": metric_schema},
+        domain_tags={
+            "suite": "fealpy-pde",
+            "case_id": "poisson-2d-numpy",
+            "metric_schema": metric_schema,
+        },
         supports=supports or [],
         refutes=refutes or [],
     )
@@ -86,7 +90,9 @@ def test_negative_result_aggregator_groups_dead_ends_by_domain_and_failure() -> 
     clusters = NegativeResultAggregator().aggregate([first, second, execution_failure])
 
     refuted_cluster = next(cluster for cluster in clusters if cluster.failure_category is None)
-    failed_cluster = next(cluster for cluster in clusters if cluster.failure_category == "runner_error")
+    failed_cluster = next(
+        cluster for cluster in clusters if cluster.failure_category == "runner_error"
+    )
     assert refuted_cluster.metric_schema == "fealpy.poisson.v1"
     assert refuted_cluster.evidence_bundle_ids == ["ev-refuted-1", "ev-refuted-2"]
     assert refuted_cluster.refuted_hypothesis_ids == ["h-refuted", "h-refuted-again"]
@@ -97,11 +103,17 @@ def test_negative_result_aggregator_groups_dead_ends_by_domain_and_failure() -> 
 
 def test_repeated_dead_end_detection_matches_existing_cluster() -> None:
     aggregator = NegativeResultAggregator(repeat_threshold=2)
-    history = [_evidence("ev-refuted-1", refutes=["h-a"]), _evidence("ev-refuted-2", refutes=["h-b"])]
+    history = [
+        _evidence("ev-refuted-1", refutes=["h-a"]),
+        _evidence("ev-refuted-2", refutes=["h-b"]),
+    ]
     candidate = _evidence("ev-refuted-3", refutes=["h-c"])
 
     assert aggregator.is_repeated_dead_end(history, candidate) is True
-    assert aggregator.is_repeated_dead_end(history, _evidence("ev-supported", supports=["h-ok"])) is False
+    assert (
+        aggregator.is_repeated_dead_end(history, _evidence("ev-supported", supports=["h-ok"]))
+        is False
+    )
 
 
 def test_research_dossier_builds_traceable_claims_and_negative_clusters() -> None:
@@ -112,7 +124,10 @@ def test_research_dossier_builds_traceable_claims_and_negative_clusters() -> Non
 
     assert dossier.dossier_id == "dossier-rq"
     assert dossier.question_id == "rq"
-    assert {claim.evidence_bundle_ids[0] for claim in dossier.claims} == {"ev-supported", "ev-refuted"}
+    assert {claim.evidence_bundle_ids[0] for claim in dossier.claims} == {
+        "ev-supported",
+        "ev-refuted",
+    }
     assert {claim.hypothesis_ids[0] for claim in dossier.claims} == {"h-supported", "h-refuted"}
     assert dossier.negative_result_clusters[0].evidence_bundle_ids == ["ev-refuted"]
 

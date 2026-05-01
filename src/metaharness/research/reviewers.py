@@ -34,10 +34,14 @@ class MetricThresholdReviewer(ReviewerProtocol):
         )
 
 
-def _dimensions_for(evidence: EvidenceBundle, *, supported: bool, refuted: bool) -> ReviewDimensions:
+def _dimensions_for(
+    evidence: EvidenceBundle, *, supported: bool, refuted: bool
+) -> ReviewDimensions:
     credible = evidence.confidence if evidence.status == EvidenceStatus.PASSED else 0.0
     correctness = credible if supported or refuted else 0.0
-    reproducibility = 1.0 if evidence.confidence_method == "deterministic_metric_threshold" else credible
+    reproducibility = (
+        1.0 if evidence.confidence_method == "deterministic_metric_threshold" else credible
+    )
     significance = 1.0 if supported else 0.5 if refuted else 0.0
     return ReviewDimensions(
         credibility=credible,

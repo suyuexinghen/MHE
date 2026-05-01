@@ -43,9 +43,9 @@ def test_hypothesis_action_space_filters_untestable_candidates() -> None:
         [testable, missing_prediction, bad_relation, bad_value],
     )
 
-    assert [action.proposed_hypothesis.hypothesis_id for action in actions if action.proposed_hypothesis] == [
-        "h-testable"
-    ]
+    assert [
+        action.proposed_hypothesis.hypothesis_id for action in actions if action.proposed_hypothesis
+    ] == ["h-testable"]
     assert actions[0].kind == HypothesisActionKind.GENERATE
 
 

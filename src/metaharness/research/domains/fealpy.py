@@ -17,9 +17,7 @@ class FEALPyRuleBasedExperimentDesigner(ExperimentDesignerProtocol):
     controls: dict[str, Any] = field(
         default_factory=lambda: {"backend": "numpy", "meshtype": "tri"}
     )
-    variables: dict[str, Any] = field(
-        default_factory=lambda: {"nx": 16, "ny": 16, "fe_degree": 1}
-    )
+    variables: dict[str, Any] = field(default_factory=lambda: {"nx": 16, "ny": 16, "fe_degree": 1})
 
     def design(self, question: ResearchQuestion, hypothesis: Hypothesis) -> ExperimentPlan:
         expected_outcome = hypothesis.prediction or question.formal_spec
