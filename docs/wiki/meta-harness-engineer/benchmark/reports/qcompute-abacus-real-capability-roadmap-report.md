@@ -174,7 +174,9 @@ ACP-connected Claude Code 可在 JSON diagnostic 稳定通过后填充同一 sch
 }
 ```
 
-因此，管理员认可 manifest 只是必要条件之一；没有 production converter evidence 和 real-mode repeat summary 时，仍不能晋升 sentinel，也不能声称真实 ABACUS × QCompute conversion 已可用。分类 gate 的责任边界如下：
+因此，管理员认可 manifest 只是必要条件之一；没有 production converter evidence 和 real-mode repeat summary 时，仍不能晋升 sentinel，也不能声称真实 ABACUS × QCompute conversion 已可用。comparison-level `approval_gate.json` 也会按同一原则分类 blocker：`approved_by` / `approval_role` 仍归入 `human_approval`，而 ABACUS `fixture_refs`、`tolerance_table_ref`、`reference_observable` 缺失归入 `scientific_validation`；对应 CSV 字段为 `approval_human_missing`、`approval_scientific_missing`、`approval_production_missing`、`approval_real_repeat_missing`。
+
+分类 gate 的责任边界如下：
 
 | blocker category | 可满足方 | ACP/Claude reviewer 能做什么 | CI/tests 能做什么 | claim boundary |
 |---|---|---|---|---|

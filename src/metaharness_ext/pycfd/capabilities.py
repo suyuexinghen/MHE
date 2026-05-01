@@ -1,0 +1,21 @@
+CAP_PYCFD_TASK_ISSUE = "pycfd.task.issue"
+CAP_PYCFD_ENV_PROBE = "pycfd.environment.probe"
+CAP_PYCFD_COMPILE = "pycfd.compile"
+CAP_PYCFD_EXECUTE_RUN = "pycfd.execute.run"
+CAP_PYCFD_VALIDATE_REPORT = "pycfd.validate.report"
+CAP_PYCFD_STUDY_RUN = "pycfd.study.run"
+CAP_PYCFD_OPTIMIZER_PROPOSE = "pycfd.optimizer.propose"
+CAP_PYCFD_SCHEDULER_DRYRUN = "pycfd.scheduler.dryrun"
+CAP_PYCFD_QUOTA_PROVIDE = "pycfd.quota.provide"
+
+CANONICAL_CAPABILITIES: list[str] = [
+    CAP_PYCFD_TASK_ISSUE,
+    CAP_PYCFD_ENV_PROBE,
+    CAP_PYCFD_COMPILE,
+    CAP_PYCFD_EXECUTE_RUN,
+    CAP_PYCFD_VALIDATE_REPORT,
+    CAP_PYCFD_STUDY_RUN,
+    CAP_PYCFD_OPTIMIZER_PROPOSE,
+    CAP_PYCFD_SCHEDULER_DRYRUN,
+    CAP_PYCFD_QUOTA_PROVIDE,
+]

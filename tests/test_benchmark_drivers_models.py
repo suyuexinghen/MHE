@@ -139,6 +139,8 @@ def _write_lane_summary(
     *,
     status: str = "passed",
     passed: bool = True,
+    metrics: dict[str, float] | None = None,
+    metric_diffs: dict[str, float] | None = None,
 ) -> None:
     summary = LaneSummary(
         case_id=case.case_id,
@@ -146,7 +148,8 @@ def _write_lane_summary(
         lane=lane,  # type: ignore[arg-type]
         status=status,  # type: ignore[arg-type]
         passed=passed,
-        metrics={"error": 0.0},
+        metrics=metrics or {"error": 0.0},
+        metric_diffs=metric_diffs or {},
         evidence_files=["evidence.txt"],
     )
     write_json(case_dir(tmp_path, case.suite, lane, case.case_id) / "summary.json", summary)
@@ -177,6 +180,51 @@ def test_comparator_writes_reports_from_synthetic_summaries(tmp_path: Path) -> N
     assert (
         tmp_path / "octave-native-benchmark" / "reports" / "octave-native-analysis-report.md"
     ).exists()
+
+
+def test_comparator_writes_metric_detail_tables(tmp_path: Path) -> None:
+    case = BenchmarkCaseSpec(
+        case_id="advdiff-2d",
+        suite="nektar-pde",
+        task_family="nektar_pde",
+        description="Nektar metric case",
+        required_capabilities=["nektar_adr_solver"],
+        source_reference="source.tst",
+        expected_metrics=["l2_error_u", "linf_error_u", "elapsed_seconds"],
+        reference_metrics={
+            "l2_error_u": MetricReference(value=0.00135233, tolerance=1e-8),
+            "linf_error_u": MetricReference(value=0.00275937, tolerance=1e-8),
+        },
+    )
+    metrics = {
+        "l2_error_u": 0.00135233,
+        "linf_error_u": 0.00275937,
+        "elapsed_seconds": 2.0,
+    }
+    for lane in ["extension", "direct", "agent"]:
+        _write_lane_summary(
+            tmp_path,
+            case,
+            lane,
+            metrics=metrics,
+            metric_diffs={"l2_error_u": 0.0, "linf_error_u": 0.0},
+        )
+
+    write_comparison_outputs(runs_root=tmp_path, suite="nektar-pde")
+
+    comparison_dir = tmp_path / "nektar-pde-benchmark" / "comparison"
+    report = (comparison_dir / "comparison_report.md").read_text()
+    analysis = (
+        tmp_path / "nektar-pde-benchmark" / "reports" / "nektar-pde-analysis-report.md"
+    ).read_text()
+    bundle = json.loads((comparison_dir / "result_bundle.json").read_text())
+    assert "## Metric details" in report
+    assert "| advdiff-2d | direct | l2_error_u | 0.00135233 | 0.0 | passed | True |" in report
+    assert "linf_error_u" in analysis
+    assert bundle["evidence_context"]["metric_rows"][0]["metric"] == "l2_error_u"
+    assert all(
+        row["metric"] != "elapsed_seconds" for row in bundle["evidence_context"]["metric_rows"]
+    )
 
 
 def test_comparator_writes_blocked_approval_gate_from_policy(tmp_path: Path) -> None:
@@ -256,6 +304,9 @@ def test_comparator_writes_blocked_approval_gate_from_policy(tmp_path: Path) -> 
     report = (
         tmp_path / "octave-native-benchmark" / "comparison" / "comparison_report.md"
     ).read_text()
+    backlog = (
+        tmp_path / "octave-native-benchmark" / "reports" / "octave-native-backlog.md"
+    ).read_text()
     assert gate["status"] == "blocked"
     assert gate["approval_ready"] is False
     assert (
@@ -267,6 +318,230 @@ def test_comparator_writes_blocked_approval_gate_from_policy(tmp_path: Path) -> 
     assert "benchmark_promotion_admin_approval_not_approved" in csv_text
     assert "## Approval gate" in report
     assert "benchmark_promotion_admin_approval" in report
+    assert "## Approval gate blockers" in backlog
+    assert "benchmark_promotion_admin_approval_not_approved" in backlog
+
+
+def test_comparator_writes_approved_approval_gate_from_policy(tmp_path: Path) -> None:
+    case = BenchmarkCaseSpec(
+        case_id="approved-demo",
+        suite="octave-native",
+        task_family="demo",
+        description="approved demo case",
+        required_capabilities=["octave-cli"],
+        source_reference="source.m:1",
+        expected_metrics=["error"],
+        reference_metrics={"error": MetricReference(value=0.0, tolerance=1e-9)},
+    )
+    for lane in ["extension", "direct", "agent"]:
+        _write_passing_lane_summary(tmp_path, case, lane)
+    config_root = tmp_path / ".mhe"
+    approvals_root = config_root / "approvals"
+    benchmarks_root = config_root / "benchmarks"
+    approvals_root.mkdir(parents=True)
+    benchmarks_root.mkdir()
+    (config_root / "config.json").write_text(
+        json.dumps(
+            {
+                "approval": {
+                    "profiles": {
+                        "benchmark_promotion_admin_approval": {
+                            "manifest": ".mhe/approvals/comparison_benchmark_approval.json",
+                            "required_fields": [
+                                "approved_by",
+                                "approval_role",
+                                "approved_scope",
+                                "evidence_refs",
+                                "approval_decision",
+                            ],
+                        }
+                    }
+                }
+            }
+        )
+    )
+    (benchmarks_root / "comparison-approval.json").write_text(
+        json.dumps(
+            {
+                "policy_id": "comparison_benchmarks_require_admin_approval",
+                "required_approval_profiles": ["benchmark_promotion_admin_approval"],
+            }
+        )
+    )
+    (approvals_root / "comparison_benchmark_approval.json").write_text(
+        json.dumps(
+            {
+                "status": "approved",
+                "approved_by": "admin@example.test",
+                "approval_role": "benchmark-admin",
+                "approved_scope": {"suite": "octave-native"},
+                "evidence_refs": ["comparison/result_bundle.json"],
+                "approval_decision": "approved",
+            }
+        )
+    )
+
+    write_comparison_outputs(
+        runs_root=tmp_path,
+        suite="octave-native",
+        approval_config_root=config_root,
+    )
+
+    gate = json.loads(
+        (tmp_path / "octave-native-benchmark" / "comparison" / "approval_gate.json").read_text()
+    )
+    csv_text = (
+        tmp_path / "octave-native-benchmark" / "comparison" / "summary_table.csv"
+    ).read_text()
+    report = (
+        tmp_path / "octave-native-benchmark" / "comparison" / "comparison_report.md"
+    ).read_text()
+    backlog = (
+        tmp_path / "octave-native-benchmark" / "reports" / "octave-native-backlog.md"
+    ).read_text()
+    assert gate["status"] == "approved"
+    assert gate["approval_ready"] is True
+    assert gate["missing_evidence_by_category"]["human_approval"] == []
+    assert "Approval gate: `approved`" in report
+    assert "approval_ready" in csv_text
+    assert "## Approval gate blockers" not in backlog
+
+
+def test_comparator_categorizes_abacus_scientific_approval_blockers(tmp_path: Path) -> None:
+    case = BenchmarkCaseSpec(
+        case_id="abacus-hs-bridge-pending",
+        suite="qcompute-abacus",
+        task_family="abacus_bridge",
+        description="ABACUS H/S bridge approval case",
+        required_capabilities=["abacus_hs_to_fcidump_converter"],
+        source_reference="out_mat_hs:1",
+        expected_metrics=["error"],
+        reference_metrics={"error": MetricReference(value=0.0, tolerance=1e-9)},
+    )
+    for lane in ["extension", "direct", "agent"]:
+        _write_passing_lane_summary(tmp_path, case, lane)
+    config_root = tmp_path / ".mhe"
+    approvals_root = config_root / "approvals"
+    benchmarks_root = config_root / "benchmarks"
+    approvals_root.mkdir(parents=True)
+    benchmarks_root.mkdir()
+    (config_root / "config.json").write_text(
+        json.dumps(
+            {
+                "approval": {
+                    "profiles": {
+                        "benchmark_promotion_admin_approval": {
+                            "manifest": ".mhe/approvals/comparison_benchmark_approval.json",
+                            "required_fields": [
+                                "approved_by",
+                                "approval_role",
+                                "approved_scope",
+                                "evidence_refs",
+                                "approval_decision",
+                            ],
+                        },
+                        "abacus_hs_scientific": {
+                            "manifest": ".mhe/approvals/abacus_hs_approval.json",
+                            "required_fields": [
+                                "approved_by",
+                                "approval_role",
+                                "fixture_refs",
+                                "tolerance_table_ref",
+                                "reference_observable",
+                            ],
+                        },
+                    }
+                }
+            }
+        )
+    )
+    (benchmarks_root / "comparison-approval.json").write_text(
+        json.dumps(
+            {
+                "policy_id": "comparison_benchmarks_require_admin_approval",
+                "required_approval_profiles": ["benchmark_promotion_admin_approval"],
+                "conditional_approval_profiles": [
+                    {
+                        "when": {"suite": "qcompute-abacus", "case_id": case.case_id},
+                        "requires": ["abacus_hs_scientific"],
+                    }
+                ],
+            }
+        )
+    )
+    (approvals_root / "comparison_benchmark_approval.json").write_text(
+        json.dumps(
+            {
+                "status": "approved",
+                "approved_by": "admin@example.test",
+                "approval_role": "benchmark-admin",
+                "approved_scope": {"suite": "qcompute-abacus"},
+                "evidence_refs": ["comparison/result_bundle.json"],
+                "approval_decision": "approved",
+            }
+        )
+    )
+    abacus_manifest_path = approvals_root / "abacus_hs_approval.json"
+    abacus_manifest_path.write_text(
+        json.dumps(
+            {
+                "status": "invalid",
+                "approved_by": None,
+                "approval_role": None,
+                "fixture_refs": [],
+                "tolerance_table_ref": None,
+                "reference_observable": None,
+            }
+        )
+    )
+
+    write_comparison_outputs(
+        runs_root=tmp_path,
+        suite="qcompute-abacus",
+        approval_config_root=config_root,
+    )
+
+    gate = json.loads(
+        (tmp_path / "qcompute-abacus-benchmark" / "comparison" / "approval_gate.json").read_text()
+    )
+    csv_text = (
+        tmp_path / "qcompute-abacus-benchmark" / "comparison" / "summary_table.csv"
+    ).read_text()
+    assert (
+        "abacus_hs_scientific_fixture_refs_missing"
+        in gate["missing_evidence_by_category"]["scientific_validation"]
+    )
+    assert (
+        "abacus_hs_scientific_fixture_refs_missing"
+        not in gate["missing_evidence_by_category"]["human_approval"]
+    )
+    assert "approval_scientific_missing" in csv_text
+    assert "abacus_hs_scientific_fixture_refs_missing" in csv_text
+
+    abacus_manifest_path.write_text(
+        json.dumps(
+            {
+                "status": "approved",
+                "approved_by": "scientist@example.test",
+                "approval_role": "scientific-reviewer",
+                "fixture_refs": ["fixtures/abacus/out_mat_hs"],
+                "tolerance_table_ref": "docs/tolerance-table.md",
+                "reference_observable": "ground_state_energy",
+            }
+        )
+    )
+
+    write_comparison_outputs(
+        runs_root=tmp_path,
+        suite="qcompute-abacus",
+        approval_config_root=config_root,
+    )
+
+    approved_gate = json.loads(
+        (tmp_path / "qcompute-abacus-benchmark" / "comparison" / "approval_gate.json").read_text()
+    )
+    assert approved_gate["status"] == "approved"
+    assert approved_gate["approval_ready"] is True
 
 
 def test_comparator_records_schema_failed_summary(tmp_path: Path) -> None:

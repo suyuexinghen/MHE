@@ -49,6 +49,9 @@ FIELDNAMES = [
     "approval_ready",
     "approval_required_profiles",
     "approval_human_missing",
+    "approval_scientific_missing",
+    "approval_production_missing",
+    "approval_real_repeat_missing",
     "direct_proposal_source",
     "agent_proposal_source",
     "direct_proposal_contract_status",
@@ -215,7 +218,7 @@ def write_comparison_outputs(
         report_dir / f"{suite}-analysis-report.md",
         _analysis_markdown(suite, rows, evidence_context),
     )
-    write_text(report_dir / f"{suite}-backlog.md", _backlog_markdown(suite, rows))
+    write_text(report_dir / f"{suite}-backlog.md", _backlog_markdown(suite, rows, evidence_context))
     return rows
 
 
@@ -259,6 +262,7 @@ def _evidence_context(
     repeat_summary: dict[str, Any] | None,
 ) -> dict[str, Any]:
     claude_cli = manifest.get("claude_cli", {})
+    grouped = load_lane_summaries(runs_root, suite)
     proposal_sources = {
         row.case_id: {
             "direct": _proposal_source(runs_root, suite, "direct", row.case_id),
@@ -271,8 +275,35 @@ def _evidence_context(
         "real_claude": bool(claude_cli.get("real_claude", False)),
         "repeat_count": claude_cli.get("repeat_count", 1),
         "proposal_sources": proposal_sources,
+        "metric_rows": _metric_detail_rows(grouped),
         "repeat_rows": [] if repeat_summary is None else repeat_summary.get("rows", []),
     }
+
+
+def _metric_detail_rows(grouped: dict[str, dict[str, LaneSummary]]) -> list[dict[str, Any]]:
+    metric_rows: list[dict[str, Any]] = []
+    for case_id in sorted(grouped):
+        for lane in ["extension", "direct", "agent"]:
+            summary = grouped[case_id].get(lane)
+            if summary is None:
+                continue
+            for metric_name, value in sorted(summary.metrics.items()):
+                if metric_name == "elapsed_seconds":
+                    continue
+                if not isinstance(value, int | float | list):
+                    continue
+                metric_rows.append(
+                    {
+                        "case_id": case_id,
+                        "lane": lane,
+                        "metric": metric_name,
+                        "value": value,
+                        "reference_diff": summary.metric_diffs.get(metric_name),
+                        "status": summary.status,
+                        "passed": summary.passed,
+                    }
+                )
+    return metric_rows
 
 
 def _approval_gate_context(
@@ -313,17 +344,23 @@ def _approval_gate_context(
         )
         for profile_name in required_profiles
     }
-    human_missing = [
-        item
-        for result in profile_results.values()
-        if not result["satisfied"]
-        for item in result["missing_evidence"]
-    ]
-    missing_evidence_by_category = {
-        "human_approval": list(dict.fromkeys(human_missing)),
+    missing_evidence_by_category: dict[str, list[str]] = {
+        "human_approval": [],
         "scientific_validation": [],
         "production_converter": [],
         "real_repeat_evidence": [],
+    }
+    for result in profile_results.values():
+        if result["satisfied"]:
+            continue
+        categorized = result.get(
+            "missing_evidence_by_category"
+        ) or _approval_missing_evidence_by_category(result["profile"], result["missing_evidence"])
+        for category, blockers in categorized.items():
+            missing_evidence_by_category.setdefault(category, []).extend(blockers)
+    missing_evidence_by_category = {
+        category: list(dict.fromkeys(blockers))
+        for category, blockers in missing_evidence_by_category.items()
     }
     approval_ready = not any(missing_evidence_by_category.values())
     return {
@@ -390,7 +427,8 @@ def _approval_profile_result(
     missing_fields = [field for field in required_fields if not manifest.get(field)]
     status = str(manifest.get("status", "unknown"))
     decision = manifest.get("approval_decision")
-    satisfied = not missing_fields and status in {"approved", "valid"} and decision == "approved"
+    decision_satisfied = "approval_decision" not in required_fields or decision == "approved"
+    satisfied = not missing_fields and status in {"approved", "valid"} and decision_satisfied
     missing_evidence = [] if satisfied else [f"{profile_name}_not_approved"]
     missing_evidence.extend(f"{profile_name}_{field}_missing" for field in missing_fields)
     return {
@@ -402,7 +440,40 @@ def _approval_profile_result(
         "manifest": str(manifest_path),
         "missing_fields": missing_fields,
         "missing_evidence": missing_evidence,
+        "missing_evidence_by_category": _approval_missing_evidence_by_category(
+            profile_name, missing_evidence
+        ),
     }
+
+
+def _approval_missing_evidence_by_category(
+    profile_name: str, missing_evidence: list[str]
+) -> dict[str, list[str]]:
+    categorized: dict[str, list[str]] = {
+        "human_approval": [],
+        "scientific_validation": [],
+        "production_converter": [],
+        "real_repeat_evidence": [],
+    }
+    for item in missing_evidence:
+        if item.endswith(
+            (
+                "fixture_refs_missing",
+                "tolerance_table_ref_missing",
+                "reference_observable_missing",
+            )
+        ):
+            category = "scientific_validation"
+        elif "converter" in item:
+            category = "production_converter"
+        elif "repeat" in item:
+            category = "real_repeat_evidence"
+        elif profile_name == "abacus_hs_scientific" and item.endswith("_not_approved"):
+            category = "scientific_validation"
+        else:
+            category = "human_approval"
+        categorized[category].append(item)
+    return categorized
 
 
 def _enrich_rows(
@@ -426,6 +497,21 @@ def _enrich_rows(
                     evidence_context["approval_gate"]
                     .get("missing_evidence_by_category", {})
                     .get("human_approval", [])
+                ),
+                "approval_scientific_missing": ",".join(
+                    evidence_context["approval_gate"]
+                    .get("missing_evidence_by_category", {})
+                    .get("scientific_validation", [])
+                ),
+                "approval_production_missing": ",".join(
+                    evidence_context["approval_gate"]
+                    .get("missing_evidence_by_category", {})
+                    .get("production_converter", [])
+                ),
+                "approval_real_repeat_missing": ",".join(
+                    evidence_context["approval_gate"]
+                    .get("missing_evidence_by_category", {})
+                    .get("real_repeat_evidence", [])
                 ),
                 "direct_proposal_source": sources.get("direct", "none"),
                 "agent_proposal_source": sources.get("agent", "none"),
@@ -490,6 +576,24 @@ def _approval_markdown_lines(evidence_context: dict[str, Any]) -> list[str]:
     return lines
 
 
+def _metric_markdown_lines(evidence_context: dict[str, Any]) -> list[str]:
+    metric_rows = evidence_context.get("metric_rows", [])
+    if not metric_rows:
+        return []
+    lines = [
+        "",
+        "## Metric details",
+        "",
+        "| Case | Lane | Metric | Value | Reference diff | Status | Passed |",
+        "|---|---|---|---:|---:|---|---|",
+    ]
+    for metric_row in metric_rows:
+        lines.append(
+            f"| {metric_row['case_id']} | {metric_row['lane']} | {metric_row['metric']} | {metric_row['value']} | {metric_row.get('reference_diff')} | {metric_row['status']} | {metric_row['passed']} |"
+        )
+    return lines
+
+
 def _comparison_markdown(
     suite: BenchmarkSuite, rows: list[ComparisonRow], evidence_context: dict[str, Any]
 ) -> str:
@@ -511,6 +615,7 @@ def _comparison_markdown(
         lines.append(
             f"| {row.case_id} | {row.extension_status} | {row.direct_status} | {row.agent_status} | {sources.get('direct', 'none')} | {sources.get('agent', 'none')} | {row.direct_preflight_status or 'none'} | {row.agent_preflight_status or 'none'} | {row.agent_repair_outcome or 'none'} | {row.verdict} |"
         )
+    lines.extend(_metric_markdown_lines(evidence_context))
     lines.extend(_approval_markdown_lines(evidence_context))
     if evidence_context["repeat_rows"]:
         lines.extend(
@@ -569,6 +674,7 @@ def _analysis_markdown(
         lines.append(
             f"| {row.case_id} | {row.extension_status} | {row.direct_status} | {row.agent_status} | {sources.get('direct', 'none')} | {sources.get('agent', 'none')} | {row.direct_preflight_status or 'none'} | {row.agent_preflight_status or 'none'} | {row.agent_repair_outcome or 'none'} | {row.verdict} |"
         )
+    lines.extend(_metric_markdown_lines(evidence_context))
     lines.extend(_approval_markdown_lines(evidence_context))
     if evidence_context["repeat_rows"]:
         lines.extend(
@@ -618,12 +724,30 @@ def _analysis_markdown(
     return "\n".join(lines)
 
 
-def _backlog_markdown(suite: BenchmarkSuite, rows: list[ComparisonRow]) -> str:
+def _backlog_markdown(
+    suite: BenchmarkSuite, rows: list[ComparisonRow], evidence_context: dict[str, Any]
+) -> str:
     lines = [f"# {suite} backlog", ""]
-    for row in rows:
-        if row.verdict != "all_passed":
+    case_backlog_items = [row for row in rows if row.verdict != "all_passed"]
+    if case_backlog_items:
+        for row in case_backlog_items:
             lines.append(f"- `{row.case_id}`: investigate `{row.verdict}`.")
-    if len(lines) == 2:
-        lines.append("- No benchmark backlog items from current summaries.")
+    else:
+        lines.append("- No case-level benchmark backlog items from current summaries.")
+    approval_gate = evidence_context["approval_gate"]
+    if not approval_gate.get("approval_ready", False):
+        lines.extend(
+            [
+                "",
+                "## Approval gate blockers",
+                "",
+                f"- Status: `{approval_gate['status']}`.",
+                f"- Claim boundary: {approval_gate['claim_boundary']}",
+            ]
+        )
+        for category, blockers in approval_gate.get("missing_evidence_by_category", {}).items():
+            if blockers:
+                rendered_blockers = ", ".join(f"`{blocker}`" for blocker in blockers)
+                lines.append(f"- `{category}`: {rendered_blockers}.")
     lines.append("")
     return "\n".join(lines)
