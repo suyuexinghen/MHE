@@ -3,8 +3,13 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from metaharness.benchmark_drivers.claude_cli import FakeClaudeCLIBrainProvider
-from metaharness.benchmark_drivers.models import BenchmarkCaseSpec, MetricReference
+from metaharness.benchmark_drivers.claude_cli import ClaudeCLIResult, FakeClaudeCLIBrainProvider
+from metaharness.benchmark_drivers.io import write_json, write_text
+from metaharness.benchmark_drivers.models import (
+    BenchmarkCaseSpec,
+    ClaudeInvocationRecord,
+    MetricReference,
+)
 from metaharness.benchmark_drivers.nektar_cases import nektar_case_catalog
 from metaharness.benchmark_drivers.nektar_runner import (
     NektarBenchmarkRunner,
@@ -347,12 +352,62 @@ def test_nektar_runner_dry_run_writes_three_lane_outputs(tmp_path: Path) -> None
     assert [summary.lane for summary in summaries] == ["extension", "direct", "agent"]
     assert all(summary.status == "passed" for summary in summaries)
     assert summaries[1].llm_calls == 1
+    assert summaries[1].preflight_status == "passed"
     assert summaries[2].llm_calls == 1
+    assert summaries[2].preflight_status == "passed"
     base = tmp_path / "nektar-pde-benchmark"
     assert (base / "extension" / "advdiff-2d" / "session.xml").exists()
     assert (base / "direct" / "advdiff-2d" / "solver.stdout.log").exists()
-    assert (base / "direct" / "advdiff-2d" / "claude_prompt.txt").exists()
+    direct_prompt = (base / "direct" / "advdiff-2d" / "claude_prompt.txt").read_text()
+    assert "no tool calls" in direct_prompt
+    assert "the benchmark runner materializes the trusted reference XML" in direct_prompt
+    assert (base / "agent" / "advdiff-2d" / "proposal_preflight.json").exists()
     assert (base / "agent" / "advdiff-2d" / "proposal.json").exists()
+
+
+def test_nektar_claude_turn_limit_failure_is_categorized(tmp_path: Path) -> None:
+    class TurnLimitProvider:
+        def propose(self, *, prompt: str, output_dir: Path) -> ClaudeCLIResult:
+            output_dir.mkdir(parents=True, exist_ok=True)
+            prompt_path = write_text(output_dir / "claude_prompt.txt", prompt)
+            stdout_path = write_json(
+                output_dir / "claude_stdout.json",
+                {"is_error": True, "terminal_reason": "Reached maximum number of turns (5)"},
+            )
+            stderr_path = write_text(output_dir / "claude_stderr.txt", "")
+            result_path = write_json(
+                output_dir / "claude_result.json",
+                {"is_error": True, "terminal_reason": "Reached maximum number of turns (5)"},
+            )
+            proposal_path = write_json(output_dir / "proposal.json", {})
+            invocation = ClaudeInvocationRecord(
+                binary="claude",
+                command=["claude", "--max-turns", "5"],
+                prompt_path=str(prompt_path),
+                stdout_path=str(stdout_path),
+                stderr_path=str(stderr_path),
+                result_path=str(result_path),
+                proposal_path=str(proposal_path),
+                return_code=1,
+            )
+            return ClaudeCLIResult(
+                invocation=invocation,
+                error="Reached maximum number of turns (5)",
+            )
+
+    case = nektar_case_catalog()["advection-1d"]
+    runner = NektarBenchmarkRunner(runs_root=tmp_path, brain_provider=TurnLimitProvider())
+
+    summary = runner.run_direct(case)
+
+    assert summary.status == "failed"
+    assert summary.failure_category == "proposal_max_turns"
+    assert summary.proposal_contract_status == "failed"
+    assert summary.preflight_status == "failed"
+    assert summary.evidence_count == 6
+    assert (
+        tmp_path / "nektar-pde-benchmark" / "direct" / "advection-1d" / "proposal_preflight.json"
+    ).exists()
 
 
 def test_nektar_diffusion_case_is_replay_enabled() -> None:

@@ -45,6 +45,10 @@ FIELDNAMES = [
     "real_tools",
     "real_claude",
     "repeat_count",
+    "approval_gate_status",
+    "approval_ready",
+    "approval_required_profiles",
+    "approval_human_missing",
     "direct_proposal_source",
     "agent_proposal_source",
     "direct_proposal_contract_status",
@@ -160,6 +164,7 @@ def write_comparison_outputs(
     real_claude: bool = False,
     real_tools: bool = False,
     repeat_count: int = 1,
+    approval_config_root: Path | None = None,
 ) -> list[ComparisonRow]:
     rows = compare_suite(runs_root, suite)
     manifest_lanes = lanes or _observed_lanes(runs_root, suite)
@@ -189,12 +194,19 @@ def write_comparison_outputs(
         manifest=manifest.model_dump(mode="json"),
         repeat_summary=repeat_summary,
     )
+    approval_gate = _approval_gate_context(
+        config_root=approval_config_root or Path(".mhe"),
+        suite=suite,
+        rows=rows,
+    )
+    evidence_context["approval_gate"] = approval_gate
     enriched_row_payloads = _enrich_rows(row_payloads, evidence_context)
     write_csv(comp_dir / "summary_table.csv", enriched_row_payloads, FIELDNAMES)
     write_json(
         comp_dir / "result_bundle.json",
         {"suite": suite, "evidence_context": evidence_context, "rows": row_payloads},
     )
+    write_json(comp_dir / "approval_gate.json", approval_gate)
     write_json(comp_dir / "run_manifest.json", manifest)
     write_text(
         comp_dir / "comparison_report.md", _comparison_markdown(suite, rows, evidence_context)
@@ -263,6 +275,136 @@ def _evidence_context(
     }
 
 
+def _approval_gate_context(
+    *, config_root: Path, suite: BenchmarkSuite, rows: list[ComparisonRow]
+) -> dict[str, Any]:
+    config_path = config_root / "config.json"
+    policy_path = config_root / "benchmarks" / "comparison-approval.json"
+    if not config_path.exists() or not policy_path.exists():
+        return {
+            "status": "not_configured",
+            "approval_ready": False,
+            "missing_evidence_by_category": {"human_approval": ["approval_policy_missing"]},
+            "profile_results": {},
+            "claim_boundary": "No comparison promotion approval policy was found.",
+        }
+    try:
+        config = read_json(config_path)
+        policy = read_json(policy_path)
+    except (JSONDecodeError, OSError) as exc:
+        return {
+            "status": "invalid",
+            "approval_ready": False,
+            "missing_evidence_by_category": {
+                "human_approval": [f"approval_policy_unreadable: {exc}"]
+            },
+            "profile_results": {},
+            "claim_boundary": "Comparison approval policy must be valid JSON before claims are allowed.",
+        }
+    profiles = config.get("approval", {}).get("profiles", {})
+    required_profiles = list(policy.get("required_approval_profiles", []))
+    for conditional in policy.get("conditional_approval_profiles", []):
+        if _approval_condition_matches(conditional.get("when", {}), suite, rows):
+            required_profiles.extend(conditional.get("requires", []))
+    required_profiles = list(dict.fromkeys(required_profiles))
+    profile_results = {
+        profile_name: _approval_profile_result(
+            config_root, profile_name, profiles.get(profile_name, {})
+        )
+        for profile_name in required_profiles
+    }
+    human_missing = [
+        item
+        for result in profile_results.values()
+        if not result["satisfied"]
+        for item in result["missing_evidence"]
+    ]
+    missing_evidence_by_category = {
+        "human_approval": list(dict.fromkeys(human_missing)),
+        "scientific_validation": [],
+        "production_converter": [],
+        "real_repeat_evidence": [],
+    }
+    approval_ready = not any(missing_evidence_by_category.values())
+    return {
+        "status": "approved" if approval_ready else "blocked",
+        "approval_ready": approval_ready,
+        "policy_id": policy.get("policy_id"),
+        "required_profiles": required_profiles,
+        "profile_results": profile_results,
+        "missing_evidence_by_category": missing_evidence_by_category,
+        "claim_boundary": (
+            "Administrator approval gates comparison promotion claims; it does not prove "
+            "scientific or numerical superiority by itself."
+        ),
+    }
+
+
+def _approval_condition_matches(
+    condition: dict[str, Any], suite: BenchmarkSuite, rows: list[ComparisonRow]
+) -> bool:
+    if condition.get("suite") not in {None, suite}:
+        return False
+    case_id = condition.get("case_id")
+    if case_id is not None and all(row.case_id != case_id for row in rows):
+        return False
+    return True
+
+
+def _approval_profile_result(
+    config_root: Path, profile_name: str, profile: dict[str, Any]
+) -> dict[str, Any]:
+    manifest_ref = profile.get("manifest")
+    required_fields = list(profile.get("required_fields", []))
+    if not manifest_ref:
+        return {
+            "profile": profile_name,
+            "status": "missing",
+            "satisfied": False,
+            "manifest": None,
+            "missing_evidence": [f"{profile_name}_manifest_ref_missing"],
+        }
+    manifest_path = (
+        config_root.parent / manifest_ref
+        if not Path(manifest_ref).is_absolute()
+        else Path(manifest_ref)
+    )
+    if not manifest_path.exists():
+        return {
+            "profile": profile_name,
+            "status": "missing",
+            "satisfied": False,
+            "manifest": str(manifest_path),
+            "missing_evidence": [f"{profile_name}_manifest_missing"],
+        }
+    try:
+        manifest = read_json(manifest_path)
+    except (JSONDecodeError, OSError) as exc:
+        return {
+            "profile": profile_name,
+            "status": "invalid",
+            "satisfied": False,
+            "manifest": str(manifest_path),
+            "missing_evidence": [f"{profile_name}_manifest_unreadable: {exc}"],
+        }
+    missing_fields = [field for field in required_fields if not manifest.get(field)]
+    status = str(manifest.get("status", "unknown"))
+    decision = manifest.get("approval_decision")
+    satisfied = not missing_fields and status in {"approved", "valid"} and decision == "approved"
+    missing_evidence = [] if satisfied else [f"{profile_name}_not_approved"]
+    missing_evidence.extend(f"{profile_name}_{field}_missing" for field in missing_fields)
+    return {
+        "profile": profile_name,
+        "status": status,
+        "approval_decision": decision,
+        "approved_by": manifest.get("approved_by"),
+        "satisfied": satisfied,
+        "manifest": str(manifest_path),
+        "missing_fields": missing_fields,
+        "missing_evidence": missing_evidence,
+    }
+
+
 def _enrich_rows(
     row_payloads: list[dict[str, Any]], evidence_context: dict[str, Any]
 ) -> list[dict[str, Any]]:
@@ -275,6 +417,16 @@ def _enrich_rows(
                 "real_tools": evidence_context["real_tools"],
                 "real_claude": evidence_context["real_claude"],
                 "repeat_count": evidence_context["repeat_count"],
+                "approval_gate_status": evidence_context["approval_gate"]["status"],
+                "approval_ready": evidence_context["approval_gate"]["approval_ready"],
+                "approval_required_profiles": ",".join(
+                    evidence_context["approval_gate"].get("required_profiles", [])
+                ),
+                "approval_human_missing": ",".join(
+                    evidence_context["approval_gate"]
+                    .get("missing_evidence_by_category", {})
+                    .get("human_approval", [])
+                ),
                 "direct_proposal_source": sources.get("direct", "none"),
                 "agent_proposal_source": sources.get("agent", "none"),
                 "direct_proposal_contract_status": row.get("direct_proposal_contract_status"),
@@ -315,6 +467,29 @@ def _verdict(
     return "workflow_gap"
 
 
+def _approval_markdown_lines(evidence_context: dict[str, Any]) -> list[str]:
+    approval_gate = evidence_context["approval_gate"]
+    lines = [
+        "",
+        "## Approval gate",
+        "",
+        f"- Status: `{approval_gate['status']}`",
+        f"- Approval ready: `{approval_gate['approval_ready']}`",
+        f"- Claim boundary: {approval_gate['claim_boundary']}",
+        "",
+        "| Profile | Status | Decision | Approved by | Satisfied | Missing evidence |",
+        "|---|---|---|---|---|---|",
+    ]
+    for profile_name, result in approval_gate.get("profile_results", {}).items():
+        missing = ", ".join(result.get("missing_evidence", [])) or "none"
+        lines.append(
+            f"| {profile_name} | {result.get('status')} | {result.get('approval_decision') or 'none'} | {result.get('approved_by') or 'none'} | {result.get('satisfied')} | {missing} |"
+        )
+    if not approval_gate.get("profile_results"):
+        lines.append("| none | none | none | none | False | approval_policy_missing |")
+    return lines
+
+
 def _comparison_markdown(
     suite: BenchmarkSuite, rows: list[ComparisonRow], evidence_context: dict[str, Any]
 ) -> str:
@@ -326,6 +501,7 @@ def _comparison_markdown(
         f"- Real tools: `{evidence_context['real_tools']}`",
         f"- Real Claude: `{evidence_context['real_claude']}`",
         f"- Repeat count: `{evidence_context['repeat_count']}`",
+        f"- Approval gate: `{evidence_context['approval_gate']['status']}`",
         "",
         "| Case | Extension | Direct | Agent | Direct proposal | Agent proposal | Direct preflight | Agent preflight | Agent repair | Verdict |",
         "|---|---|---|---|---|---|---|---|---|---|",
@@ -335,6 +511,7 @@ def _comparison_markdown(
         lines.append(
             f"| {row.case_id} | {row.extension_status} | {row.direct_status} | {row.agent_status} | {sources.get('direct', 'none')} | {sources.get('agent', 'none')} | {row.direct_preflight_status or 'none'} | {row.agent_preflight_status or 'none'} | {row.agent_repair_outcome or 'none'} | {row.verdict} |"
         )
+    lines.extend(_approval_markdown_lines(evidence_context))
     if evidence_context["repeat_rows"]:
         lines.extend(
             [
@@ -376,6 +553,7 @@ def _analysis_markdown(
         f"- Real tools: `{evidence_context['real_tools']}`",
         f"- Real Claude: `{evidence_context['real_claude']}`",
         f"- Repeat count: `{evidence_context['repeat_count']}`",
+        f"- Approval gate: `{evidence_context['approval_gate']['status']}`",
         f"- Direct Claude CLI calls: {total_direct_llm_calls}",
         f"- Agent Claude CLI calls: {total_agent_llm_calls}",
         "- Evidence counts measure reproducibility support, not numerical superiority.",
@@ -391,6 +569,7 @@ def _analysis_markdown(
         lines.append(
             f"| {row.case_id} | {row.extension_status} | {row.direct_status} | {row.agent_status} | {sources.get('direct', 'none')} | {sources.get('agent', 'none')} | {row.direct_preflight_status or 'none'} | {row.agent_preflight_status or 'none'} | {row.agent_repair_outcome or 'none'} | {row.verdict} |"
         )
+    lines.extend(_approval_markdown_lines(evidence_context))
     if evidence_context["repeat_rows"]:
         lines.extend(
             [

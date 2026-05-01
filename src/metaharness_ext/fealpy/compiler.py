@@ -297,13 +297,15 @@ class FealpyCompilerComponent(HarnessComponent):
 
         # -- FE space (Hu-Zhang for linear elasticity) ----------------------
         space = HuZhangFESpace(mesh, p={spec.fe_degree})
-        material = ElasticMaterial(name='lam', lame_lambda=1.0, lame_mu=1.0)
+        material = ElasticMaterial(name='lam')
+        material.set_property('lame_lambda', 1.0)
+        material.set_property('lame_mu', 1.0)
 
         # -- Assembly --------------------------------------------------------
         bform = BilinearForm(space)
         bform.add_integrator(LinearElasticityIntegrator(material=material, q={spec.fe_degree + 2}))
         lform = LinearForm(space)
-        lform.add_integrator(VectorSourceIntegrator(pde.source))
+        lform.add_integrator(VectorSourceIntegrator(pde.body_force))
         A = bform.assembly()
         F = lform.assembly()
 

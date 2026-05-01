@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -176,6 +177,96 @@ def test_comparator_writes_reports_from_synthetic_summaries(tmp_path: Path) -> N
     assert (
         tmp_path / "octave-native-benchmark" / "reports" / "octave-native-analysis-report.md"
     ).exists()
+
+
+def test_comparator_writes_blocked_approval_gate_from_policy(tmp_path: Path) -> None:
+    case = BenchmarkCaseSpec(
+        case_id="demo",
+        suite="octave-native",
+        task_family="demo",
+        description="demo case",
+        required_capabilities=["octave-cli"],
+        source_reference="source.m:1",
+        expected_metrics=["error"],
+        reference_metrics={"error": MetricReference(value=0.0, tolerance=1e-9)},
+    )
+    for lane in ["extension", "direct", "agent"]:
+        _write_passing_lane_summary(tmp_path, case, lane)
+    config_root = tmp_path / ".mhe"
+    approvals_root = config_root / "approvals"
+    benchmarks_root = config_root / "benchmarks"
+    approvals_root.mkdir(parents=True)
+    benchmarks_root.mkdir()
+    (config_root / "config.json").write_text(
+        json.dumps(
+            {
+                "approval": {
+                    "profiles": {
+                        "benchmark_promotion_admin_approval": {
+                            "manifest": ".mhe/approvals/comparison_benchmark_approval.json",
+                            "required_fields": [
+                                "approved_by",
+                                "approval_role",
+                                "approved_scope",
+                                "evidence_refs",
+                                "approval_decision",
+                            ],
+                        }
+                    }
+                }
+            }
+        )
+    )
+    (benchmarks_root / "comparison-approval.json").write_text(
+        json.dumps(
+            {
+                "policy_id": "comparison_benchmarks_require_admin_approval",
+                "required_approval_profiles": ["benchmark_promotion_admin_approval"],
+            }
+        )
+    )
+    (approvals_root / "comparison_benchmark_approval.json").write_text(
+        json.dumps(
+            {
+                "status": "pending_admin_review",
+                "approved_by": None,
+                "approval_role": None,
+                "approved_scope": {},
+                "evidence_refs": [],
+                "approval_decision": None,
+            }
+        )
+    )
+
+    write_comparison_outputs(
+        runs_root=tmp_path,
+        suite="octave-native",
+        approval_config_root=config_root,
+    )
+
+    gate = json.loads(
+        (tmp_path / "octave-native-benchmark" / "comparison" / "approval_gate.json").read_text()
+    )
+    bundle = json.loads(
+        (tmp_path / "octave-native-benchmark" / "comparison" / "result_bundle.json").read_text()
+    )
+    csv_text = (
+        tmp_path / "octave-native-benchmark" / "comparison" / "summary_table.csv"
+    ).read_text()
+    report = (
+        tmp_path / "octave-native-benchmark" / "comparison" / "comparison_report.md"
+    ).read_text()
+    assert gate["status"] == "blocked"
+    assert gate["approval_ready"] is False
+    assert (
+        "benchmark_promotion_admin_approval_not_approved"
+        in gate["missing_evidence_by_category"]["human_approval"]
+    )
+    assert bundle["evidence_context"]["approval_gate"]["status"] == "blocked"
+    assert "approval_gate_status" in csv_text
+    assert "benchmark_promotion_admin_approval_not_approved" in csv_text
+    assert "## Approval gate" in report
+    assert "benchmark_promotion_admin_approval" in report
 
 
 def test_comparator_records_schema_failed_summary(tmp_path: Path) -> None:

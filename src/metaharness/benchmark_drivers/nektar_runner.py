@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import subprocess
@@ -127,17 +128,13 @@ class NektarBenchmarkRunner:
 
     def run_direct(self, case: BenchmarkCaseSpec) -> LaneSummary:
         output_dir = case_dir(self.runs_root, case.suite, "direct", case.case_id)
-        prompt = f"Generate a standalone Nektar++ session.xml for benchmark case {case.case_id}."
+        prompt = self._direct_prompt(case)
         claude_result = self.brain_provider.propose(prompt=prompt, output_dir=output_dir)
         attempt_log = self._claude_attempt_log(claude_result.error, "direct")
+        preflight = self._write_proposal_preflight(output_dir, case, "direct", claude_result)
         if claude_result.error:
-            return write_lane_outputs(
-                runs_root=self.runs_root,
-                case=case,
-                lane="direct",
-                status="failed",
-                attempt_log=attempt_log,
-                error_message=claude_result.error,
+            return self._claude_failure_summary(
+                case, "direct", claude_result, attempt_log, preflight
             )
         if not self.allow_real_tools:
             metrics = {
@@ -154,14 +151,14 @@ class NektarBenchmarkRunner:
                 status="passed",
                 metrics=metrics,
                 evidence_files=[
-                    claude_result.invocation.prompt_path,
-                    claude_result.invocation.stdout_path,
-                    claude_result.invocation.stderr_path,
-                    claude_result.invocation.result_path or "",
-                    claude_result.invocation.proposal_path or "",
+                    *self._claude_evidence_files(claude_result),
+                    preflight["path"],
                     *self._write_direct_evidence(output_dir, case),
                 ],
                 attempt_log=attempt_log,
+                proposal_contract_status=preflight["proposal_contract_status"],
+                preflight_status=preflight["preflight_status"],
+                failure_category=preflight["failure_category"],
             )
         test_spec = self._load_test_spec(case)
         solver_binary = test_spec.executable or str(
@@ -175,13 +172,13 @@ class NektarBenchmarkRunner:
                 status="skipped",
                 attempt_log=attempt_log,
                 evidence_files=[
-                    claude_result.invocation.prompt_path,
-                    claude_result.invocation.stdout_path,
-                    claude_result.invocation.stderr_path,
-                    claude_result.invocation.result_path or "",
-                    claude_result.invocation.proposal_path or "",
+                    *self._claude_evidence_files(claude_result),
+                    preflight["path"],
                 ],
                 skip_reason=f"{solver_binary} not found",
+                proposal_contract_status=preflight["proposal_contract_status"],
+                preflight_status=preflight["preflight_status"],
+                failure_category=preflight["failure_category"],
             )
         started_at = time.perf_counter()
         session_path = self._materialize_session_xml(output_dir, case, test_spec)
@@ -207,32 +204,30 @@ class NektarBenchmarkRunner:
             status="passed" if result.returncode == 0 else "failed",
             metrics=metrics,
             evidence_files=[
-                claude_result.invocation.prompt_path,
-                claude_result.invocation.stdout_path,
-                claude_result.invocation.stderr_path,
-                claude_result.invocation.result_path or "",
-                claude_result.invocation.proposal_path or "",
+                *self._claude_evidence_files(claude_result),
+                preflight["path"],
                 str(session_path),
                 str(stdout_path),
                 str(stderr_path),
             ],
             attempt_log=attempt_log,
+            proposal_contract_status=preflight["proposal_contract_status"],
+            preflight_status=preflight["preflight_status"],
+            failure_category=(
+                preflight["failure_category"] if result.returncode == 0 else "execution_failed"
+            ),
             started_at=started_at,
         )
 
     def run_agent(self, case: BenchmarkCaseSpec) -> LaneSummary:
         output_dir = case_dir(self.runs_root, case.suite, "agent", case.case_id)
-        prompt = f"Generate a Nektar++ benchmark proposal for case {case.case_id}."
+        prompt = self._agent_prompt(case)
         claude_result = self.brain_provider.propose(prompt=prompt, output_dir=output_dir)
         attempt_log = self._claude_attempt_log(claude_result.error, "agent")
+        preflight = self._write_proposal_preflight(output_dir, case, "agent", claude_result)
         if claude_result.error:
-            return write_lane_outputs(
-                runs_root=self.runs_root,
-                case=case,
-                lane="agent",
-                status="failed",
-                attempt_log=attempt_log,
-                error_message=claude_result.error,
+            return self._claude_failure_summary(
+                case, "agent", claude_result, attempt_log, preflight
             )
         if not self.allow_real_tools:
             metrics = {
@@ -249,20 +244,17 @@ class NektarBenchmarkRunner:
                 status="passed",
                 metrics=metrics,
                 evidence_files=[
-                    claude_result.invocation.prompt_path,
-                    claude_result.invocation.stdout_path,
-                    claude_result.invocation.stderr_path,
-                    claude_result.invocation.result_path or "",
-                    claude_result.invocation.proposal_path or "",
+                    *self._claude_evidence_files(claude_result),
+                    preflight["path"],
                 ],
                 attempt_log=attempt_log,
+                proposal_contract_status=preflight["proposal_contract_status"],
+                preflight_status=preflight["preflight_status"],
+                failure_category=preflight["failure_category"],
             )
         evidence_files = [
-            claude_result.invocation.prompt_path,
-            claude_result.invocation.stdout_path,
-            claude_result.invocation.stderr_path,
-            claude_result.invocation.result_path or "",
-            claude_result.invocation.proposal_path or "",
+            *self._claude_evidence_files(claude_result),
+            preflight["path"],
         ]
         if self.adaptive_agent:
             return self._run_adaptive_agent_lane(
@@ -270,6 +262,8 @@ class NektarBenchmarkRunner:
                 initial_proposal=claude_result.proposal,
                 attempt_log=attempt_log,
                 evidence_files=evidence_files,
+                proposal_contract_status=preflight["proposal_contract_status"],
+                preflight_status=preflight["preflight_status"],
             )
         return self._run_reference_xml_lane(
             case,
@@ -277,6 +271,8 @@ class NektarBenchmarkRunner:
             attempt_log=attempt_log,
             extra_evidence_files=evidence_files,
             proposal=claude_result.proposal,
+            proposal_contract_status=preflight["proposal_contract_status"],
+            preflight_status=preflight["preflight_status"],
         )
 
     def _run_reference_xml_lane(
@@ -287,6 +283,8 @@ class NektarBenchmarkRunner:
         attempt_log: AttemptLog | None = None,
         extra_evidence_files: list[str] | None = None,
         proposal: dict[str, Any] | None = None,
+        proposal_contract_status: str | None = None,
+        preflight_status: str | None = None,
     ) -> LaneSummary:
         if case.capability_gated:
             return write_lane_outputs(
@@ -297,6 +295,8 @@ class NektarBenchmarkRunner:
                 attempt_log=attempt_log,
                 evidence_files=extra_evidence_files or [],
                 skip_reason="capability gated for current extension dispatch",
+                proposal_contract_status=proposal_contract_status,
+                preflight_status=preflight_status,
             )
         test_spec = self._load_test_spec(case)
         solver_binary = test_spec.executable or str(
@@ -311,6 +311,8 @@ class NektarBenchmarkRunner:
                 attempt_log=attempt_log,
                 evidence_files=extra_evidence_files or [],
                 skip_reason=f"{solver_binary} not found",
+                proposal_contract_status=proposal_contract_status,
+                preflight_status=preflight_status,
             )
         output_dir = case_dir(self.runs_root, case.suite, lane, case.case_id)
         proposal_context = self._proposal_context(proposal)
@@ -377,6 +379,9 @@ class NektarBenchmarkRunner:
             metrics=metrics,
             evidence_files=evidence_files,
             attempt_log=attempt_log,
+            proposal_contract_status=proposal_contract_status,
+            preflight_status=preflight_status,
+            failure_category=None if result.returncode == 0 else "execution_failed",
             started_at=started_at,
         )
 
@@ -387,6 +392,8 @@ class NektarBenchmarkRunner:
         initial_proposal: dict[str, Any],
         attempt_log: AttemptLog,
         evidence_files: list[str],
+        proposal_contract_status: str | None,
+        preflight_status: str | None,
     ) -> LaneSummary:
         proposal = dict(initial_proposal)
         summary = self._run_reference_xml_lane(
@@ -395,6 +402,8 @@ class NektarBenchmarkRunner:
             attempt_log=attempt_log,
             extra_evidence_files=evidence_files,
             proposal=proposal,
+            proposal_contract_status=proposal_contract_status,
+            preflight_status=preflight_status,
         )
         for repair_index in range(1, self.max_repair_attempts + 1):
             if summary.passed:
@@ -462,11 +471,118 @@ class NektarBenchmarkRunner:
         repair_index: int,
     ) -> str:
         return (
+            "Return only a JSON object, with no markdown and no tool calls. "
             f"Repair Nektar++ benchmark proposal for case {case.case_id}. "
             f"Attempt {repair_index} failed with status={summary.status}, "
             f"missing_metrics={summary.missing_metrics}, error={summary.error_message}. "
-            "Return JSON with optional proposal.extra_solver_args and rationale."
+            "Allowed fields: session_xml, extra_solver_args, rationale. "
+            "Do not inspect files; the runner owns execution and validation."
         )
+
+    def _direct_prompt(self, case: BenchmarkCaseSpec) -> str:
+        return (
+            "Return only a JSON object, with no markdown and no tool calls. "
+            f"Create a bounded Nektar++ direct-lane proposal for case {case.case_id}. "
+            "Allowed fields: session_xml and rationale. Use session_xml='session.xml'. "
+            "Do not read files, run commands, or generate full XML; the benchmark runner "
+            "materializes the trusted reference XML and executes the solver. "
+            f"Required metrics: {', '.join(case.expected_metrics)}. "
+            f"Case definition: {json.dumps(case.problem_definition, sort_keys=True)}"
+        )
+
+    def _agent_prompt(self, case: BenchmarkCaseSpec) -> str:
+        return (
+            "Return only a JSON object, with no markdown and no tool calls. "
+            f"Create a bounded Nektar++ agent-lane proposal for case {case.case_id}. "
+            "Allowed fields: session_xml, extra_solver_args, and rationale. "
+            "Use session_xml='session.xml'. extra_solver_args may contain only solver flags "
+            "that begin with '--'. Do not read files or run commands; the MHE runner owns "
+            "session materialization, solver execution, validation, and evidence. "
+            f"Required metrics: {', '.join(case.expected_metrics)}. "
+            f"Case definition: {json.dumps(case.problem_definition, sort_keys=True)}"
+        )
+
+    def _write_proposal_preflight(
+        self,
+        output_dir: Path,
+        case: BenchmarkCaseSpec,
+        lane: BenchmarkLane,
+        claude_result,
+    ) -> dict[str, Any]:
+        message = None
+        failure_category = None
+        proposal_contract_status = "passed"
+        if claude_result.error:
+            proposal_contract_status = "failed"
+            failure_category = self._claude_failure_category(claude_result.error)
+            message = claude_result.error
+        elif self._is_fake_claude_result(claude_result) and not claude_result.proposal:
+            proposal_contract_status = "not_checked"
+        elif not isinstance(claude_result.proposal, dict):
+            proposal_contract_status = "failed"
+            failure_category = "proposal_contract_failed"
+            message = "Claude proposal must be a JSON object"
+        preflight_status = (
+            "passed" if proposal_contract_status in {"passed", "not_checked"} else "failed"
+        )
+        payload = {
+            "case_id": case.case_id,
+            "lane": lane,
+            "proposal_contract_status": proposal_contract_status,
+            "preflight_status": preflight_status,
+            "failure_category": failure_category,
+            "message": message,
+            "allowed_fields": ["session_xml", "extra_solver_args", "rationale"],
+            "expected_metrics": case.expected_metrics,
+            "claude_result_path": claude_result.invocation.result_path,
+            "proposal_path": claude_result.invocation.proposal_path,
+        }
+        path = write_json(output_dir / "proposal_preflight.json", payload)
+        return {**payload, "path": str(path)}
+
+    def _claude_failure_summary(
+        self,
+        case: BenchmarkCaseSpec,
+        lane: BenchmarkLane,
+        claude_result,
+        attempt_log: AttemptLog,
+        preflight: dict[str, Any],
+    ) -> LaneSummary:
+        return write_lane_outputs(
+            runs_root=self.runs_root,
+            case=case,
+            lane=lane,
+            status="failed",
+            attempt_log=attempt_log,
+            evidence_files=[*self._claude_evidence_files(claude_result), preflight["path"]],
+            error_message=claude_result.error,
+            proposal_contract_status=preflight["proposal_contract_status"],
+            preflight_status=preflight["preflight_status"],
+            failure_category=preflight["failure_category"],
+        )
+
+    def _is_fake_claude_result(self, claude_result) -> bool:
+        return (
+            bool(claude_result.invocation.command)
+            and claude_result.invocation.command[0] == "fake-claude"
+        )
+
+    def _claude_failure_category(self, error: str) -> str:
+        lowered = error.lower()
+        if "maximum number of turns" in lowered or "max_turns" in lowered:
+            return "proposal_max_turns"
+        if "invalid claude json" in lowered:
+            return "proposal_invalid_json"
+        return "proposal_error_payload"
+
+    def _claude_evidence_files(self, claude_result) -> list[str]:
+        return [
+            claude_result.invocation.prompt_path,
+            claude_result.invocation.stdout_path,
+            claude_result.invocation.stderr_path,
+            claude_result.invocation.result_path or "",
+            claude_result.invocation.proposal_path or "",
+        ]
 
     def _write_preflight(self, case: BenchmarkCaseSpec) -> None:
         output_dir = suite_root(self.runs_root, case.suite) / "preflight" / case.case_id

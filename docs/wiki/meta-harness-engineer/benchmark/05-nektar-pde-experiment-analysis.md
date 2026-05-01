@@ -109,31 +109,44 @@ This proves repeated real Nektar extension execution for the listed cases. It do
 
 ## 5.9 Phase C real-Claude smoke evidence
 
-A narrow Phase C smoke then executed `advection-1d` with real tools and real Claude proposals for `direct` and `agent` lanes:
+An initial Phase C smoke executed `advection-1d` with real tools and real Claude proposals for `direct` and `agent` lanes:
 
 - Run root: `.runs/nektar-real-claude-phase-c-20260430`
-- Compare bundle: `.runs/nektar-real-claude-phase-c-20260430/nektar-pde-benchmark/comparison/result_bundle.json`
-- Repeat summary: `.runs/nektar-real-claude-phase-c-20260430/nektar-pde-benchmark/comparison/repeat_summary.json`
+- Repeat count: `3`
+- Result: direct passed `2 / 3`; agent passed `1 / 3`
+- Failure mode: `Reached maximum number of turns (5)` before solver execution
+
+Those failures were proposal/runtime failures, not Nektar solver failures. The runner now uses bounded JSON-only Nektar prompts, writes `proposal_preflight.json`, records `proposal_contract_status` / `preflight_status`, and classifies turn-limit errors as `proposal_max_turns`.
+
+The prompt/preflight fix was validated with a second Phase C run:
+
+- Run root: `.runs/nektar-phase-c-promptfix-20260430`
+- Compare bundle: `.runs/nektar-phase-c-promptfix-20260430/nektar-pde-benchmark/comparison/result_bundle.json`
+- Repeat summary: `.runs/nektar-phase-c-promptfix-20260430/nektar-pde-benchmark/comparison/repeat_summary.json`
 - Real tools: `true`
 - Real Claude proposals: `true`
+- Claude max turns: `10`
 - Repeat count: `3`
 
 | Case | Lane | Passed / Runs | Median elapsed seconds | LLM calls | Flags |
 |---|---|---:|---:|---:|---|
-| `advection-1d` | direct | 2 / 3 | 4.281351247482235 | 3 | `flaky_status` |
-| `advection-1d` | agent | 1 / 3 | 8.60528252000222 | 3 | `flaky_status` |
+| `advection-1d` | direct | 3 / 3 | 1.0902791050029919 | 3 | none |
+| `advection-1d` | agent | 3 / 3 | 1.7566030449816026 | 3 | none |
 
-The successful direct and agent repeats produced matching `l2_error_u=0.00960004` and `linf_error_u=0.0177832`. Failed repeats did not reach solver execution; their error was `Reached maximum number of turns (5)`, so they should be classified as real-Claude proposal/runtime failures rather than Nektar solver failures.
+The next Phase C expansion ran `advdiff-2d` from `/tmp/mhe-runs/nektar-phase-c-advdiff2d-20260501` because the repository filesystem was full. It also used real tools, real Claude proposals, `--claude-max-turns 10`, and `--repeat 3`:
 
-This Phase C smoke is enough to prove the real-Claude lanes are wired to executable Nektar workflows for `advection-1d`, but it does not support a superiority claim. The immediate optimization target is reducing proposal turn-limit failures and recording proposal/preflight failure categories more explicitly.
+| Case | Lane | Passed / Runs | Median elapsed seconds | LLM calls | Flags |
+|---|---|---:|---:|---:|---|
+| `advdiff-2d` | direct | 3 / 3 | 3.8848362009739503 | 3 | none |
+| `advdiff-2d` | agent | 3 / 3 | 3.884060522017535 | 3 | none |
+
+All successful direct and agent repeats produced matching `l2_error_u` and `linf_error_u` values for their cases. This proves the real-Claude lanes are wired to stable executable Nektar workflows for `advection-1d` and `advdiff-2d` under the bounded prompt contract. It still does not prove broad Nektar superiority; extension/direct/agent comparison claims require more cases, retained artifacts, and administrator-approved report scope.
 
 ## 5.10 Backlog
 
-1. Tighten Nektar direct and agent prompts or Claude turn limits so Phase C proposal generation is stable.
-2. Classify `Reached maximum number of turns (5)` as a proposal/runtime failure category in lane summaries.
-3. Rerun Phase C `advection-1d` until repeated direct/agent status is stable enough for comparison.
+1. Free workspace storage or choose a durable non-`/home` run root before more repeated real runs.
+2. Expand Phase C to `advdiff-imex-2d`, preserving bounded prompt/preflight artifacts.
+3. Add per-variable L2/Linf tables to the generated report.
 4. Execute native `Tester` or equivalent solver command for each additional case and record real preflight stdout/stderr.
 5. Implement or validate Nektar extension replay coverage before expanding to DiffusionSolver, IncNavierStokesSolver, and CompressibleFlowSolver.
-6. Define agent proposal-to-`NektarSessionPlan` mapping and validation rules.
-7. Add per-variable L2/Linf tables to the generated report.
-8. Keep `diffusion-2d` and `euler-1d` capability-gated until extension dispatch support is verified.
+6. Keep `diffusion-2d` and `euler-1d` capability-gated until extension dispatch support is verified.

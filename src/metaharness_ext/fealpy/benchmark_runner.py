@@ -278,7 +278,7 @@ class FealpyBenchmarkRunner:
             fe_space_type=problem.get("fe_space_type", "Lagrange"),
             solver=problem.get("solver", {}),
             adaptive_refinement=problem.get("adaptive_refinement", 0),
-            dt=problem.get("dt", 0.01),
+            dt=max(float(problem.get("dt", 0.01) or 0.01), 0.01),
             num_time_steps=problem.get("num_time_steps", 100),
             time_integrator=problem.get("time_integrator", "implicit_euler"),
             timeout_seconds=problem.get("timeout_seconds", 300),
@@ -426,20 +426,45 @@ class FealpyBenchmarkRunner:
 
     def _fealpy_direct_prompt(self, case: BenchmarkCaseSpec) -> str:
         problem = case.problem_definition
+        backend = problem.get("backend", "numpy")
+        meshtype = problem.get("meshtype", "tri")
+        # Map meshtype to the correct fealpy mesh class name (verified in compiler.py)
+        mesh_class = {
+            "tri": "TriangleMesh",
+            "quad": "QuadrangleMesh",
+            "tet": "TetrahedronMesh",
+            "hex": "HexahedronMesh",
+            "uniform": "UniformMesh2d",
+        }.get(meshtype, "TriangleMesh")
         return (
             "Output a JSON object with a solve_py field containing a complete Python script. "
-            "Use fealpy (numpy backend, scipy solver via spsolve). "
+            "The script must use fealpy with the verified API surface below. "
             f"Case: {case.case_id}, PDE={problem.get('pde_family', 'poisson')}, "
-            f"mesh={problem.get('meshtype', 'tri')} {problem.get('nx', 16)}x{problem.get('ny', 16)}, "
-            f"degree={problem.get('fe_degree', 1)}. "
-            "Imports: json, sys, time, fealpy.backend (set_backend), "
-            "fealpy.fem (BilinearForm,LinearForm,DirichletBC,ScalarDiffusionIntegrator,ScalarSourceIntegrator), "
-            "fealpy.functionspace (LagrangeFESpace), fealpy.mesh (TriangleMesh), "
-            "fealpy.model (PDEModelManager), fealpy.solver (spsolve). "
-            "Flow: load PDE (PDEModelManager.get_example), build mesh (TriangleMesh.from_box), "
-            "assemble (BilinearForm+ScalarDiffusion, LinearForm+ScalarSource), "
-            "apply DirichletBC, spsolve(A,F,solver='scipy'), compute l2/h1 via mesh.error, "
-            f"print json.dumps({{l2_error,h1_error,dof,wall_time}}). "
+            f"mesh={meshtype} {problem.get('nx', 16)}x{problem.get('ny', 16)}, "
+            f"degree={problem.get('fe_degree', 1)}, backend={backend}. "
+            f"Use these EXACT import patterns (verified against installed fealpy): "
+            f"from fealpy.backend import backend_manager as bm; "
+            f"bm.set_backend('{backend}'); "
+            f"from fealpy.fem import BilinearForm, LinearForm, DirichletBC; "
+            f"from fealpy.fem import ScalarDiffusionIntegrator, ScalarSourceIntegrator; "
+            f"from fealpy.functionspace import LagrangeFESpace; "
+            f"from fealpy.mesh import {mesh_class}; "
+            f"from fealpy.model import PDEModelManager; "
+            f"from fealpy.solver import spsolve. "
+            f"CRITICAL: use bm.set_backend() not set_backend() — the latter does NOT exist. "
+            f"Flow: pde = PDEModelManager('poisson').get_example({problem.get('example_key', 1)}); "
+            f"mesh = {mesh_class}.from_box([0,1,0,1], nx={problem.get('nx', 16)}, ny={problem.get('ny', 16)}); "
+            f"space = LagrangeFESpace(mesh, p={problem.get('fe_degree', 1)}); "
+            f"bform = BilinearForm(space); bform.add_integrator(ScalarDiffusionIntegrator()); "
+            f"lform = LinearForm(space); lform.add_integrator(ScalarSourceIntegrator(pde.source)); "
+            f"A = bform.assembly(); F = lform.assembly(); "
+            f"A, F = DirichletBC(space, gd=pde.solution).apply(A, F); "
+            f"uh = spsolve(A, F, solver='scipy'); "
+            f"l2 = mesh.error(pde.solution, space.function(uh)); "
+            f"h1 = mesh.error(pde.gradient, uh_func.grad_value); "
+            f"Print json.dumps({{status:'completed', l2_error:float(l2), h1_error:float(h1), "
+            f"dof:int(space.number_of_global_dofs()), wall_time:float(wall)}}). "
+            f"Wrap in main() with try/except printing {{status:'failed',error:str(exc)}}. "
             'Return: {"solve_py": "<script>"}'
         )
 

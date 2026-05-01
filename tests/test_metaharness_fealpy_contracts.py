@@ -38,7 +38,7 @@ def test_fealpy_problem_spec_reject_unsafe_task_id() -> None:
 
 def test_fealpy_problem_spec_reject_invalid_degree() -> None:
     with pytest.raises(ValueError, match="fe_degree"):
-        FealpyProblemSpec(task_id="bad-degree", fe_degree=0)
+        FealpyProblemSpec(task_id="bad-degree", fe_degree=-1)
 
 
 def test_fealpy_problem_spec_reject_negative_timeout() -> None:

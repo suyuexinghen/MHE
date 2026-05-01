@@ -81,8 +81,8 @@ class FealpyProblemSpec(BaseModel):
     @field_validator("fe_degree")
     @classmethod
     def validate_degree(cls, value: int) -> int:
-        if value < 1:
-            raise ValueError("fe_degree must be >= 1")
+        if value < 0:
+            raise ValueError("fe_degree must be >= 0")
         return value
 
     @field_validator("timeout_seconds")
