@@ -35,6 +35,22 @@ class DecisionOutcome(StrEnum):
     REFINE = "REFINE"
 
 
+class ResearchBudget(BaseModel):
+    """P1 budget gate for experiment-count-limited loops."""
+
+    max_experiments: int | None = Field(default=None, ge=0)
+    experiments_used: int = Field(default=0, ge=0)
+    max_wall_clock_seconds: float | None = Field(default=None, ge=0)
+    max_llm_cost: float | None = Field(default=None, ge=0)
+
+    @property
+    def exhausted(self) -> bool:
+        return self.max_experiments is not None and self.experiments_used >= self.max_experiments
+
+    def consume_experiment(self) -> "ResearchBudget":
+        return self.model_copy(update={"experiments_used": self.experiments_used + 1})
+
+
 class ResearchQuestion(BaseModel):
     """Minimal research question for benchmark-backed MVP loops."""
 
