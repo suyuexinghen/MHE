@@ -13,8 +13,8 @@ The PyCFD MHE extension is **fully implemented** across all 6 roadmap phases (Ph
 | Metric | Value |
 |--------|-------|
 | Production files | 15 (2,499 lines) |
-| Test files | 12 (1,099 lines) |
-| Tests | 83 (80 pass, 3 opt-in smoke gated) |
+| Test files | 13 |
+| Tests | 102 (99 pass, 3 opt-in smoke gated) |
 | Manifest files | 6 |
 | Wiki pages | 8 |
 | Blueprint/roadmap/handoff docs | 3 |
@@ -140,7 +140,7 @@ The `_policy_gate_issues()` method handles PyCFD's dict-based gate format, extra
 ### 4.1 Summary
 
 ```
-80 passed, 3 deselected (smoke tests require MHE_RUN_REAL_PYCFD=1)
+99 passed, 3 deselected (smoke tests require MHE_RUN_REAL_PYCFD=1)
 ruff check: All checks passed
 ```
 
@@ -269,95 +269,62 @@ These are documented in `iteration-backlog.md` under the Governance Gaps categor
 
 - **No promotion gate automation**: Promotion from staging to production requires manual admin approval
 - **No automated benchmark re-run triggers**: Regressions are detected by comparison but not auto-flagged
-- **No CI integration**: All benchmarks are local CLI-driven; no CI pipeline exists
+- **No external CI pipeline claim**: CI-friendly dry-run tests exist locally; no repository-hosted CI workflow is claimed here
 
 ### 9.3 Real Execution Evidence
 
 - Smoke tests gate on `MHE_RUN_REAL_PYCFD=1` and `PYCFD_SRC_PATH`
-- Real execution evidence has NOT been collected for any case type
-- The benchmark runner dry-run mode produces synthetic evidence for schema/plumbing validation
-- Real Claude proposal variability and adaptive repair have NOT been tested against real PyCFD
+- Real execution evidence has been collected for all 5 PyCFD benchmark cases through the MHE benchmark pipeline
+- The benchmark runner dry-run mode remains the CI-friendly schema/plumbing validation path
+- Real Claude proposal variability remains bounded by the current direct/agent lane evidence and should not be generalized into performance claims
 
 ---
 
-## 10. Next Action Recommendations
+## 10. Completed Priority Actions and Current Directions
 
-### 10.1 Priority 1 — Collect Real Execution Evidence
+### 10.1 Completed Priority Actions
 
-The most significant evidence gap. Without real execution traces, the extension cannot claim anything about numerical correctness or solver behavior.
+The original P1-P6 follow-up actions are now complete:
 
-**Specific actions:**
-1. Run `test_metaharness_pycfd_smoke.py` with `MHE_RUN_REAL_PYCFD=1 PYCFD_SRC_PATH=/home/linden/code/work/Helmholtz/git/PyCFD`
-2. Run benchmark `--suite pycfd-pde --lanes extension --cases vortex-2d --allow-real-tools`
-3. Run benchmark with `--repeat 3` on one case to establish stability baselines
-4. Verify residual norms are within physically reasonable ranges per case type
+- **P1: Real execution evidence** — 3/3 opt-in smoke tests pass against real PyCFD, and all 5 benchmark cases execute with real solver metrics.
+- **P2: Real benchmark lanes** — direct and agent lane integration is implemented, with fallback compiler support for real execution without Claude.
+- **P3: Residual tolerance table** — per-case tolerance handling is implemented and tested.
+- **P4: Direct lane code review** — the 5-item checklist review is recorded in `.mhe/approvals/pycfd_direct_lane_code_review.json`.
+- **P5: Cross-extension comparison** — the PDE comparison report exists at `09-pycfd-cross-extension-comparison.md`.
+- **P6: CI / Automation** — CI-friendly dry-run benchmark tests cover the PyCFD benchmark plumbing without PyCFD or Claude prerequisites.
 
-**Estimated effort**: 1 session (requires PyCFD installation and Python 3.12 compatibility)
+Two post-priority follow-ups are also complete:
 
-### 10.2 Priority 2 — Real Claude Benchmark Lanes
+- **Study Sweep** — `PyCFDStudyComponent` now runs trial snapshots through compiler → executor → validator and records failed trials.
+- **Agent Lane** — proposal preflight/repair evidence is retained per attempt without overwriting initial attempt artifacts.
 
-Once real solver baselines exist, introduce real Claude variability.
+### 10.2 Current Recommended Next Directions
 
-**Specific actions:**
-1. Run `--suite pycfd-pde --lanes direct --cases vortex-2d` with real `ClaudeCLIBrainProvider`
-2. Run `--suite pycfd-pde --lanes agent --cases vortex-2d --adaptive-agent`
-3. Compare extension vs direct vs agent lane results
-4. Document any repair success/failure patterns
+The evidence index / report navigation slice is now implemented in `docs/wiki/meta-harness-engineer/pycfd-engine-wiki/README.md`, which links benchmark summaries, approval files, and cross-extension evidence without adding numerical superiority claims.
 
-**Precondition**: Priority 1 complete. **Estimated effort**: 1–2 sessions.
+Remaining directions are outside the completed PyCFD core extension:
 
-### 10.3 Priority 3 — Residual Tolerance Table
+- **Run real Nektar and Fealpy benchmarks** to bring cross-extension evidence closer to parity. This is the highest-value comparison follow-up, but it depends on local solver prerequisites outside the PyCFD extension.
+- **Add more PyCFD case families** such as 3D or viscous cases only when upstream PyCFD supports them well enough for stable harness execution.
+- **Keep CI dry-run tests current** as the regression gate for benchmark plumbing.
 
-The admin approval requires a "residual tolerance table per case type." Currently the validator uses a single `residual_tolerance` parameter.
+### 10.3 Recommendation Ratings
 
-**Specific actions:**
-1. Define per-case-type tolerance values based on real execution data (from Priority 1)
-2. Update `PyCFDValidatorComponent` to accept a tolerance table keyed by `CaseType`
-3. Document the rationale for each tolerance value in the wiki
-
-**Precondition**: Priority 1 complete. **Estimated effort**: 1 session.
-
-### 10.4 Priority 4 — Direct Lane Code Review
-
-The admin approval requires review of compiler-generated scripts for 5 items: import correctness, config dict, mesh parameters, flux/limiter selection, residual computation.
-
-**Specific actions:**
-1. Run compiler for all 5 case types with `--allow-real-tools`
-2. Extract generated scripts from the direct lane
-3. Review against the 5-item checklist from the approval manifest
-4. Document review findings in evidence bundle
-
-**Precondition**: Priority 1 complete. **Estimated effort**: 1 session.
-
-### 10.5 Priority 5 — Cross-Extension Comparison
-
-Compare PyCFD benchmark results against fealpy and nektar PDE benchmark patterns.
-
-**Specific actions:**
-1. Run all three PDE suites (fealpy-pde, nektar-pde, pycfd-pde) with comparable cases
-2. Run `benchmark-compare` across suites
-3. Document FVM vs FEM vs spectral/hp workflow differences in the benchmark wiki
-
-**Precondition**: Priority 1–2 complete. **Estimated effort**: 2 sessions.
-
-### 10.6 Priority 6 — CI / Automation
-
-**Specific actions:**
-1. Add dry-run benchmark smoke to a pre-commit or CI check
-2. Automate the `benchmark-run --suite pycfd-pde --repeat 3` cycle
-3. Wire regression detection to governance adapter
-
-**Precondition**: Priority 1–3 complete. **Estimated effort**: 2–3 sessions.
+| Direction | Feasibility | Value Gain | Notes |
+|-----------|-------------|------------|-------|
+| Real Fealpy/Nektar execution parity | ★★★☆☆ | ★★★★★ | Best comparison value, but depends on external solver setup. |
+| CI dry-run upkeep | ★★★★★ | ★★★☆☆ | High feasibility; mostly preserves current quality rather than expanding capability. |
+| New PyCFD physics/case families | ★★☆☆☆ | ★★★★☆ | Potentially valuable, but gated by upstream solver maturity. |
 
 ---
 
 ## 11. Conclusion
 
-The PyCFD MHE extension is **fully complete** at the code, test, documentation, manifest, and approval configuration levels. All 80 non-smoke tests pass, ruff is clean, and all Phase 0–5 deliverables are delivered.
+The PyCFD MHE extension is **fully complete** at the code, test, documentation, manifest, and approval configuration levels. Current focused verification shows 99 PyCFD tests passing, 3 smoke tests gated behind `MHE_RUN_REAL_PYCFD=1`, and ruff clean. All Phase 0–5 deliverables, P1-P6 priority actions, Study Sweep, and Agent Lane follow-ups are delivered.
 
 The extension follows the canonical MHE pattern (modeled after fealpy) with appropriate adaptations for PyCFD's unique characteristics: path-based discovery (not a pip package), residual-based validation (not FEM error norms), and FVM-specific metrics.
 
-The primary remaining work is evidence collection: real execution traces, Claude lane comparisons, and residual tolerance calibration. These are gated on running the extension against a real PyCFD installation and real Claude CLI — both are environmental prerequisites, not code gaps.
+The primary remaining work is no longer a PyCFD code gap. The highest-value next slices are cross-extension evidence parity, evidence/report navigation, CI upkeep, and future case-family expansion when upstream PyCFD matures.
 
 **Key files for the next session:**
 - Handoff: `docs/wiki/meta-harness-engineer/blueprint/09-pycfd-extension-handoff-report.md`

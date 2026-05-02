@@ -161,10 +161,16 @@ class PyCFDBenchmarkRunner:
 
     def run_agent(self, case: BenchmarkCaseSpec) -> LaneSummary:
         output_dir = case_dir(self.runs_root, case.suite, "agent", case.case_id)
+        initial_proposal_dir = output_dir / "proposal_attempt_1"
         prompt = self._pycfd_agent_prompt(case)
-        claude_result = self.brain_provider.propose(prompt=prompt, output_dir=output_dir)
+        claude_result = self.brain_provider.propose(prompt=prompt, output_dir=initial_proposal_dir)
         attempt_log = self._claude_attempt_log(claude_result.error, "agent")
-        preflight = self._write_proposal_preflight(output_dir, case, "agent", claude_result)
+        preflight_evidence_files = self._claude_evidence_files(claude_result)
+        preflight_repair_outcome = None
+        preflight = self._write_proposal_preflight(
+            output_dir, case, "agent", claude_result, attempt_id=1
+        )
+        preflight_evidence_files.append(preflight["path"])
         if claude_result.error:
             return write_lane_outputs(
                 runs_root=self.runs_root,
@@ -172,7 +178,7 @@ class PyCFDBenchmarkRunner:
                 lane="agent",
                 status="failed",
                 attempt_log=attempt_log,
-                evidence_files=[*self._claude_evidence_files(claude_result), preflight["path"]],
+                evidence_files=preflight_evidence_files,
                 error_message=claude_result.error,
                 proposal_contract_status=preflight["proposal_contract_status"],
                 preflight_status=preflight["preflight_status"],
@@ -180,18 +186,67 @@ class PyCFDBenchmarkRunner:
             )
         if preflight["preflight_status"] != "passed":
             if self.max_repair_attempts > 0:
-                repaired = self._propose_agent_preflight_repair(
-                    case, output_dir, claude_result, preflight
-                )
-                if repaired is not None and repaired.get("preflight_status") == "passed":
-                    preflight = repaired
+                repair = self._propose_agent_preflight_repair(case, output_dir, preflight)
+                if repair is not None:
+                    repaired, repair_result = repair
+                    preflight_evidence_files.extend(self._claude_evidence_files(repair_result))
+                    preflight_evidence_files.append(repaired["path"])
+                    repair_passed = repaired.get("preflight_status") == "passed"
+                    attempt_log.add(
+                        AttemptRecord(
+                            attempt_id=attempt_log.attempt_count + 1,
+                            lane="agent",
+                            status="passed" if repair_passed else "failed",
+                            repair=True,
+                            llm_call=True,
+                            message="preflight repair passed"
+                            if repair_passed
+                            else "; ".join(str(m) for m in repaired.get("messages", [])),
+                        )
+                    )
+                    if repair_passed:
+                        preflight = repaired
+                        preflight_repair_outcome = "preflight_repaired"
+                    else:
+                        preflight_repair_outcome = "preflight_unrepaired_failure"
+                        return self._preflight_failure_summary(
+                            case,
+                            "agent",
+                            claude_result,
+                            attempt_log,
+                            repaired,
+                            evidence_files=preflight_evidence_files,
+                            repair_outcome=preflight_repair_outcome,
+                        )
                 else:
+                    attempt_log.add(
+                        AttemptRecord(
+                            attempt_id=attempt_log.attempt_count + 1,
+                            lane="agent",
+                            status="failed",
+                            repair=True,
+                            llm_call=True,
+                            message="preflight repair did not return a usable proposal",
+                        )
+                    )
+                    preflight_repair_outcome = "preflight_unrepaired_failure"
                     return self._preflight_failure_summary(
-                        case, "agent", claude_result, attempt_log, preflight
+                        case,
+                        "agent",
+                        claude_result,
+                        attempt_log,
+                        preflight,
+                        evidence_files=preflight_evidence_files,
+                        repair_outcome=preflight_repair_outcome,
                     )
             else:
                 return self._preflight_failure_summary(
-                    case, "agent", claude_result, attempt_log, preflight
+                    case,
+                    "agent",
+                    claude_result,
+                    attempt_log,
+                    preflight,
+                    evidence_files=preflight_evidence_files,
                 )
         if not self.allow_real_tools:
             return write_lane_outputs(
@@ -200,11 +255,12 @@ class PyCFDBenchmarkRunner:
                 lane="agent",
                 status="passed",
                 metrics=expected_reference_metrics(case),
-                evidence_files=[*self._claude_evidence_files(claude_result), preflight["path"]],
+                evidence_files=preflight_evidence_files,
                 attempt_log=attempt_log,
                 proposal_contract_status=preflight["proposal_contract_status"],
                 preflight_status=preflight["preflight_status"],
                 failure_category=preflight["failure_category"],
+                repair_outcome=preflight_repair_outcome,
             )
         if not self._pycfd_available():
             return write_lane_outputs(
@@ -213,13 +269,14 @@ class PyCFDBenchmarkRunner:
                 lane="agent",
                 status="skipped",
                 attempt_log=attempt_log,
-                evidence_files=[*self._claude_evidence_files(claude_result), preflight["path"]],
+                evidence_files=preflight_evidence_files,
                 skip_reason="PyCFD environment not available",
                 proposal_contract_status=preflight["proposal_contract_status"],
                 preflight_status=preflight["preflight_status"],
                 failure_category=preflight["failure_category"],
+                repair_outcome=preflight_repair_outcome,
             )
-        evidence_files = [*self._claude_evidence_files(claude_result), preflight["path"]]
+        evidence_files = preflight_evidence_files
         spec = preflight["spec"]
         records: list[AttemptRecord] = []
         for attempt_idx in range(self.max_repair_attempts + 1):
@@ -524,9 +581,11 @@ class PyCFDBenchmarkRunner:
             return None
         proposal = self._unwrap_claude_proposal(dict(claude_result.proposal))
         repair_payload = proposal.get("spec_patch") or proposal.get("pycfd_spec")
-        if not isinstance(repair_payload, dict):
+        if not isinstance(repair_payload, dict) or self._find_null_paths(repair_payload):
             return None
-        merged = {**case.problem_definition, **repair_payload}
+        merged = self._merge_problem_payload(
+            spec.model_dump(mode="json", exclude_computed_fields=True), repair_payload
+        )
         unknown = sorted(
             set(merged)
             - _ALLOWED_SPEC_FIELDS
@@ -562,14 +621,18 @@ class PyCFDBenchmarkRunner:
         self,
         case: BenchmarkCaseSpec,
         output_dir: Path,
-        claude_result: ClaudeCLIResult,
         preflight: dict[str, Any],
-    ) -> dict[str, Any] | None:
+    ) -> tuple[dict[str, Any], ClaudeCLIResult] | None:
         prompt = self._preflight_repair_prompt(case, preflight)
-        repair_result = self.brain_provider.propose(prompt=prompt, output_dir=output_dir)
+        attempt_id = 2
+        repair_dir = output_dir / f"proposal_attempt_{attempt_id}"
+        repair_result = self.brain_provider.propose(prompt=prompt, output_dir=repair_dir)
         if repair_result.error:
             return None
-        return self._write_proposal_preflight(output_dir, case, "agent", repair_result)
+        repaired = self._write_proposal_preflight(
+            output_dir, case, "agent", repair_result, attempt_id=attempt_id
+        )
+        return repaired, repair_result
 
     def _claude_attempt_log(self, error: str | None, lane: BenchmarkLane) -> AttemptLog:
         status = "failed" if error else "passed"
@@ -603,6 +666,8 @@ class PyCFDBenchmarkRunner:
         case: BenchmarkCaseSpec,
         lane: BenchmarkLane,
         result: ClaudeCLIResult,
+        *,
+        attempt_id: int = 1,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "case_id": case.case_id,
@@ -655,7 +720,9 @@ class PyCFDBenchmarkRunner:
             for key, value in payload.items()
             if key not in {"solve_py", "spec"}
         }
-        preflight_path = write_json(output_dir / "proposal_preflight.json", path_payload)
+        preflight_path = write_json(
+            output_dir / f"proposal_preflight_attempt_{attempt_id}.json", path_payload
+        )
         payload["path"] = str(preflight_path)
         return payload
 
@@ -695,6 +762,32 @@ class PyCFDBenchmarkRunner:
             return candidate
         return None
 
+    @staticmethod
+    def _find_null_paths(payload: Any, prefix: str = "") -> list[str]:
+        if isinstance(payload, dict):
+            paths: list[str] = []
+            for key, value in payload.items():
+                child_prefix = f"{prefix}.{key}" if prefix else str(key)
+                paths.extend(PyCFDBenchmarkRunner._find_null_paths(value, child_prefix))
+            return paths
+        if isinstance(payload, list):
+            paths = []
+            for index, value in enumerate(payload):
+                child_prefix = f"{prefix}[{index}]"
+                paths.extend(PyCFDBenchmarkRunner._find_null_paths(value, child_prefix))
+            return paths
+        return [prefix] if payload is None and prefix else []
+
+    @staticmethod
+    def _merge_problem_payload(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
+        merged = dict(base)
+        for key, value in patch.items():
+            if isinstance(value, dict) and isinstance(merged.get(key), dict):
+                merged[key] = PyCFDBenchmarkRunner._merge_problem_payload(merged[key], value)
+            else:
+                merged[key] = value
+        return merged
+
     def _extract_agent_spec(
         self,
         case: BenchmarkCaseSpec,
@@ -705,9 +798,12 @@ class PyCFDBenchmarkRunner:
         if isinstance(proposal.get("pycfd_spec"), dict):
             payload = dict(proposal["pycfd_spec"])
         elif isinstance(proposal.get("spec_patch"), dict):
-            payload = {**case.problem_definition, **proposal["spec_patch"]}
+            payload = self._merge_problem_payload(case.problem_definition, proposal["spec_patch"])
         else:
             return "proposal must include pycfd_spec or spec_patch"
+        null_paths = self._find_null_paths(payload)
+        if null_paths:
+            return f"proposal contains null values: {', '.join(null_paths)}"
         unknown = sorted(
             set(payload)
             - _ALLOWED_SPEC_FIELDS
@@ -751,18 +847,22 @@ class PyCFDBenchmarkRunner:
         result: ClaudeCLIResult,
         attempt_log: AttemptLog,
         preflight: dict[str, Any],
+        *,
+        evidence_files: list[str] | None = None,
+        repair_outcome: str | None = None,
     ) -> LaneSummary:
         return write_lane_outputs(
             runs_root=self.runs_root,
             case=case,
             lane=lane,
             status="failed",
-            evidence_files=[*self._claude_evidence_files(result), preflight["path"]],
+            evidence_files=evidence_files or [*self._claude_evidence_files(result), preflight["path"]],
             attempt_log=attempt_log,
             error_message="; ".join(str(message) for message in preflight.get("messages", [])),
             proposal_contract_status=preflight["proposal_contract_status"],
             preflight_status=preflight["preflight_status"],
             failure_category=preflight["failure_category"],
+            repair_outcome=repair_outcome,
         )
 
     def _write_extension_evidence(self, output_dir: Path, case: BenchmarkCaseSpec) -> list[str]:

@@ -74,7 +74,7 @@ Phase 0 (PyCFD prep) → Phase 1 (Contracts+Env) → Phase 2 (Compiler+Executor)
   - `benchmark_cases.py` — `pycfd_case_catalog()` with 5 cases ✓
   - `benchmark_runner.py` — Full 3-lane runner with ClaudeCLIBrainProvider, `FakeClaudeCLIBrainProvider`, direct lane (script generation + subprocess execution), agent lane (spec proposal + preflight + repair attempts), extension lane (full MHE pipeline) ✓
   - `pycfd-pde` suite added to shared `BenchmarkSuite` and `SUITE_DIRS` ✓
-  - Tests: benchmark cases (7 tests), benchmark runner (5 tests) ✓
+  - Tests: benchmark cases (7 tests), benchmark runner (8 tests), CI dry-run benchmark tests (11 tests) ✓
 - **Acceptance**: All 3 lanes produce `LaneSummary` results; dry-run mode passes ✓
 
 ### Phase 5: Study + Governance
@@ -83,13 +83,13 @@ Phase 0 (PyCFD prep) → Phase 1 (Contracts+Env) → Phase 2 (Compiler+Executor)
 - **Key tasks**:
   - `study.py` — parameter sweep component with Cartesian product generation ✓
   - `governance.py` — Full MHE core governance adapter with `SessionStore`, `AuditLog`, `ProvGraph` runtime injection; `build_candidate_record()` with `GraphSnapshot`/`CandidateRecord`; `build_session_events()` via `make_session_event`; `emit_runtime_evidence()` with runtime backend integration ✓
-  - Tests: study (6 tests), governance (11 tests including session store, prov graph, audit log, candidate record, policy gate issues), smoke (3 tests) ✓
+  - Tests: study (8 tests), governance (11 tests including session store, prov graph, audit log, candidate record, policy gate issues), smoke (3 tests) ✓
 - **Acceptance**: All tests passing, ruff clean ✓
 
 ## 4. Test Results
 
 ```
-80 passed, 3 skipped (smoke tests requiring MHE_RUN_REAL_PYCFD=1) in 1.50s
+99 passed, 3 deselected/gated (smoke tests requiring MHE_RUN_REAL_PYCFD=1)
 ruff check: All checks passed
 ```
 
@@ -97,19 +97,20 @@ ruff check: All checks passed
 
 | Test file | Tests | Status |
 |-----------|-------|--------|
-| test_metaharness_pycfd_contracts.py | 13 | ✓ |
+| test_metaharness_pycfd_contracts.py | 15 | ✓ |
 | test_metaharness_pycfd_environment.py | 3 | ✓ |
 | test_metaharness_pycfd_compiler.py | 6 | ✓ |
 | test_metaharness_pycfd_executor.py | 6 | ✓ |
-| test_metaharness_pycfd_validator.py | 8 | ✓ |
+| test_metaharness_pycfd_validator.py | 11 | ✓ |
 | test_metaharness_pycfd_evidence_policy.py | 8 | ✓ |
 | test_metaharness_pycfd_gateway.py | 5 | ✓ |
 | test_metaharness_pycfd_benchmark_cases.py | 7 | ✓ |
-| test_metaharness_pycfd_benchmark_runner.py | 5 | ✓ |
-| test_metaharness_pycfd_study.py | 6 | ✓ |
+| test_metaharness_pycfd_benchmark_runner.py | 8 | ✓ |
+| test_metaharness_pycfd_benchmark_ci.py | 11 | ✓ |
+| test_metaharness_pycfd_study.py | 8 | ✓ |
 | test_metaharness_pycfd_governance.py | 11 | ✓ |
 | test_metaharness_pycfd_smoke.py | 3 | skipped (opt-in) |
-| **Total** | **83** | **80 passed, 3 skipped** |
+| **Total** | **102** | **99 passed, 3 gated** |
 
 ### Production File Summary
 

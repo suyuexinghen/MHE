@@ -1,12 +1,12 @@
 # PyCFD Extension for MHE Wiki
 
-> Version: v1.0 | Last updated: 2026-05-01 | Status: **Complete**
+> Version: v1.1 | Last updated: 2026-05-02 | Status: **Complete**
 
 This directory discusses **how to design `metaharness_ext.pycfd` inside `MHE`**.
 
 Focuses on extension-level design boundaries: 2D Euler FVM case types, typed contracts, environment/validation/evidence surfaces, packaging/registration, and seams to the MHE governance path.
 
-**This extension development is complete.** 74 tests pass + 3 smoke gated, ruff clean, 15 production files, 12 test files.
+**This extension development is complete.** 99 focused tests pass + 3 smoke gated, ruff clean, 15 production files, 13 test files.
 
 ## What Is the PyCFD Extension
 
@@ -35,6 +35,22 @@ Focuses on extension-level design boundaries: 2D Euler FVM case types, typed con
 | [07-scope-and-boundaries](07-scope-and-boundaries.md) | Wiki/blueprint/roadmap responsibility split, explicit out-of-scope | Everyone |
 | [09-pycfd-extension-blueprint](../blueprint/09-pycfd-extension-blueprint.md) | Formal design blueprint (comprehensive) | Everyone |
 | [09-pycfd-roadmap](../blueprint/09-pycfd-roadmap.md) | Execution roadmap (Phase 0–5 all complete) | Development / PM |
+
+## Evidence and Approvals
+
+| Artifact | Use |
+|---|---|
+| `.mhe/evidence/pycfd_pde_evidence_bundle.json` | PyCFD claim-boundary bundle and benchmark references |
+| `.mhe/evidence/comparison_benchmark_evidence_bundle.json` | Cross-extension comparison evidence bundle |
+| `.mhe/evidence/fealpy_pde_evidence_bundle.json` | Fealpy comparison evidence and claim boundaries |
+| `.mhe/evidence/nektar_pde_evidence_bundle.json` | Nektar comparison evidence and claim boundaries |
+| `.mhe/approvals/pycfd_pde_benchmark_approval.json` | PyCFD benchmark approval manifest |
+| `.mhe/approvals/pycfd_direct_lane_code_review.json` | Direct-lane code review evidence |
+| `.runs/pycfd-benchmark/pycfd-pde-benchmark/comparison/run_manifest.json` | Real-run comparison manifest |
+| `.runs/pycfd-benchmark/pycfd-pde-benchmark/comparison/result_bundle.json` | Comparison result bundle |
+| `.runs/pycfd-benchmark/pycfd-pde-benchmark/direct/*/summary.json` | Direct-lane case summaries and metrics |
+
+PyCFD currently has real execution evidence for its own benchmark catalog. Fealpy and Nektar parity work remains a future comparison slice; their evidence bundles currently encode dry-run or capability-skip evidence only.
 
 ## Terminology
 

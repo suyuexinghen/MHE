@@ -66,7 +66,7 @@ class ResearchOrchestrator:
                 artifact_ref=artifact_refs.get(plan.plan_id, "summary.json"),
             )
             decision = decision_from_evidence(evidence, hypothesis)
-            hypothesis.status = _status_from_decision(decision)
+            hypothesis.status = _status_from_evidence(evidence, hypothesis)
 
             self.store.record_evidence(evidence)
             self.store.record_decision(decision)
@@ -89,10 +89,12 @@ class ResearchOrchestrator:
         )
 
 
-def _status_from_decision(decision: Decision) -> HypothesisStatus:
-    if decision.decision == "ADVANCE":
+def _status_from_evidence(evidence: EvidenceBundle, hypothesis: Hypothesis) -> HypothesisStatus:
+    if hypothesis.hypothesis_id in evidence.supports:
         return HypothesisStatus.SUPPORTED
-    return HypothesisStatus.REFUTED
+    if hypothesis.hypothesis_id in evidence.refutes:
+        return HypothesisStatus.REFUTED
+    return hypothesis.status
 
 
 def _conclusion_for(

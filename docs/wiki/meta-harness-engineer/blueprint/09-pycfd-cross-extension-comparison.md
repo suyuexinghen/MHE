@@ -65,7 +65,7 @@ PyCFD is currently the only PDE extension with real solver execution evidence co
 
 1. **Only PyCFD has real execution evidence** (as of 2026-05-01): All 5 cases compile, execute, and produce valid metrics against the real PyCFD solver. Fealpy and Nektar benchmarks are dry-run validated only — this reflects unexecuted benchmark runs rather than missing functionality.
 
-2. **PyCFD covers the full Euler surface**: Vortex convection, steady airfoil/cylinder, MMS verification, and shock capturing — all 5 canonical CFD verification cases.
+2. **PyCFD covers the current Euler benchmark catalog**: Vortex convection, steady airfoil/cylinder, MMS verification, and shock capturing — all 5 canonical CFD verification cases in the current suite.
 
 3. **Solver robustness issues exist**: Vortex case required limiter enabled (CFL 0.5, use_limiter=True) to avoid negative pressure in Roe flux. Shock case requires pre-created VTK output directories. Both are upstream PyCFD issues now mitigated.
 
@@ -75,6 +75,6 @@ PyCFD is currently the only PDE extension with real solver execution evidence co
 
 ## Next actions
 
-- P6: Add CI dry-run for PyCFD benchmarks
+- Keep PyCFD CI dry-run benchmark tests as the regression gate for benchmark plumbing
 - Run real Nektar and Fealpy benchmarks to collect execution evidence
 - Add more PyCFD cases (3D, viscous) as the upstream solver matures

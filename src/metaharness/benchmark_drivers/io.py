@@ -41,6 +41,10 @@ def reports_dir(runs_root: Path, suite: BenchmarkSuite) -> Path:
 def to_jsonable(value: Any) -> Any:
     if isinstance(value, BaseModel):
         return value.model_dump(mode="json")
+    if isinstance(value, list):
+        return [to_jsonable(item) for item in value]
+    if isinstance(value, dict):
+        return {key: to_jsonable(item) for key, item in value.items()}
     return value
 
 

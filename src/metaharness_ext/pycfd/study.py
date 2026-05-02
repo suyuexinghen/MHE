@@ -29,7 +29,8 @@ class PyCFDStudyComponent:
         for i, snapshot in enumerate(snapshots):
             trial_id = f"{study_spec.study_id}-trial-{i}"
             try:
-                trial = self._run_trial(trial_id, snapshot, study_spec.objective)
+                spec = self._apply_snapshot(study_spec.task_template, snapshot)
+                trial = self._run_trial(trial_id, spec, snapshot, study_spec.objective)
             except Exception as e:
                 trial = PyCFDStudyTrial(
                     trial_id=trial_id,
@@ -80,13 +81,30 @@ class PyCFDStudyComponent:
             setattr(obj, parts[-1], value)
         return mutated
 
-    def _run_trial(self, trial_id: str, snapshot: dict, objective: str) -> PyCFDStudyTrial:
-        # This is a skeleton — real pipeline integration needed
+    def _run_trial(
+        self,
+        trial_id: str,
+        spec: PyCFDProblemSpec,
+        snapshot: dict,
+        objective: str,
+    ) -> PyCFDStudyTrial:
+        workspace_dir = spec.graph_metadata.get("study_workspace", f".runs/pycfd/studies/{trial_id}")
+        plan = self._compiler.compile(spec, run_id=trial_id, workspace_dir=workspace_dir)
+        artifact = self._executor.execute(plan)
+        validation = self._validator.validate(artifact, plan_ref=plan.plan_id)
+        summary_metrics = {**artifact.summary_metrics, **validation.summary_metrics}
+        metric_value = summary_metrics.get(objective)
+        if metric_value is not None and not isinstance(metric_value, int | float):
+            metric_value = None
         return PyCFDStudyTrial(
             trial_id=trial_id,
             parameters=snapshot,
-            passed=False,
-            messages=["Study pipeline not fully wired — requires runtime integration."],
+            plan_ref=plan.plan_id,
+            artifact_ref=artifact.artifact_id,
+            validation_ref=validation.artifact_ref,
+            metric_value=float(metric_value) if metric_value is not None else None,
+            passed=validation.passed,
+            messages=[*validation.messages],
         )
 
     def _build_report(

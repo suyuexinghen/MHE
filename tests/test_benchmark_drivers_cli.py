@@ -23,8 +23,12 @@ def test_benchmark_run_cli_writes_dry_run_outputs(tmp_path: Path, capsys) -> Non
     )
 
     assert status == 0
-    output = capsys.readouterr().out
-    assert "sinc-values" in output
+    payload = json.loads(capsys.readouterr().out)
+    assert "sinc-values" in payload["cases"]
+    assert (
+        str(tmp_path / "octave-native-benchmark" / "agent" / "sinc-values" / "summary.json")
+        in payload["summary_paths"]
+    )
     assert (tmp_path / "octave-native-benchmark" / "specs" / "sinc-values.json").exists()
     assert (
         tmp_path / "octave-native-benchmark" / "agent" / "sinc-values" / "summary.json"
