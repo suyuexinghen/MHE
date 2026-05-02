@@ -341,4 +341,11 @@ The immediate safe slice has been implemented:
 - A safe `.runs/nektar-capability-skip-refresh` dry-run produced reviewer-facing `euler-1d` gate evidence.
 - Focused tests now cover valid, malformed, and missing `capability_status.json` cases so report generation degrades safely instead of crashing or hiding incomplete evidence.
 
-The next unimplemented recommendation is the controlled `diffusion-2d` validation path: start with dry-run artifact refresh, then only run real DiffusionSolver preflight/execution after explicit real-tool authorization and environment confirmation.
+The controlled `diffusion-2d` dry-run refresh has also been completed:
+
+- Run root: `.runs/nektar-diffusion-dry-refresh`
+- Compare bundle: `.runs/nektar-diffusion-dry-refresh/nektar-pde-benchmark/comparison/result_bundle.json`
+- Generated report: `.runs/nektar-diffusion-dry-refresh/nektar-pde-benchmark/comparison/comparison_report.md`
+- Result: `extension`, `direct`, and `agent` all passed in dry-run mode; verdict `all_passed`; `real_tools=false`; `real_claude=false`; preflight status `available`; `preflight_executed=false`.
+
+The next unimplemented recommendation is real DiffusionSolver preflight/execution, but that must wait for explicit real-tool authorization and environment confirmation. Until then, the truthful claim is only that `diffusion-2d` dry-run benchmark wiring and report generation are validated.

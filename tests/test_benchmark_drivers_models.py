@@ -320,6 +320,46 @@ def test_comparator_writes_capability_gate_tables(tmp_path: Path) -> None:
     assert capability_rows[0]["source_refs_path"].endswith("source_refs.json")
 
 
+def test_comparator_reports_malformed_and_missing_capability_status(tmp_path: Path) -> None:
+    malformed_case = BenchmarkCaseSpec(
+        case_id="malformed-gate",
+        suite="nektar-pde",
+        task_family="nektar_pde",
+        description="Malformed capability gate case",
+        required_capabilities=["nektar_unknown_solver"],
+        source_reference="malformed.tst",
+        expected_metrics=[],
+    )
+    missing_case = BenchmarkCaseSpec(
+        case_id="missing-gate",
+        suite="nektar-pde",
+        task_family="nektar_pde",
+        description="Missing capability gate case",
+        required_capabilities=["nektar_unknown_solver"],
+        source_reference="missing.tst",
+        expected_metrics=[],
+    )
+    _write_lane_summary(tmp_path, malformed_case, "extension", status="skipped", passed=False)
+    _write_lane_summary(tmp_path, missing_case, "extension", status="skipped", passed=False)
+    malformed_root = tmp_path / "nektar-pde-benchmark" / "extension" / "malformed-gate"
+    missing_root = tmp_path / "nektar-pde-benchmark" / "extension" / "missing-gate"
+    (malformed_root / "capability_status.json").write_text("not-json")
+    write_json(malformed_root / "source_refs.json", {"case_id": "malformed-gate"})
+    write_json(missing_root / "source_refs.json", {"case_id": "missing-gate"})
+
+    write_comparison_outputs(runs_root=tmp_path, suite="nektar-pde")
+
+    comparison_dir = tmp_path / "nektar-pde-benchmark" / "comparison"
+    report = (comparison_dir / "comparison_report.md").read_text()
+    bundle = json.loads((comparison_dir / "result_bundle.json").read_text())
+    rows = {row["case_id"]: row for row in bundle["evidence_context"]["capability_gate_rows"]}
+    assert rows["malformed-gate"]["status"] == "schema_failed"
+    assert rows["missing-gate"]["status"] == "missing"
+    assert rows["missing-gate"]["missing_capabilities"] == ["capability_status_missing"]
+    assert "capability_status_unreadable" in report
+    assert "capability_status_missing" in report
+
+
 def test_comparator_writes_blocked_approval_gate_from_policy(tmp_path: Path) -> None:
     case = BenchmarkCaseSpec(
         case_id="demo",

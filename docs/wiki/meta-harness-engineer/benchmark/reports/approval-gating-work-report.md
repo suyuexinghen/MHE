@@ -126,7 +126,7 @@
 - `benchmark-approval-check` CLI 支持 `--suite`、`--cases`、`--config-root` 与 `--strict`。
 - `benchmark-compare` 的 `result_bundle.json` 现在写入 `approval_status`、`approval_profiles`、`blocked_profiles`、`excluded_claims`。
 - `evaluate_approval_gate(...)` 已对 `approved_with_limitations` 作为可授权状态进行处理。
-- `tests/test_benchmark_approval_policy.py` 覆盖 limited admin approval、blocked scientific gate、strict mode、missing profile、checked-in profile/manifest consistency 与 checked-in ABACUS sentinel gate。
+- `tests/test_benchmark_approval_policy.py` 覆盖 limited admin approval、blocked scientific gate、strict mode、missing profile、checked-in profile/manifest consistency、evidence bundle claim boundaries 与 checked-in ABACUS sentinel gate。
 - `tests/test_benchmark_drivers_cli.py` 已更新以验证 comparison report 的 approval section。
 
 ### 3.2 Validation commands
@@ -184,7 +184,7 @@ ruff format --check src/metaharness/benchmark_drivers/compare.py src/metaharness
 ruff check src/metaharness/benchmark_drivers/compare.py src/metaharness/cli.py tests/test_benchmark_approval_policy.py tests/test_benchmark_drivers_cli.py
 ```
 
-结果：之前 `43 passed`；新增 checked-in consistency 覆盖后 `tests/test_benchmark_approval_policy.py` 为 `7 passed`；ruff format/check 均通过。
+结果：新增 checked-in consistency 和 evidence bundle 覆盖后，approval/adjacent focused tests 为 `47 passed`；`tests/test_benchmark_approval_policy.py` 单独为 `8 passed`；ruff check 通过。
 
 执行真实 `.mhe` strict gate smoke：
 
@@ -314,15 +314,15 @@ Recommended test target:
 PYTHONPATH=src python -m pytest tests/test_benchmark_approval_policy.py -q
 ```
 
-### P2 — Build evidence bundles for each suite
+### P2 — Build evidence bundles for each suite — implemented as claim-limited bundle refs
 
-For each suite, create or update evidence refs so admin manifests point to concrete run artifacts, not just policy/report docs:
+Added checked-in evidence bundles under `.mhe/evidence/` and wired grantable admin manifests to them via `evidence_refs`. These bundles point to observed local artifacts while preserving explicit claim boundaries:
 
-- Octave: real solver repeat root and comparison bundle;
-- Nektar: real solver/replay artifacts;
-- FEALPy: compiler-generated reference scripts, API import verification, PDE tolerance tables;
-- PyCFD: `PYCFD_SRC_PATH` probe, residual tolerance tables, direct lane code review;
-- QCompute/ABACUS: qcompute proxy evidence, bridge status, `promotion_gate.json`, reviewer signoff.
+- Octave: `.mhe/evidence/octave_native_evidence_bundle.json` references dry-run comparison evidence and excludes real solver superiority claims.
+- Nektar: `.mhe/evidence/nektar_pde_evidence_bundle.json` references dry-run and capability-skip comparison evidence.
+- FEALPy: `.mhe/evidence/fealpy_pde_evidence_bundle.json` references comparison and repeat-summary artifacts while requiring API/tolerance/direct-review evidence before stronger claims.
+- PyCFD: `.mhe/evidence/pycfd_pde_evidence_bundle.json` references comparison evidence and checked-in direct-lane code review, while still requiring `PYCFD_SRC_PATH` probe and residual tolerance evidence.
+- QCompute/ABACUS: `.mhe/evidence/qcompute_abacus_evidence_bundle.json` references proxy/sentinel evidence and keeps ABACUS H/S scientific approval blocked.
 
 ### P2 — ABACUS H/S scientific approval path
 

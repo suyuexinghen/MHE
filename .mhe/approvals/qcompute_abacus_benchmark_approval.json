@@ -33,6 +33,7 @@
   "evidence_refs": [
     ".mhe/config.json",
     ".mhe/benchmarks/comparison-approval.json",
+    ".mhe/evidence/qcompute_abacus_evidence_bundle.json",
     ".mhe/approvals/abacus_hs_approval.json",
     "docs/wiki/meta-harness-engineer/benchmark/reports/qcompute-abacus-real-capability-roadmap-report.md",
     "tests/test_benchmark_drivers_qcompute_abacus.py"

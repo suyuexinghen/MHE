@@ -37,6 +37,7 @@
   "evidence_refs": [
     ".mhe/config.json",
     ".mhe/benchmarks/comparison-approval.json",
+    ".mhe/evidence/fealpy_pde_evidence_bundle.json",
     "docs/wiki/meta-harness-engineer/benchmark/08-real-run-evidence-plan-analysis.md"
   ],
   "required_evidence": [

@@ -28,6 +28,7 @@
   "evidence_refs": [
     ".mhe/config.json",
     ".mhe/benchmarks/comparison-approval.json",
+    ".mhe/evidence/comparison_benchmark_evidence_bundle.json",
     "docs/wiki/meta-harness-engineer/benchmark/08-real-run-evidence-plan-analysis.md",
     "docs/wiki/meta-harness-engineer/benchmark/reports/qcompute-abacus-real-capability-roadmap-report.md"
   ],

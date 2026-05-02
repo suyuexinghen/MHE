@@ -11,7 +11,7 @@
 | fealpy-pde | No | No | Yes | 1 (poisson-2d-numpy) |
 | nektar-pde | No | No | Yes | 6 |
 
-PyCFD is currently the only PDE extension with real solver execution evidence collected through the MHE benchmark pipeline.
+PyCFD is currently the only PDE extension with real solver execution evidence collected through the MHE benchmark pipeline. **Disclaimer**: This is a timestamped process-state observation as of 2026-05-01, not a performance or capability superiority claim. Fealpy and Nektar extensions have working dry-run pipelines and their lack of real execution evidence reflects unexecuted benchmark runs, not necessarily missing functionality.
 
 ## PyCFD benchmark results (real execution)
 
@@ -63,7 +63,7 @@ PyCFD is currently the only PDE extension with real solver execution evidence co
 
 ## Key findings
 
-1. **Only PyCFD has real execution evidence**: All 5 cases compile, execute, and produce valid metrics against the real PyCFD solver. Fealpy and Nektar benchmarks are dry-run validated only.
+1. **Only PyCFD has real execution evidence** (as of 2026-05-01): All 5 cases compile, execute, and produce valid metrics against the real PyCFD solver. Fealpy and Nektar benchmarks are dry-run validated only — this reflects unexecuted benchmark runs rather than missing functionality.
 
 2. **PyCFD covers the full Euler surface**: Vortex convection, steady airfoil/cylinder, MMS verification, and shock capturing — all 5 canonical CFD verification cases.
 

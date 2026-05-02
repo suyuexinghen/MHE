@@ -2,7 +2,7 @@
 
 > Purpose: Provide a directly actionable continuation guide for a new Claude Code conversation window.
 > Scope: `MHE/src/metaharness_ext/pycfd/`, corresponding tests, wiki, manifests, and blueprint.
-> Status baseline: Phase 0–5 complete. 91 tests pass (80 unit + 11 CI dry-run), 3 smoke gated, ruff clean. All 6 prioritized actions (P1-P6) complete. 5/5 benchmark cases pass with real PyCFD execution.
+> Status baseline: Phase 0–5 complete. 94 tests pass (80 unit + 11 CI dry-run + 3 tolerance-table), 3 smoke gated, ruff clean. All 6 prioritized actions (P1-P6) complete. 5/5 benchmark cases pass with real PyCFD execution.
 
 ---
 
@@ -58,10 +58,10 @@ The extension is **fully implemented** across all 6 roadmap phases. Current stat
 - `examples/manifests/pycfd/pycfd_validator.json`
 - `examples/manifests/pycfd/pycfd_study.json`
 
-### 2.4 Test Suite (13 files, 94 tests)
+### 2.4 Test Suite (13 files, 97 tests)
 
 ```
-91 passed, 3 skipped (smoke tests requiring MHE_RUN_REAL_PYCFD=1)
+94 passed, 3 skipped (smoke tests requiring MHE_RUN_REAL_PYCFD=1)
 ruff check: All checks passed
 ```
 
@@ -163,7 +163,7 @@ Both residuals must be present AND within tolerance for `passed=True`. Missing r
 
 ## 4. Completion Status
 
-The PyCFD extension is **fully complete** — no remaining placeholders or blocked items. All 91 tests pass, 3 smoke tests gated behind `MHE_RUN_REAL_PYCFD=1`.
+The PyCFD extension is **fully complete** — no remaining placeholders or blocked items. All 94 tests pass, 3 smoke tests gated behind `MHE_RUN_REAL_PYCFD=1`.
 
 ### 4.1 What Was Previously Outstanding (Now Done)
 
@@ -235,7 +235,7 @@ Read first:
 - `MHE/docs/wiki/meta-harness-engineer/pycfd-engine-wiki/README.md`
 
 Current state:
-- Phase 0–5 complete. 91 tests pass (80 unit + 11 CI), 3 smoke gated, ruff clean.
+- Phase 0–5 complete. 94 tests pass (80 unit + 11 CI + 3 tolerance-table), 3 smoke gated, ruff clean.
 - 15 production files, 13 test files, 6 manifests, 8 wiki pages.
 - Benchmark runner: full 3-lane implementation with Claude CLI integration complete; fallback compiler for real execution without Claude.
 - Governance adapter: full MHE runtime injection (SessionStore, AuditLog, ProvGraph) complete.
@@ -265,7 +265,7 @@ The PyCFD extension is **fully complete** with no remaining placeholders or bloc
 
 **Key deliverables:**
 - 15 production files (gateway → environment → compiler → executor → validator → evidence → policy → study → governance → benchmark)
-- 13 test files (94 tests: 91 pass, 3 smoke gated)
+- 13 test files (97 tests: 94 pass, 3 smoke gated)
 - 6 manifests under `examples/manifests/pycfd/`
 - 8 wiki pages under `docs/wiki/meta-harness-engineer/pycfd-engine-wiki/`
 - 1 blueprint, 1 roadmap, 1 handoff report, 1 work report, 1 cross-extension comparison
@@ -277,4 +277,4 @@ The PyCFD extension is **fully complete** with no remaining placeholders or bloc
 
 **Governance adapter**: Full MHE core integration with `SessionStore`, `AuditLog` (Merkle-anchored), `ProvGraph` (PROV-O entities + relations), `CandidateRecord`/`GraphSnapshot` construction, and `make_session_event` emission.
 
-**Cross-extension comparison**: PyCFD is currently the only MHE PDE extension with real solver execution evidence collected through the benchmark pipeline. Fealpy and Nektar benchmarks are dry-run validated only.
+**Cross-extension comparison**: PyCFD is currently the only MHE PDE extension with real solver execution evidence collected through the benchmark pipeline (timestamped process-state observation, not performance claim). Fealpy and Nektar benchmarks are dry-run validated only.

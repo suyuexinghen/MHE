@@ -174,9 +174,26 @@ A safe dry-run refresh for the remaining CompressibleFlowSolver sentinel was gen
 
 The generated comparison report now includes a `## Capability gates` section, and `result_bundle.json` includes `evidence_context.capability_gate_rows`. This makes the `euler-1d` skip reviewer-facing: the source `.tst` / `.xml` references are preserved in `source_refs.json`, while `capability_status.json` records `promotion_ready=false` until CompressibleFlowSolver extension dispatch is validated.
 
-## 5.11 Backlog
+## 5.11 Diffusion dry-run validation evidence
 
-1. Execute real-mode `Tester` preflight for each additional case and archive `tester.stdout.log` / `tester.stderr.log`; the runner now executes `Tester` when `--allow-real-tools` is set and generated reports surface `tester_summary.json` preflight rows.
-2. Implement or validate Nektar extension replay coverage before expanding to DiffusionSolver, IncNavierStokesSolver, and CompressibleFlowSolver.
-3. Keep `euler-1d` capability-gated until CompressibleFlowSolver extension dispatch support is verified; skipped extension cases now preserve `source_refs.json` and `capability_status.json` with `promotion_ready=false` and missing dispatch capabilities.
+A controlled `diffusion-2d` dry-run refresh was generated as the first validation step for DiffusionSolver coverage, without real external tools or real Claude proposals:
+
+- Run root: `.runs/nektar-diffusion-dry-refresh`
+- Compare bundle: `.runs/nektar-diffusion-dry-refresh/nektar-pde-benchmark/comparison/result_bundle.json`
+- Generated report: `.runs/nektar-diffusion-dry-refresh/nektar-pde-benchmark/comparison/comparison_report.md`
+- Real tools: `false`
+- Real Claude proposals: `false`
+- Approval gate: `approved_with_limitations`
+
+| Case | Extension | Direct | Agent | Verdict | Preflight status | Preflight executed | Reference metrics |
+|---|---|---|---|---|---|---|---:|
+| `diffusion-2d` | passed | passed | passed | all_passed | available | false | 2 |
+
+The dry-run proves only that `diffusion-2d` is wired through the benchmark lane layout, fake proposal evidence, metric table generation, and preflight metadata capture. It does not prove real DiffusionSolver execution, numerical accuracy, or runtime behavior. The next promotion step must explicitly authorize `--allow-real-tools`, confirm local `DiffusionSolver` / `Tester` availability, execute preflight, and classify any outcome as dependency skip, runner bug, or solver failure before making solver-family claims.
+
+## 5.12 Backlog
+
+1. Execute real-mode `Tester` preflight for `diffusion-2d` and any additional cases only after explicit real-tool authorization; archive `tester.stdout.log` / `tester.stderr.log` and keep dry-run evidence separate from real solver evidence.
+2. Implement or validate Nektar extension replay coverage before expanding to broader DiffusionSolver, IncNavierStokesSolver, and CompressibleFlowSolver claims.
+3. Keep `euler-1d` capability-gated until CompressibleFlowSolver extension dispatch support is verified; skipped extension cases preserve `source_refs.json` and `capability_status.json` with `promotion_ready=false` and missing dispatch capabilities.
 4. Preserve `/var/tmp/mhe-runs/<run-id>` external run roots or copy their comparison bundles before cleanup.
