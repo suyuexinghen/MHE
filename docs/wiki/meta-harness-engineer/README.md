@@ -18,6 +18,8 @@
   - `metaharness_ext.abacus` 的 file-driven / launcher-aware 扩展设计、blueprint 与 roadmap
 - [blueprint/](blueprint/)
   - 扩展 blueprint、路线图、handoff、gap report、对齐报告与近期工作材料的集中目录
+- [research-loop-mvp-wiki/](research-loop-mvp-wiki/README.md)
+  - Research Loop MVP 的架构演进、模型设计、实现历史、CLI 入口与验收边界
 - [benchmark/](benchmark/README.md)
   - 跨 extension / agent / direct workflow 的 benchmark 设计、实验计划与结果报告
 
@@ -49,6 +51,11 @@
 - [deepmd-engine-wiki/README.md](deepmd-engine-wiki/README.md)
 - [blueprint/04-deepmd-extension-blueprint.md](blueprint/04-deepmd-extension-blueprint.md)
 - [blueprint/04-deepmd-roadmap.md](blueprint/04-deepmd-roadmap.md)
+
+### 如果你要理解 Research Loop MVP
+
+先看：
+- [research-loop-mvp-wiki/README.md](research-loop-mvp-wiki/README.md)
 
 ### 如果你正在规划或实现 ABACUS 扩展
 
