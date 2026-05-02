@@ -336,14 +336,37 @@ def _capability_gate_rows(runs_root: Path, suite: BenchmarkSuite) -> list[dict[s
         lane_root = root / lane
         if not lane_root.exists():
             continue
-        for status_path in sorted(lane_root.glob("*/capability_status.json")):
-            source_refs_path = status_path.parent / "source_refs.json"
+        case_dirs = sorted(
+            path
+            for path in lane_root.iterdir()
+            if path.is_dir()
+            and ((path / "capability_status.json").exists() or (path / "source_refs.json").exists())
+        )
+        for case_path in case_dirs:
+            status_path = case_path / "capability_status.json"
+            source_refs_path = case_path / "source_refs.json"
+            if not status_path.exists():
+                rows.append(
+                    {
+                        "case_id": case_path.name,
+                        "lane": lane,
+                        "status": "missing",
+                        "promotion_ready": False,
+                        "missing_capabilities": ["capability_status_missing"],
+                        "solver_binary": None,
+                        "solver_family": None,
+                        "plan_status": None,
+                        "source_refs_path": str(source_refs_path),
+                        "capability_status_path": str(status_path),
+                    }
+                )
+                continue
             try:
                 status = read_json(status_path)
             except (JSONDecodeError, OSError) as exc:
                 rows.append(
                     {
-                        "case_id": status_path.parent.name,
+                        "case_id": case_path.name,
                         "lane": lane,
                         "status": "schema_failed",
                         "promotion_ready": False,
@@ -360,7 +383,7 @@ def _capability_gate_rows(runs_root: Path, suite: BenchmarkSuite) -> list[dict[s
                 continue
             rows.append(
                 {
-                    "case_id": status.get("case_id", status_path.parent.name),
+                    "case_id": status.get("case_id", case_path.name),
                     "lane": lane,
                     "status": status.get("status"),
                     "promotion_ready": status.get("promotion_ready", False),

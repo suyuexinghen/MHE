@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "suite": "pycfd-pde",
+  "approval_profile": "pycfd_pde_benchmark_admin_approval",
+  "approval_manifest": ".mhe/approvals/pycfd_pde_benchmark_approval.json",
+  "claim_support": [
+    "workflow_reproducibility",
+    "schema_and_compiler_auditability",
+    "comparison_artifact_generation",
+    "direct_lane_review_traceability"
+  ],
+  "excluded_claims": [
+    "cfd_solver_residual_convergence_without_tolerance_review",
+    "case_type_capability_claims_without_environment_probe",
+    "direct_lane_correctness_without_code_review"
+  ],
+  "checked_in_refs": [
+    ".mhe/approvals/pycfd_direct_lane_code_review.json"
+  ],
+  "observed_artifacts": [
+    {
+      "path": ".runs/pycfd-benchmark/pycfd-pde-benchmark/comparison/result_bundle.json",
+      "artifact_type": "comparison_result_bundle",
+      "evidence_mode": "dry_or_local_run",
+      "checked_in": false,
+      "claim_boundary": "local_run_evidence_requires_environment_probe_before_capability_claims"
+    }
+  ],
+  "required_before_stronger_claims": [
+    "PYCFD_SRC_PATH_environment_probe_report",
+    "residual_tolerance_table_per_case_type",
+    "real_pycfd_run_manifest",
+    "comparable_real_extension_direct_agent_lanes"
+  ]
+}

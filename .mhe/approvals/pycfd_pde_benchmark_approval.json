@@ -37,6 +37,8 @@
   "evidence_refs": [
     ".mhe/config.json",
     ".mhe/benchmarks/comparison-approval.json",
+    ".mhe/evidence/pycfd_pde_evidence_bundle.json",
+    ".mhe/approvals/pycfd_direct_lane_code_review.json",
     "docs/wiki/meta-harness-engineer/benchmark/08-real-run-evidence-plan-analysis.md"
   ],
   "required_evidence": [
