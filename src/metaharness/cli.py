@@ -10,11 +10,13 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from pydantic import ValidationError
+
 from metaharness import __version__
 from metaharness.benchmark_drivers.acp_provider import ACPBrainConfig, ACPBrainProvider
 from metaharness.benchmark_drivers.claude_cli import ClaudeCLIBrainProvider, ClaudeCLIConfig
 from metaharness.benchmark_drivers.compare import evaluate_approval_gate, write_comparison_outputs
-from metaharness.benchmark_drivers.io import specs_dir, write_json
+from metaharness.benchmark_drivers.io import read_json, specs_dir, write_json
 from metaharness.benchmark_drivers.models import BenchmarkLane, BenchmarkSuite
 from metaharness.benchmark_drivers.nektar_cases import get_nektar_cases
 from metaharness.benchmark_drivers.nektar_runner import NektarBenchmarkRunner
@@ -27,10 +29,14 @@ from metaharness.config.xsd_validator import XmlStructuralError, validate_harnes
 from metaharness.core.connection_engine import ConnectionEngine
 from metaharness.core.graph_versions import GraphVersionStore
 from metaharness.core.models import PendingConnectionSet
+from metaharness.core.research import ResearchOrchestrator
 from metaharness.demo import DemoHarness
+from metaharness.research.domains.fealpy import FEALPyRuleBasedExperimentDesigner
+from metaharness.research.store import ResearchStore
 from metaharness.sdk.discovery import discover_manifest_paths
 from metaharness.sdk.loader import declare_component, load_manifest
 from metaharness.sdk.registry import ComponentRegistry
+from metaharness.sdk.research import Hypothesis, ResearchBudget, ResearchQuestion
 from metaharness_ext.ai4pde.case_parser import Ai4PdeCaseXmlError, parse_ai4pde_case_xml
 from metaharness_ext.ai4pde.demo import AI4PDECaseDemoHarness
 from metaharness_ext.fealpy.benchmark_cases import get_fealpy_cases
@@ -392,6 +398,60 @@ def _cmd_benchmark_approval_check(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_research_run(args: argparse.Namespace) -> int:
+    try:
+        question = ResearchQuestion.model_validate(read_json(Path(args.question)))
+        summary = read_json(Path(args.summary))
+        hypothesis = _hypothesis_from_question(question)
+    except (OSError, json.JSONDecodeError, ValidationError, ValueError) as exc:
+        print(f"research-run input error: {exc}", file=sys.stderr)
+        return 2
+
+    runs_root = Path(args.runs_root)
+    store = ResearchStore(runs_root)
+    plan = FEALPyRuleBasedExperimentDesigner().design(question, hypothesis)
+    orchestrator = ResearchOrchestrator(store, budget=ResearchBudget(max_experiments=1))
+    run = orchestrator.pursue(
+        question,
+        hypotheses=[hypothesis],
+        plans=[plan],
+        summaries={plan.plan_id: summary},
+        artifact_refs={plan.plan_id: str(Path(args.summary))},
+    )
+    artifacts = {
+        "question": write_json(runs_root / "research_question.json", run.question),
+        "hypothesis": write_json(runs_root / "hypothesis.json", run.hypotheses[0]),
+        "experiment_plan": write_json(runs_root / "experiment_plan.json", plan),
+        "evidence_bundle": write_json(runs_root / "evidence_bundle.json", run.evidence[0]),
+        "decision": write_json(runs_root / "decision.json", run.decisions[0]),
+        "conclusion": write_json(runs_root / "conclusion.json", run.conclusion),
+        "trace": store.trace_path,
+    }
+    payload = {
+        "question_id": run.question.question_id,
+        "decision": run.decisions[0].decision.value,
+        "runs_root": str(runs_root),
+        "artifacts": {name: str(path) for name, path in artifacts.items()},
+    }
+    json.dump(payload, sys.stdout, indent=2, sort_keys=True)
+    sys.stdout.write("\n")
+    return 0
+
+
+def _hypothesis_from_question(question: ResearchQuestion) -> Hypothesis:
+    metric = question.formal_spec.get("primary_metric")
+    relation = question.formal_spec.get("relation")
+    value = question.formal_spec.get("target", question.formal_spec.get("value"))
+    if not metric or not relation or value is None:
+        raise ValueError("question formal_spec must include primary_metric, relation, and target")
+    return Hypothesis(
+        hypothesis_id=f"h-{question.question_id}",
+        question_id=question.question_id,
+        statement=f"{question.statement} ({metric} {relation} {value})",
+        prediction={str(metric): {"relation": relation, "value": value}},
+    )
+
+
 def _cmd_version(_: argparse.Namespace) -> int:
     print(__version__)
     return 0
@@ -509,6 +569,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Exit nonzero when required approval profiles are intentionally blocked",
     )
     approval_check.set_defaults(func=_cmd_benchmark_approval_check)
+
+    research_run = subparsers.add_parser(
+        "research-run", help="Run a benchmark-backed MVP research loop from JSON artifacts"
+    )
+    research_run.add_argument("--question", required=True, help="path to ResearchQuestion JSON")
+    research_run.add_argument("--summary", required=True, help="path to benchmark summary JSON")
+    research_run.add_argument(
+        "--runs-root", required=True, help="directory for research trace/artifacts"
+    )
+    research_run.set_defaults(func=_cmd_research_run)
 
     version = subparsers.add_parser("version", help="Print the package version")
     version.set_defaults(func=_cmd_version)

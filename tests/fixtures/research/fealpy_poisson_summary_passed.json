@@ -1,0 +1,13 @@
+{
+  "suite": "fealpy-pde",
+  "case_id": "poisson-2d-numpy",
+  "lane": "extension",
+  "status": "passed",
+  "metrics": {
+    "dof": 289,
+    "h1_error": 2.2250025132790325,
+    "l2_error": 0.0024865245884339074,
+    "wall_time": 0.0045
+  },
+  "failure_category": null
+}

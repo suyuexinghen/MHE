@@ -1,0 +1,12 @@
+{
+  "question_id": "rq-fealpy-poisson-l2-threshold",
+  "statement": "Can FEALPy solve the Poisson benchmark with L2 error below 0.01?",
+  "formal_spec": {
+    "primary_metric": "l2_error",
+    "relation": "lt",
+    "target": 0.01
+  },
+  "status": "active",
+  "created_from": "benchmark:fealpy-pde:poisson-2d-numpy",
+  "validation_strategy": "GROUND_TRUTH"
+}

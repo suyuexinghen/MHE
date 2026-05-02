@@ -1,0 +1,8 @@
+{
+  "suite": "fealpy-pde",
+  "case_id": "poisson-2d-numpy",
+  "lane": "extension",
+  "status": "failed",
+  "metrics": {},
+  "failure_category": "runner_error"
+}
