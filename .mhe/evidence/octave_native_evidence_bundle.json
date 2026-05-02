@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "suite": "octave-native",
+  "approval_profile": "octave_native_benchmark_admin_approval",
+  "approval_manifest": ".mhe/approvals/octave_native_benchmark_approval.json",
+  "claim_support": [
+    "workflow_reproducibility",
+    "comparison_artifact_generation",
+    "approval_status_reporting"
+  ],
+  "excluded_claims": [
+    "solver_superiority_without_real_comparable_runs",
+    "dry_run_as_real_solver_evidence"
+  ],
+  "observed_artifacts": [
+    {
+      "path": ".runs/comparison-approval-dry-20260430/octave-native-benchmark/comparison/result_bundle.json",
+      "artifact_type": "comparison_result_bundle",
+      "evidence_mode": "dry_run",
+      "checked_in": false,
+      "claim_boundary": "dry_run_is_workflow_evidence_only"
+    }
+  ],
+  "required_before_stronger_claims": [
+    "real_tools_run_root",
+    "repeat_summary_for_stability_claims",
+    "comparable_real_extension_direct_agent_lanes"
+  ]
+}

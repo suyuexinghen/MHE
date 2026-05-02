@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "bundle_id": "comparison-benchmark-evidence-2026-05-02",
+  "scope": "comparison_benchmark_workflow_reporting",
+  "claim_support": [
+    "approval_policy_is_machine_readable",
+    "suite_admin_manifests_are_present",
+    "comparison_outputs_can_report_approval_status",
+    "unsupported_scientific_claims_are_excluded"
+  ],
+  "excluded_claims": [
+    "numerical_solver_superiority",
+    "runtime_performance_superiority",
+    "scientific_correctness_without_domain_review",
+    "dry_run_as_real_solver_evidence"
+  ],
+  "checked_in_refs": [
+    ".mhe/config.json",
+    ".mhe/benchmarks/comparison-approval.json",
+    "tests/test_benchmark_approval_policy.py",
+    "tests/test_benchmark_drivers_cli.py",
+    "docs/wiki/meta-harness-engineer/benchmark/reports/approval-gating-work-report.md"
+  ],
+  "suite_evidence_bundles": [
+    ".mhe/evidence/octave_native_evidence_bundle.json",
+    ".mhe/evidence/nektar_pde_evidence_bundle.json",
+    ".mhe/evidence/fealpy_pde_evidence_bundle.json",
+    ".mhe/evidence/pycfd_pde_evidence_bundle.json",
+    ".mhe/evidence/qcompute_abacus_evidence_bundle.json"
+  ],
+  "approval_gate_smoke": {
+    "command": "PYTHONPATH=src python -m metaharness.cli benchmark-approval-check --suite qcompute-abacus --cases abacus-hs-bridge-pending --config-root .mhe --strict",
+    "expected_exit_code": 1,
+    "expected_blocked_profile": "abacus_hs_scientific"
+  }
+}

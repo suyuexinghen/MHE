@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "suite": "fealpy-pde",
+  "approval_profile": "fealpy_pde_benchmark_admin_approval",
+  "approval_manifest": ".mhe/approvals/fealpy_pde_benchmark_approval.json",
+  "claim_support": [
+    "workflow_reproducibility",
+    "schema_and_compiler_auditability",
+    "comparison_artifact_generation",
+    "repeat_summary_presence_for_workflow_stability"
+  ],
+  "excluded_claims": [
+    "pde_solver_numerical_accuracy_without_tolerance_review",
+    "backend_capability_claims_without_installed_api_verification",
+    "direct_lane_correctness_without_code_review"
+  ],
+  "observed_artifacts": [
+    {
+      "path": ".runs/comparison-approval-dry-20260430/fealpy-pde-benchmark/comparison/result_bundle.json",
+      "artifact_type": "comparison_result_bundle",
+      "evidence_mode": "dry_run",
+      "checked_in": false,
+      "claim_boundary": "dry_run_is_workflow_evidence_only"
+    },
+    {
+      "path": ".runs/fealpy-final3-20260501/fealpy-pde-benchmark/comparison/repeat_summary.json",
+      "artifact_type": "repeat_summary",
+      "evidence_mode": "repeat_run_summary",
+      "checked_in": false,
+      "claim_boundary": "repeat_summary_supports_workflow_stability_only_until_real_tool_context_is_reviewed"
+    },
+    {
+      "path": ".runs/fealpy-repeat3-20260501/fealpy-pde-benchmark/comparison/repeat_summary.json",
+      "artifact_type": "repeat_summary",
+      "evidence_mode": "repeat_run_summary",
+      "checked_in": false,
+      "claim_boundary": "pilot_repeat_summary_not_final_scientific_evidence"
+    }
+  ],
+  "required_before_stronger_claims": [
+    "installed_fealpy_api_surface_import_verification",
+    "tolerance_table_per_pde_family",
+    "direct_lane_generated_code_review",
+    "comparable_real_extension_direct_agent_lanes"
+  ]
+}

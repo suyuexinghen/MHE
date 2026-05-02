@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "suite": "nektar-pde",
+  "approval_profile": "nektar_pde_benchmark_admin_approval",
+  "approval_manifest": ".mhe/approvals/nektar_pde_benchmark_approval.json",
+  "claim_support": [
+    "workflow_reproducibility",
+    "capability_skip_truthfulness",
+    "comparison_artifact_generation",
+    "approval_status_reporting"
+  ],
+  "excluded_claims": [
+    "pde_solver_superiority_without_real_comparable_runs",
+    "dry_run_as_real_solver_evidence"
+  ],
+  "observed_artifacts": [
+    {
+      "path": ".runs/comparison-approval-dry-20260430/nektar-pde-benchmark/comparison/result_bundle.json",
+      "artifact_type": "comparison_result_bundle",
+      "evidence_mode": "dry_run",
+      "checked_in": false,
+      "claim_boundary": "dry_run_is_workflow_evidence_only"
+    },
+    {
+      "path": ".runs/nektar-capability-skip-refresh/nektar-pde-benchmark/comparison/result_bundle.json",
+      "artifact_type": "capability_skip_comparison_bundle",
+      "evidence_mode": "capability_skip",
+      "checked_in": false,
+      "claim_boundary": "skip_evidence_does_not_prove_solver_quality"
+    }
+  ],
+  "required_before_stronger_claims": [
+    "real_nektar_solver_replay_artifacts",
+    "repeat_summary_for_stability_claims",
+    "comparable_real_extension_direct_agent_lanes"
+  ]
+}

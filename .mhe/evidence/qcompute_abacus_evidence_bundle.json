@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "suite": "qcompute-abacus",
+  "approval_profile": "qcompute_abacus_benchmark_admin_approval",
+  "approval_manifest": ".mhe/approvals/qcompute_abacus_benchmark_approval.json",
+  "scientific_profile": "abacus_hs_scientific",
+  "scientific_manifest": ".mhe/approvals/abacus_hs_approval.json",
+  "claim_support": [
+    "workflow_evidence_completeness",
+    "schema_and_artifact_auditability",
+    "capability_skip_truthfulness",
+    "abacus_hs_promotion_blocker_visibility"
+  ],
+  "excluded_claims": [
+    "production_abacus_hs_conversion_available",
+    "scientifically_validated_abacus_hs_to_qcompute_hamiltonian",
+    "quantum_advantage",
+    "numerical_superiority_over_direct_or_agent_lanes"
+  ],
+  "checked_in_refs": [
+    ".mhe/approvals/abacus_hs_approval.json",
+    "tests/test_benchmark_drivers_qcompute_abacus.py",
+    "docs/wiki/meta-harness-engineer/benchmark/reports/qcompute-abacus-real-capability-roadmap-report.md"
+  ],
+  "observed_artifacts": [
+    {
+      "path": ".runs/comparison-approval-dry-20260430/qcompute-abacus-benchmark/comparison/result_bundle.json",
+      "artifact_type": "comparison_result_bundle",
+      "evidence_mode": "dry_run_or_proxy",
+      "checked_in": false,
+      "claim_boundary": "proxy_or_dry_run_evidence_does_not_prove_quantum_or_abacus_conversion_advantage"
+    },
+    {
+      "path": ".runs/comparison-approval-dry-20260430/qcompute-abacus-benchmark/extension/abacus-hs-bridge-pending/promotion_gate.json",
+      "artifact_type": "promotion_gate",
+      "evidence_mode": "sentinel_skip",
+      "checked_in": false,
+      "claim_boundary": "sentinel_must_remain_skipped_until_all_categories_clear"
+    },
+    {
+      "path": ".runs/comparison-approval-dry-20260430/qcompute-abacus-benchmark/extension/abacus-hs-bridge-pending/bridge_status.json",
+      "artifact_type": "bridge_status",
+      "evidence_mode": "sentinel_skip",
+      "checked_in": false,
+      "claim_boundary": "bridge_status_explains_missing_converter_without_enabling_execution"
+    }
+  ],
+  "current_scientific_gate": {
+    "status": "blocked",
+    "blocked_profile": "abacus_hs_scientific",
+    "must_remain_skipped_case": "abacus-hs-bridge-pending"
+  },
+  "required_before_stronger_claims": [
+    "real_abacus_hs_fixture_refs",
+    "reviewed_tolerance_table_ref",
+    "reference_observable",
+    "production_hs_to_qcompute_converter_evidence",
+    "real_repeated_qcompute_benchmark_evidence"
+  ]
+}
