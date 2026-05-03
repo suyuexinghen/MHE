@@ -207,3 +207,51 @@ def test_research_run_cli_supports_text_output_and_trace_printing(tmp_path: Path
     assert "rq-fealpy-poisson-l2-threshold" in output
     manifest = json.loads((tmp_path / "artifact_manifest.json").read_text())
     assert manifest["derived_records"]["review_id"]
+
+
+def test_research_run_cli_merges_negative_memory_sidecars(tmp_path: Path, capsys) -> None:
+    negative_memory = tmp_path / "negative_result_memory.json"
+    negative_memory.write_text(
+        json.dumps(
+            {
+                "schema": "metaharness.negative_result_memory.v1",
+                "clusters": [
+                    {
+                        "cluster_id": "negative-shared",
+                        "question_ids": ["rq-prior"],
+                        "domain_tags": {"suite": "fealpy-pde"},
+                        "metric_schema": "l2_error",
+                        "failure_category": "runner_error",
+                        "evidence_bundle_ids": ["ev-prior"],
+                        "refuted_hypothesis_ids": ["h-prior"],
+                        "repeated_dead_end": False,
+                    }
+                ],
+            }
+        )
+        + "\n"
+    )
+
+    status = main(
+        [
+            "research-run",
+            "--question",
+            str(QUESTION),
+            "--summary",
+            str(FIXTURES / "fealpy_poisson_summary_failed.json"),
+            "--runs-root",
+            str(tmp_path / "out"),
+            "--negative-memory",
+            str(negative_memory),
+        ]
+    )
+
+    assert status == 0
+    capsys.readouterr()
+    memory = json.loads((tmp_path / "out" / "negative_result_memory.json").read_text())
+    assert memory["schema"] == "metaharness.negative_result_memory.v1"
+    shared = next(
+        cluster for cluster in memory["clusters"] if cluster["cluster_id"] == "negative-shared"
+    )
+    assert "rq-prior" in shared["question_ids"]
+    assert shared["repeated_dead_end"] is False

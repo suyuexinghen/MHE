@@ -449,6 +449,7 @@ def _cmd_research_run(args: argparse.Namespace) -> int:
         reviews=reviews,
         dossier=dossier,
         summary_records=summary_records,
+        negative_memory_paths=[Path(path) for path in args.negative_memory],
         trace_path=store.trace_path,
     )
     manifest = _research_run_manifest(
@@ -600,6 +601,7 @@ def _write_research_run_artifacts(
     reviews: list[Any],
     dossier: Any,
     summary_records: list[dict[str, Any]],
+    negative_memory_paths: list[Path],
     trace_path: Path,
 ) -> dict[str, Path]:
     artifacts = {
@@ -620,6 +622,10 @@ def _write_research_run_artifacts(
         "reproducibility_summary": write_json(
             runs_root / "reproducibility_summary.json",
             _reproducibility_summary(summary_records),
+        ),
+        "negative_result_memory": write_json(
+            runs_root / "negative_result_memory.json",
+            _negative_result_memory(dossier, negative_memory_paths),
         ),
         "trace": trace_path,
     }
@@ -716,6 +722,64 @@ def _reproducibility_summary(summary_records: list[dict[str, Any]]) -> dict[str,
         "repeat_summary_refs": repeat_summary_refs,
         "rows": rows,
     }
+
+
+def _negative_result_memory(dossier: Any, negative_memory_paths: list[Path]) -> dict[str, Any]:
+    clusters: dict[str, dict[str, Any]] = {}
+    for path in negative_memory_paths:
+        if not path.exists():
+            continue
+        payload = read_json(path)
+        for cluster in payload.get("clusters", []):
+            _merge_negative_cluster(clusters, cluster)
+    for cluster in dossier.negative_result_clusters:
+        _merge_negative_cluster(
+            clusters,
+            {
+                "cluster_id": cluster.cluster_id,
+                "question_id": dossier.question_id,
+                "domain_tags": cluster.domain_tags,
+                "metric_schema": cluster.metric_schema,
+                "failure_category": cluster.failure_category,
+                "evidence_bundle_ids": cluster.evidence_bundle_ids,
+                "refuted_hypothesis_ids": cluster.refuted_hypothesis_ids,
+                "repeated_dead_end": cluster.repeated_dead_end,
+            },
+        )
+    return {
+        "schema": "metaharness.negative_result_memory.v1",
+        "clusters": sorted(clusters.values(), key=lambda item: item["cluster_id"]),
+    }
+
+
+def _merge_negative_cluster(clusters: dict[str, dict[str, Any]], cluster: dict[str, Any]) -> None:
+    cluster_id = str(cluster.get("cluster_id"))
+    entry = clusters.setdefault(
+        cluster_id,
+        {
+            "cluster_id": cluster_id,
+            "question_ids": [],
+            "domain_tags": cluster.get("domain_tags", {}),
+            "metric_schema": cluster.get("metric_schema"),
+            "failure_category": cluster.get("failure_category"),
+            "evidence_bundle_ids": [],
+            "refuted_hypothesis_ids": [],
+            "repeated_dead_end": False,
+        },
+    )
+    question_ids = list(cluster.get("question_ids", []))
+    question_id = cluster.get("question_id")
+    if question_id:
+        question_ids.append(question_id)
+    for value in question_ids:
+        if value not in entry["question_ids"]:
+            entry["question_ids"].append(str(value))
+    for key in ("evidence_bundle_ids", "refuted_hypothesis_ids"):
+        for item in cluster.get(key, []):
+            if item not in entry[key]:
+                entry[key].append(item)
+    if cluster.get("repeated_dead_end"):
+        entry["repeated_dead_end"] = True
 
 
 def _research_run_manifest(
@@ -924,6 +988,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     research_run.add_argument("--output-format", choices=["json", "text"], default="json")
     research_run.add_argument("--print-trace", action="store_true")
+    research_run.add_argument(
+        "--negative-memory",
+        action="append",
+        default=[],
+        help="prior negative-result memory JSON to merge into the dossier sidecar",
+    )
     research_run.set_defaults(func=_cmd_research_run)
 
     version = subparsers.add_parser("version", help="Print the package version")

@@ -19,7 +19,7 @@ python -m pytest tests/test_research_*.py -q
 - `test_research_hypotheses.py` — HypothesisActionSpace + testability filter
 - `test_research_dossier.py` — ResearchDossier + negative result aggregation
 
-### CLI focused tests（3 passed）
+### CLI focused tests（6 passed）
 
 ```bash
 python -m pytest tests/test_research_cli.py -q
@@ -28,6 +28,10 @@ python -m pytest tests/test_research_cli.py -q
 - `test_research_run_cli_writes_traceable_artifacts`：passed summary → ADVANCE + 全部 artifact
 - `test_research_run_cli_preserves_execution_failure_without_refuting`：failed summary → REFINE + failure 证据保留
 - `test_research_run_cli_rejects_invalid_question`：非法 question → exit 2
+- `test_research_run_cli_supports_multi_summary_and_sidecars`：多 summary → plural artifact + sidecar
+- `test_research_run_cli_can_handoff_from_benchmark_output`：benchmark-run 输出目录 → research-run handoff
+- `test_research_run_cli_supports_text_output_and_trace_printing`：`text` 输出 + trace 打印
+- `test_research_run_cli_merges_negative_memory_sidecars`：跨 question 负结果记忆合并
 
 ### Format / Lint
 
@@ -80,17 +84,21 @@ Research Loop MVP **不声称**：
 - 开放未解问题 benchmarks（高熵合金、量子纠错、湍流）
 - PIVOT/RESCOPE/ABANDON 自动治理
 
+### 已实现的确定性增强
+
+- benchmark-run → research-run pipeline handoff
+- Multi-summary research run
+- `--output-format text` / `--print-trace`
+- ResearchDossier、MetricSchema、SOTA baseline、reproducibility、negative-result memory sidecars
+
 ### 后续 CLI UX 增强
 
-- `--hypothesis`、`--plan`、`--output-format json`、`--print-trace` flags
-- Multi-case research run
-- benchmark-run → research-run pipeline handoff
+- `--hypothesis`、`--plan` flags
 - ResearchDossier 用户可读 artifact 暴露
 - Reviewer gate 暴露
 
 ### 更深集成路径
 
-- SOTA baseline registry（benchmark summaries 隐式充当）
 - MetricSchema 提升进 benchmark core model
 - Merkle provenance / audit graph 集成
 - 跨 question dead-end 检测

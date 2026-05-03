@@ -8,13 +8,21 @@
 
 ```
 usage: metaharness research-run [-h] --question QUESTION
-                                --summary SUMMARY --runs-root RUNS_ROOT
+                                [--summary SUMMARY] [--benchmark-runs-root BENCHMARK_RUNS_ROOT]
+                                [--suite SUITE] [--cases CASES] [--lanes LANES]
+                                --runs-root RUNS_ROOT [--output-format {json,text}]
+                                [--print-trace] [--negative-memory NEGATIVE_MEMORY]
 ```
 
 参数：
 - `--question`：ResearchQuestion JSON 路径（必需）
-- `--summary`：benchmark summary JSON 路径（必需）
+- `--summary`：benchmark summary JSON 路径，可重复
+- `--benchmark-runs-root`：从 benchmark-run 输出目录解析 summary
+- `--suite` / `--cases` / `--lanes`：与 `--benchmark-runs-root` 配合使用
 - `--runs-root`：产物输出目录（必需）
+- `--output-format`：`json` 或 `text`
+- `--print-trace`：在 JSON 输出中附加 trace 行
+- `--negative-memory`：可重复的负结果记忆 sidecar 输入
 
 ## 5.2 示例输入
 
@@ -71,6 +79,18 @@ PYTHONPATH=src python -m metaharness.cli research-run \
   --runs-root .runs/research-loop-smoke
 ```
 
+Benchmark handoff example：
+
+```bash
+PYTHONPATH=src python -m metaharness.cli research-run \
+  --question examples/research/fealpy_poisson_question.json \
+  --benchmark-runs-root .runs/fealpy-benchmark \
+  --suite fealpy-pde \
+  --cases poisson-2d-numpy \
+  --lanes extension \
+  --runs-root .runs/research-loop-smoke
+```
+
 ## 5.4 预期 stdout
 
 passed summary（满足 primary metric 阈值）：
@@ -108,16 +128,20 @@ exit code：`0` 表示闭环成功完成（不管 decision 是 ADVANCE 还是 RE
 
 ```text
 .runs/research-loop-smoke/
-  research_trace.jsonl       # 可回放的完整链路
-  research_question.json     # 输入 question 副本
-  hypothesis.json            # rule-based designer 推导的 hypothesis
-  experiment_plan.json       # 实验计划
-  evidence_bundle.json       # summary → evidence 映射结果
-  decision.json              # ADVANCE 或 REFINE
-  review.json                # MetricThresholdReviewer 输出
-  research_dossier.json      # 聚合后的研究档案
-  conclusion.json            # ResearchConclusion
-  artifact_manifest.json     # 输入/产物元数据 + non-claims
+  research_trace.jsonl              # 可回放的完整链路
+  research_question.json            # 输入 question 副本
+  hypothesis.json / hypotheses.json  # 单 case 或多 case hypothesis
+  experiment_plan.json / experiment_plans.json
+  evidence_bundle.json / evidence_bundles.json
+  decision.json / decisions.json
+  review.json / reviews.json
+  research_dossier.json             # 聚合后的研究档案
+  conclusion.json                   # ResearchConclusion
+  metric_schema.json                # metric sidecar
+  sota_baselines.json               # baseline sidecar
+  reproducibility_summary.json      # 复现性摘要
+  negative_result_memory.json       # 负结果记忆 sidecar
+  artifact_manifest.json            # 输入/产物元数据 + non-claims
 ```
 
 ## 5.6 设计约束
