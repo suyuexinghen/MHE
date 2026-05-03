@@ -1,0 +1,58 @@
+{
+  "name": "moose_environment",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.moose.environment:MooseEnvironmentProbeComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [
+      {
+        "name": "task",
+        "type": "MooseProblemSpec",
+        "required": true,
+        "description": "Probe the MOOSE runtime for a specific problem spec."
+      }
+    ],
+    "outputs": [
+      {
+        "name": "environment",
+        "type": "MooseEnvironmentReport",
+        "mode": "sync",
+        "description": "Return a MOOSE environment report."
+      }
+    ],
+    "events": [],
+    "provides": [
+      {
+        "name": "moose.environment.probe",
+        "description": "Probe moose-opt availability, source-root hints, and workspace readiness."
+      }
+    ],
+    "requires": [],
+    "slots": [
+      {
+        "slot": "moose_environment.primary",
+        "binding": "primary",
+        "required": true
+      }
+    ]
+  },
+  "safety": {
+    "protected": false,
+    "mutability": "mutable",
+    "sandbox_profile": "workspace-write",
+    "hot_swap": true
+  },
+  "policy": {
+    "sandbox": {
+      "tier": "workspace-write"
+    },
+    "credentials": {
+      "requires_subject": false,
+      "allow_inline_credentials": false,
+      "required_claims": []
+    }
+  },
+  "state_schema_version": 1,
+  "provides": ["moose.environment.probe"]
+}

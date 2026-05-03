@@ -1,0 +1,58 @@
+{
+  "name": "moose_gateway",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.moose.gateway:MooseGatewayComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [
+      {
+        "name": "task",
+        "type": "MooseProblemSpec",
+        "required": true,
+        "description": "Issue or normalize a MOOSE problem spec."
+      }
+    ],
+    "outputs": [
+      {
+        "name": "task",
+        "type": "MooseProblemSpec",
+        "mode": "sync",
+        "description": "Return a MOOSE problem spec."
+      }
+    ],
+    "events": [],
+    "provides": [
+      {
+        "name": "moose.task.issue",
+        "description": "Issue controlled MOOSE task specifications."
+      }
+    ],
+    "requires": [],
+    "slots": [
+      {
+        "slot": "moose_gateway.primary",
+        "binding": "primary",
+        "required": true
+      }
+    ]
+  },
+  "safety": {
+    "protected": false,
+    "mutability": "mutable",
+    "sandbox_profile": "workspace-write",
+    "hot_swap": true
+  },
+  "policy": {
+    "sandbox": {
+      "tier": "workspace-write"
+    },
+    "credentials": {
+      "requires_subject": false,
+      "allow_inline_credentials": false,
+      "required_claims": []
+    }
+  },
+  "state_schema_version": 1,
+  "provides": ["moose.task.issue"]
+}

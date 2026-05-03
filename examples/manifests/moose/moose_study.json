@@ -1,0 +1,58 @@
+{
+  "name": "moose_study",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.moose.study:MooseStudyComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [
+      {
+        "name": "study",
+        "type": "MooseStudySpec",
+        "required": true,
+        "description": "Execute a MOOSE parameter study."
+      }
+    ],
+    "outputs": [
+      {
+        "name": "report",
+        "type": "MooseStudyReport",
+        "mode": "sync",
+        "description": "Return a MOOSE study report."
+      }
+    ],
+    "events": [],
+    "provides": [
+      {
+        "name": "moose.study.run",
+        "description": "Run controlled MOOSE parameter studies."
+      }
+    ],
+    "requires": [],
+    "slots": [
+      {
+        "slot": "moose_study.primary",
+        "binding": "primary",
+        "required": true
+      }
+    ]
+  },
+  "safety": {
+    "protected": false,
+    "mutability": "mutable",
+    "sandbox_profile": "workspace-write",
+    "hot_swap": true
+  },
+  "policy": {
+    "sandbox": {
+      "tier": "workspace-write"
+    },
+    "credentials": {
+      "requires_subject": false,
+      "allow_inline_credentials": false,
+      "required_claims": []
+    }
+  },
+  "state_schema_version": 1,
+  "provides": ["moose.study.run"]
+}

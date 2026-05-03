@@ -1,0 +1,78 @@
+{
+  "name": "moose",
+  "version": "0.1.0",
+  "kind": "custom",
+  "entry": "metaharness_ext.moose",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [],
+    "outputs": [],
+    "events": [],
+    "provides": [
+      {
+        "name": "moose.task.issue",
+        "description": "Issue controlled MOOSE task specifications."
+      },
+      {
+        "name": "moose.environment.probe",
+        "description": "Probe moose-opt availability, source-root hints, and workspace readiness."
+      },
+      {
+        "name": "moose.input.compile",
+        "description": "Compile typed MOOSE specifications into executable input plans."
+      },
+      {
+        "name": "moose.execute.run",
+        "description": "Execute compiled MOOSE plans in managed workspaces."
+      },
+      {
+        "name": "moose.validate.report",
+        "description": "Validate MOOSE outputs, warnings, and evidence files."
+      },
+      {
+        "name": "moose.evidence.bundle",
+        "description": "Bundle MOOSE environment, plan, run, and validation evidence."
+      },
+      {
+        "name": "moose.policy.evaluate",
+        "description": "Map MOOSE validation evidence to governance decisions."
+      },
+      {
+        "name": "moose.study.run",
+        "description": "Run controlled MOOSE parameter studies."
+      }
+    ],
+    "requires": [],
+    "slots": []
+  },
+  "safety": {
+    "protected": false,
+    "mutability": "mutable",
+    "sandbox_profile": "workspace-write",
+    "hot_swap": true
+  },
+  "policy": {
+    "sandbox": {
+      "tier": "workspace-write"
+    },
+    "credentials": {
+      "requires_subject": false,
+      "allow_inline_credentials": false,
+      "required_claims": []
+    }
+  },
+  "state_schema_version": 1,
+  "bins": [
+    "moose-opt"
+  ],
+  "provides": [
+    "moose.task.issue",
+    "moose.environment.probe",
+    "moose.input.compile",
+    "moose.execute.run",
+    "moose.validate.report",
+    "moose.evidence.bundle",
+    "moose.policy.evaluate",
+    "moose.study.run"
+  ]
+}

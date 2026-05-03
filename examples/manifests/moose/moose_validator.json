@@ -1,0 +1,64 @@
+{
+  "name": "moose_validator",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.moose.validator:MooseValidatorComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [
+      {
+        "name": "run",
+        "type": "MooseRunArtifact",
+        "required": true,
+        "description": "Validate a MOOSE run artifact."
+      },
+      {
+        "name": "plan",
+        "type": "MooseRunPlan",
+        "required": false,
+        "description": "Optional plan context for expected outputs."
+      }
+    ],
+    "outputs": [
+      {
+        "name": "validation",
+        "type": "MooseValidationReport",
+        "mode": "sync",
+        "description": "Return a MOOSE validation report."
+      }
+    ],
+    "events": [],
+    "provides": [
+      {
+        "name": "moose.validate.report",
+        "description": "Validate MOOSE outputs, warnings, and evidence files."
+      }
+    ],
+    "requires": [],
+    "slots": [
+      {
+        "slot": "moose_validator.primary",
+        "binding": "primary",
+        "required": true
+      }
+    ]
+  },
+  "safety": {
+    "protected": true,
+    "mutability": "immutable",
+    "sandbox_profile": "read-only",
+    "hot_swap": false
+  },
+  "policy": {
+    "sandbox": {
+      "tier": "read-only"
+    },
+    "credentials": {
+      "requires_subject": false,
+      "allow_inline_credentials": false,
+      "required_claims": []
+    }
+  },
+  "state_schema_version": 1,
+  "provides": ["moose.validate.report"]
+}

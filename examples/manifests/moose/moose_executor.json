@@ -1,0 +1,64 @@
+{
+  "name": "moose_executor",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.moose.executor:MooseExecutorComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [
+      {
+        "name": "plan",
+        "type": "MooseRunPlan",
+        "required": true,
+        "description": "Execute a compiled MOOSE run plan."
+      },
+      {
+        "name": "environment",
+        "type": "MooseEnvironmentReport",
+        "required": false,
+        "description": "Optional environment report for short-circuiting unavailable runs."
+      }
+    ],
+    "outputs": [
+      {
+        "name": "run",
+        "type": "MooseRunArtifact",
+        "mode": "sync",
+        "description": "Return a MOOSE run artifact."
+      }
+    ],
+    "events": [],
+    "provides": [
+      {
+        "name": "moose.execute.run",
+        "description": "Execute compiled MOOSE plans in managed workspaces."
+      }
+    ],
+    "requires": [],
+    "slots": [
+      {
+        "slot": "moose_executor.primary",
+        "binding": "primary",
+        "required": true
+      }
+    ]
+  },
+  "safety": {
+    "protected": false,
+    "mutability": "mutable",
+    "sandbox_profile": "workspace-write",
+    "hot_swap": true
+  },
+  "policy": {
+    "sandbox": {
+      "tier": "workspace-write"
+    },
+    "credentials": {
+      "requires_subject": false,
+      "allow_inline_credentials": false,
+      "required_claims": []
+    }
+  },
+  "state_schema_version": 1,
+  "provides": ["moose.execute.run"]
+}
