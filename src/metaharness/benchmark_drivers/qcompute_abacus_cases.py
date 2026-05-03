@@ -37,6 +37,11 @@ ABACUS_HS_SOURCE_REFS = [
     "/home/linden/Obsidian Vault/AI4S-Agent-Book/downloads/abacus-develop/tests/03_NAO_multik/scf_out_hsr/INPUT",
 ]
 
+QEC_SOURCE_REFS = [
+    "docs/plan-drafts/qcompute-fixments.md",
+    "https://nvidia.github.io/cudaqx/components/qec/introduction.html",
+]
+
 COMMON_H2_PROBLEM: dict[str, Any] = {
     "backend": "qiskit_aer",
     "simulator": True,
@@ -106,6 +111,78 @@ def qcompute_abacus_case_catalog() -> dict[str, BenchmarkCaseSpec]:
             },
             problem_definition={**COMMON_H2_PROBLEM, "fermion_mapping": "jordan_wigner"},
             metadata={"proxy": True, "comparison": "fermion_mapping"},
+        ),
+        BenchmarkCaseSpec(
+            case_id="steane-qec-memory-syndrome",
+            suite="qcompute-abacus",
+            task_family="qcompute_qec_memory_syndrome",
+            description=(
+                "Steane [[7,1,3]] memory-circuit syndrome decoding dry-run benchmark for "
+                "QCompute-adjacent QEC workflow evidence."
+            ),
+            required_capabilities=[
+                "qec_code_catalog",
+                "syndrome_decoder",
+                "memory_circuit_sampling",
+            ],
+            source_reference={
+                "qec_source_refs": QEC_SOURCE_REFS,
+                "reference_code": "Steane [[7,1,3]] CSS code",
+                "reference_decoder": "single-error lookup-table syndrome decoder",
+            },
+            expected_metrics=[
+                "physical_qubits",
+                "logical_qubits",
+                "code_distance",
+                "stabilizer_count",
+                "syndrome_bits",
+                "memory_rounds",
+                "shots_completed",
+                "decoder_converged_rate",
+                "logical_failure_rate",
+                "elapsed_seconds",
+            ],
+            reference_metrics={
+                "physical_qubits": MetricReference(value=7.0, tolerance=0.0),
+                "logical_qubits": MetricReference(value=1.0, tolerance=0.0),
+                "code_distance": MetricReference(value=3.0, tolerance=0.0),
+                "stabilizer_count": MetricReference(value=6.0, tolerance=0.0),
+                "syndrome_bits": MetricReference(value=6.0, tolerance=0.0),
+                "memory_rounds": MetricReference(value=1.0, tolerance=0.0),
+                "shots_completed": MetricReference(value=0.0, tolerance=0.0),
+                "decoder_converged_rate": MetricReference(value=1.0, tolerance=0.0),
+                "logical_failure_rate": MetricReference(value=0.0, tolerance=0.0),
+            },
+            problem_definition={
+                "code": "steane",
+                "code_parameters": {"n": 7, "k": 1, "distance": 3},
+                "stabilizers": [
+                    "XXXXIII",
+                    "IXXIXXI",
+                    "IIXXIXX",
+                    "ZZZZIII",
+                    "IZZIZZI",
+                    "IIZZIZZ",
+                ],
+                "decoder": "single_error_lut",
+                "experiment": "memory_circuit",
+                "initial_state": "prep0",
+                "memory_rounds": 1,
+                "shots": 128,
+                "noise_model": "none",
+                "execution_status": "dry_run_only",
+            },
+            metadata={
+                "proxy": True,
+                "domain": "quantum_error_correction",
+                "numeric_claim_boundary": "dry-run topology and artifact-shape check only",
+                "non_claims": [
+                    "real CUDA-Q QEC execution",
+                    "real QCompute QEC execution",
+                    "hardware logical error suppression",
+                    "fault-tolerance threshold demonstration",
+                ],
+            },
         ),
         BenchmarkCaseSpec(
             case_id="abacus-hs-bridge-pending",

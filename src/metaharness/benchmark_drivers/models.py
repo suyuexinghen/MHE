@@ -5,7 +5,14 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, computed_field, field_validator
 
-BenchmarkSuite = Literal["octave-native", "nektar-pde", "qcompute-abacus", "fealpy-pde", "pycfd-pde"]
+BenchmarkSuite = Literal[
+    "octave-native",
+    "nektar-pde",
+    "qcompute-abacus",
+    "fealpy-pde",
+    "pycfd-pde",
+    "boutpp-usage",
+]
 BenchmarkLane = Literal["extension", "direct", "agent"]
 LaneStatus = Literal["passed", "failed", "skipped", "schema_failed"]
 

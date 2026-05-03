@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from metaharness.benchmark_drivers.claude_cli import FakeClaudeCLIBrainProvider
 from metaharness.benchmark_drivers.compare import write_comparison_outputs
 from metaharness.benchmark_drivers.qcompute_abacus_cases import get_qcompute_abacus_cases
 from metaharness.benchmark_drivers.qcompute_abacus_runner import QComputeAbacusBenchmarkRunner
@@ -28,9 +29,12 @@ def test_qcompute_abacus_catalog_includes_proxy_and_bridge_cases() -> None:
     assert set(cases) == {
         "h2-fcidump-vqe-proxy",
         "h2-fcidump-jw-vs-bk",
+        "steane-qec-memory-syndrome",
         "abacus-hs-bridge-pending",
     }
     assert cases["h2-fcidump-vqe-proxy"].suite == "qcompute-abacus"
+    assert cases["steane-qec-memory-syndrome"].task_family == "qcompute_qec_memory_syndrome"
+    assert cases["steane-qec-memory-syndrome"].metadata["domain"] == "quantum_error_correction"
     assert cases["abacus-hs-bridge-pending"].capability_gated is True
     assert "abacus_hs_to_fcidump_bridge" in cases["abacus-hs-bridge-pending"].required_capabilities
 
@@ -64,6 +68,29 @@ def test_qcompute_abacus_mapping_case_writes_dry_run_summaries(tmp_path: Path) -
     )
     assert extension_summary["metrics"]["jw_num_qubits"] == 2.0
     assert extension_summary["metrics"]["bk_num_qubits"] == 2.0
+
+
+def test_qcompute_abacus_qec_case_writes_dry_run_evidence(tmp_path: Path) -> None:
+    case = get_qcompute_abacus_cases(["steane-qec-memory-syndrome"])[0]
+    runner = QComputeAbacusBenchmarkRunner(runs_root=tmp_path)
+
+    summaries = runner.run_case(case, ["extension", "direct", "agent"])
+
+    assert all(summary.status == "passed" for summary in summaries)
+    output_dir = tmp_path / "qcompute-abacus-benchmark" / "extension" / case.case_id
+    summary = json.loads((output_dir / "summary.json").read_text())
+    qec_spec = json.loads((output_dir / "qec_spec.json").read_text())
+    qec_reference = json.loads((output_dir / "qec_reference.json").read_text())
+    assert summary["metrics"]["physical_qubits"] == 7.0
+    assert summary["metrics"]["logical_qubits"] == 1.0
+    assert summary["metrics"]["code_distance"] == 3.0
+    assert summary["metrics"]["shots_completed"] == 0.0
+    assert qec_spec["code"] == "steane"
+    assert qec_spec["execution_status"] == "dry_run_only"
+    assert qec_reference["real_execution_gate"] == "blocked_until_qec_backend_adapter_exists"
+    assert "fault-tolerance threshold demonstration" in qec_reference["non_claims"]
+    assert "median_elapsed_seconds" in qec_reference["repeat_readiness_metrics"]
+    assert not (output_dir / "hamiltonian.fcidump").exists()
 
 
 def test_abacus_input_parser_records_hs_metadata(tmp_path: Path) -> None:
@@ -531,6 +558,149 @@ def test_qcompute_abacus_real_mode_skips_when_qiskit_missing(tmp_path: Path, mon
 
     assert summary.status == "skipped"
     assert summary.skip_reason == "qiskit and qiskit_aer are required for real qcompute-abacus runs"
+
+
+def test_qcompute_abacus_qec_real_mode_is_explicitly_skipped(tmp_path: Path) -> None:
+    case = get_qcompute_abacus_cases(["steane-qec-memory-syndrome"])[0]
+    runner = QComputeAbacusBenchmarkRunner(runs_root=tmp_path, allow_real_tools=True)
+
+    extension_summary = runner.run_extension(case)
+    agent_summary = runner.run_agent(case)
+
+    assert extension_summary.status == "skipped"
+    assert agent_summary.status == "skipped"
+    assert extension_summary.skip_reason == (
+        "real QEC execution is not implemented for qcompute-abacus benchmark runs"
+    )
+    assert agent_summary.skip_reason == (
+        "real QEC execution is not implemented for qcompute-abacus benchmark runs"
+    )
+    extension_gate = json.loads(
+        (
+            tmp_path
+            / "qcompute-abacus-benchmark"
+            / "extension"
+            / case.case_id
+            / "qec_real_execution_gate.json"
+        ).read_text()
+    )
+    agent_gate = json.loads(
+        (
+            tmp_path
+            / "qcompute-abacus-benchmark"
+            / "agent"
+            / case.case_id
+            / "qec_real_execution_gate.json"
+        ).read_text()
+    )
+    assert extension_gate["status"] == "blocked"
+    assert extension_gate["promotion_ready"] is False
+    assert "qec_backend_adapter" in extension_gate["missing_capabilities"]
+    assert agent_gate["proposal_contract_status"] == "repaired"
+    assert agent_gate["promotion_ready"] is False
+
+
+def test_qcompute_abacus_qec_agent_consumes_valid_proposal(tmp_path: Path) -> None:
+    case = get_qcompute_abacus_cases(["steane-qec-memory-syndrome"])[0]
+    runner = QComputeAbacusBenchmarkRunner(
+        runs_root=tmp_path,
+        brain_provider=FakeClaudeCLIBrainProvider(
+            {
+                "qec_spec": {
+                    "code": "steane",
+                    "code_parameters": {"n": 7, "k": 1, "distance": 3},
+                    "decoder": "single_error_lut",
+                    "experiment": "memory_circuit",
+                    "memory_rounds": 1,
+                    "shots": 64,
+                    "noise_model": "none",
+                }
+            }
+        ),
+    )
+
+    summary = runner.run_agent(case)
+
+    assert summary.status == "passed"
+    assert summary.proposal_contract_status == "valid"
+    assert summary.repair_count == 0
+    output_dir = tmp_path / "qcompute-abacus-benchmark" / "agent" / case.case_id
+    contract = json.loads((output_dir / "qec_proposal_contract.json").read_text())
+    qec_spec = json.loads((output_dir / "qec_spec.json").read_text())
+    assert contract["status"] == "valid"
+    assert contract["proposal_consumed_by_agent"] is False
+    assert qec_spec["shots"] == 64
+    assert qec_spec["proposal_contract_status"] == "valid"
+
+
+def test_qcompute_abacus_qec_agent_repairs_malformed_proposal(tmp_path: Path) -> None:
+    case = get_qcompute_abacus_cases(["steane-qec-memory-syndrome"])[0]
+    runner = QComputeAbacusBenchmarkRunner(
+        runs_root=tmp_path,
+        brain_provider=FakeClaudeCLIBrainProvider(
+            {
+                "qec_spec": {
+                    "code": "steane",
+                    "decoder": "single_error_lut",
+                    "memory_rounds": 1,
+                    "shots": "128",
+                    "noise_model": "none",
+                }
+            }
+        ),
+    )
+
+    direct_summary = runner.run_direct(case)
+    agent_summary = runner.run_agent(case)
+
+    assert direct_summary.status == "failed"
+    assert direct_summary.proposal_contract_status == "invalid"
+    assert direct_summary.failure_category == "proposal_contract_failed"
+    assert agent_summary.status == "passed"
+    assert agent_summary.proposal_contract_status == "repaired"
+    assert agent_summary.repair_count == 1
+    output_dir = tmp_path / "qcompute-abacus-benchmark" / "agent" / case.case_id
+    contract = json.loads((output_dir / "qec_proposal_contract.json").read_text())
+    qec_spec = json.loads((output_dir / "qec_spec.json").read_text())
+    assert contract["original_status"] == "invalid"
+    assert contract["repair_outcome"] == "proposal_repaired_from_case_defaults"
+    assert contract["proposal_consumed_by_agent"] is True
+    assert qec_spec["shots"] == 128
+    assert qec_spec["proposal_contract_status"] == "repaired"
+
+
+def test_qcompute_abacus_compare_surfaces_qec_repair_advantage(tmp_path: Path) -> None:
+    case = get_qcompute_abacus_cases(["steane-qec-memory-syndrome"])[0]
+    runner = QComputeAbacusBenchmarkRunner(
+        runs_root=tmp_path,
+        brain_provider=FakeClaudeCLIBrainProvider(
+            {
+                "qec_spec": {
+                    "code": "steane",
+                    "decoder": "single_error_lut",
+                    "memory_rounds": 1,
+                    "shots": "128",
+                    "noise_model": "none",
+                }
+            }
+        ),
+    )
+    runner.run_extension(case)
+    runner.run_direct(case)
+    runner.run_agent(case)
+
+    write_comparison_outputs(runs_root=tmp_path, suite="qcompute-abacus")
+
+    comparison_dir = tmp_path / "qcompute-abacus-benchmark" / "comparison"
+    report = (comparison_dir / "comparison_report.md").read_text()
+    bundle = json.loads((comparison_dir / "result_bundle.json").read_text())
+    repair_row = bundle["evidence_context"]["repair_rows"][0]
+    assert repair_row["case_id"] == "steane-qec-memory-syndrome"
+    assert repair_row["direct_contract"] == "invalid"
+    assert repair_row["agent_contract"] == "repaired"
+    assert repair_row["repair_advantage"] == "agent_repaired_direct_failure"
+    assert "## Proposal contracts and repair" in report
+    assert "agent_repaired_direct_failure" in report
 
 
 def test_qcompute_abacus_compare_reuses_generic_comparator(tmp_path: Path) -> None:

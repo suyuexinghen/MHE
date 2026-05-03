@@ -6,7 +6,7 @@
 
 - [meta-harness-engineer/](meta-harness-engineer/README.md)
   - 工程实现导向的技术 wiki
-  - 包含：Meta-Harness 核心 wiki、Nektar extension wiki、AI4PDE agent wiki、JEDI extension wiki、DeepMD extension wiki、ABACUS extension wiki
+  - 包含：Meta-Harness 核心 wiki、Nektar extension wiki、AI4PDE agent wiki、JEDI extension wiki、DeepMD extension wiki、ABACUS extension wiki、BOUT++ implemented baseline blueprint
   - 当前实现对齐的补充手册与归类文档已下沉到该目录树内
 - [meta-harness-book/](meta-harness-book/README.md)
   - 研究/设计手册与论文式资料

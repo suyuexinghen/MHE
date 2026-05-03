@@ -63,6 +63,7 @@ FIELDNAMES = [
     "direct_repair_outcome",
     "agent_repair_outcome",
     "agent_diagnostics_count",
+    "repair_advantage",
     "verdict",
 ]
 
@@ -286,6 +287,7 @@ def _evidence_context(
         "metric_rows": _metric_detail_rows(grouped),
         "preflight_rows": _preflight_rows(runs_root, suite),
         "capability_gate_rows": _capability_gate_rows(runs_root, suite),
+        "repair_rows": _repair_rows(rows),
         "repeat_rows": [] if repeat_summary is None else repeat_summary.get("rows", []),
     }
 
@@ -398,6 +400,51 @@ def _capability_gate_rows(runs_root: Path, suite: BenchmarkSuite) -> list[dict[s
                 }
             )
     return rows
+
+
+def _repair_rows(rows: list[ComparisonRow]) -> list[dict[str, Any]]:
+    repair_rows: list[dict[str, Any]] = []
+    for row in rows:
+        if not any(
+            [
+                row.direct_proposal_contract_status,
+                row.agent_proposal_contract_status,
+                row.direct_repairs,
+                row.agent_repairs,
+                row.direct_repair_outcome,
+                row.agent_repair_outcome,
+            ]
+        ):
+            continue
+        repair_rows.append(
+            {
+                "case_id": row.case_id,
+                "direct_contract": row.direct_proposal_contract_status,
+                "agent_contract": row.agent_proposal_contract_status,
+                "direct_repairs": row.direct_repairs or 0,
+                "agent_repairs": row.agent_repairs or 0,
+                "direct_repair_outcome": row.direct_repair_outcome,
+                "agent_repair_outcome": row.agent_repair_outcome,
+                "repair_advantage": _repair_advantage(row),
+            }
+        )
+    return repair_rows
+
+
+def _repair_advantage(row: ComparisonRow) -> str:
+    direct_repairs = row.direct_repairs or 0
+    agent_repairs = row.agent_repairs or 0
+    if (
+        row.direct_status == "failed"
+        and row.agent_status == "passed"
+        and agent_repairs > direct_repairs
+    ):
+        return "agent_repaired_direct_failure"
+    if agent_repairs > direct_repairs:
+        return "agent_more_repair_evidence"
+    if direct_repairs > agent_repairs:
+        return "direct_more_repair_evidence"
+    return "none"
 
 
 def _metric_detail_rows(grouped: dict[str, dict[str, LaneSummary]]) -> list[dict[str, Any]]:
@@ -687,9 +734,26 @@ def _enrich_rows(
                 "direct_repair_outcome": row.get("direct_repair_outcome"),
                 "agent_repair_outcome": row.get("agent_repair_outcome"),
                 "agent_diagnostics_count": row.get("agent_diagnostics_count"),
+                "repair_advantage": _repair_advantage_from_payload(row),
             }
         )
     return enriched
+
+
+def _repair_advantage_from_payload(row: dict[str, Any]) -> str:
+    direct_repairs = row.get("direct_repairs") or 0
+    agent_repairs = row.get("agent_repairs") or 0
+    if (
+        row.get("direct_status") == "failed"
+        and row.get("agent_status") == "passed"
+        and agent_repairs > direct_repairs
+    ):
+        return "agent_repaired_direct_failure"
+    if agent_repairs > direct_repairs:
+        return "agent_more_repair_evidence"
+    if direct_repairs > agent_repairs:
+        return "direct_more_repair_evidence"
+    return "none"
 
 
 def _verdict(
@@ -736,6 +800,24 @@ def _approval_markdown_lines(evidence_context: dict[str, Any]) -> list[str]:
         )
     if not approval_gate.get("profile_results"):
         lines.append("| none | none | none | none | False | approval_policy_missing |")
+    return lines
+
+
+def _repair_markdown_lines(evidence_context: dict[str, Any]) -> list[str]:
+    repair_rows = evidence_context.get("repair_rows", [])
+    if not repair_rows:
+        return []
+    lines = [
+        "",
+        "## Proposal contracts and repair",
+        "",
+        "| Case | Direct contract | Agent contract | Direct repairs | Agent repairs | Direct repair outcome | Agent repair outcome | Repair advantage |",
+        "|---|---|---|---:|---:|---|---|---|",
+    ]
+    for repair_row in repair_rows:
+        lines.append(
+            f"| {repair_row['case_id']} | {repair_row.get('direct_contract') or 'none'} | {repair_row.get('agent_contract') or 'none'} | {repair_row['direct_repairs']} | {repair_row['agent_repairs']} | {repair_row.get('direct_repair_outcome') or 'none'} | {repair_row.get('agent_repair_outcome') or 'none'} | {repair_row['repair_advantage']} |"
+        )
     return lines
 
 
@@ -815,6 +897,7 @@ def _comparison_markdown(
         lines.append(
             f"| {row.case_id} | {row.extension_status} | {row.direct_status} | {row.agent_status} | {sources.get('direct', 'none')} | {sources.get('agent', 'none')} | {row.direct_preflight_status or 'none'} | {row.agent_preflight_status or 'none'} | {row.agent_repair_outcome or 'none'} | {row.verdict} |"
         )
+    lines.extend(_repair_markdown_lines(evidence_context))
     lines.extend(_metric_markdown_lines(evidence_context))
     lines.extend(_preflight_markdown_lines(evidence_context))
     lines.extend(_capability_gate_markdown_lines(evidence_context))
@@ -845,6 +928,8 @@ def _analysis_markdown(
     schema_failures = sum(1 for row in rows if row.verdict == "schema_failed")
     total_direct_llm_calls = sum(row.direct_llm_calls or 0 for row in rows)
     total_agent_llm_calls = sum(row.agent_llm_calls or 0 for row in rows)
+    total_direct_repairs = sum(row.direct_repairs or 0 for row in rows)
+    total_agent_repairs = sum(row.agent_repairs or 0 for row in rows)
     lines = [
         f"# {suite} analysis report",
         "",
@@ -863,6 +948,8 @@ def _analysis_markdown(
         f"- Approval gate: `{evidence_context['approval_gate']['status']}`",
         f"- Direct Claude CLI calls: {total_direct_llm_calls}",
         f"- Agent Claude CLI calls: {total_agent_llm_calls}",
+        f"- Direct repairs: {total_direct_repairs}",
+        f"- Agent repairs: {total_agent_repairs}",
         "- Evidence counts measure reproducibility support, not numerical superiority.",
         "- Driver time and solver elapsed time should be interpreted separately.",
         "",
@@ -876,6 +963,7 @@ def _analysis_markdown(
         lines.append(
             f"| {row.case_id} | {row.extension_status} | {row.direct_status} | {row.agent_status} | {sources.get('direct', 'none')} | {sources.get('agent', 'none')} | {row.direct_preflight_status or 'none'} | {row.agent_preflight_status or 'none'} | {row.agent_repair_outcome or 'none'} | {row.verdict} |"
         )
+    lines.extend(_repair_markdown_lines(evidence_context))
     lines.extend(_metric_markdown_lines(evidence_context))
     lines.extend(_preflight_markdown_lines(evidence_context))
     lines.extend(_capability_gate_markdown_lines(evidence_context))

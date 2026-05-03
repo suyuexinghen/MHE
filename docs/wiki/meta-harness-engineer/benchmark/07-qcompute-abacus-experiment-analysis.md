@@ -1,6 +1,6 @@
-# 07. QCompute × ABACUS Hamiltonian Proxy 实验分析报告
+# QCompute × ABACUS Hamiltonian Proxy and QEC 实验分析报告
 
-> 版本：v0.2 | 生成依据：`.runs/benchmark-wiki/qcompute-abacus-benchmark/` | 日期：2026-04-28
+> 版本：v0.3 | 生成依据：`.runs/benchmark-wiki/qcompute-abacus-benchmark/` 与 `.runs/qec-benchmark-smoke-v3/qcompute-abacus-benchmark/` | 日期：2026-05-03
 
 ## 7.1 实验范围
 
@@ -21,6 +21,9 @@
 - Comparison bundle：`.runs/benchmark-wiki/qcompute-abacus-benchmark/comparison/result_bundle.json`
 - Manifest：`.runs/benchmark-wiki/qcompute-abacus-benchmark/comparison/run_manifest.json`
 - Generated report：`.runs/benchmark-wiki/qcompute-abacus-benchmark/reports/qcompute-abacus-analysis-report.md`
+- QEC smoke run：`.runs/qec-benchmark-smoke-v3/qcompute-abacus-benchmark/`
+- QEC comparison bundle：`.runs/qec-benchmark-smoke-v3/qcompute-abacus-benchmark/comparison/result_bundle.json`
+- QEC generated report：`.runs/qec-benchmark-smoke-v3/qcompute-abacus-benchmark/reports/qcompute-abacus-analysis-report.md`
 
 Manifest 记录的环境信息包括：
 
@@ -155,6 +158,26 @@ Reviewer 复查 `bridge_status.json` 时应优先确认这些字段：
 
 `source_refs.json` 同步嵌入 `bridge_status`，因此 reviewer 可以从同一个 lane output 目录同时追踪 source provenance 和 skip rationale。以上字段说明 bridge 已具备 metadata-aware unsupported path，但并不构成真实 H/S conversion 或 scientific validation。
 
+## QEC dry-run repair evidence update
+
+`.runs/qec-benchmark-smoke-v3` 覆盖 `steane-qec-memory-syndrome` case，仍然是 dry-run：`real_tools = false`，`real_claude = false`，`repeat_count = 1`。该运行不能证明真实 QEC syndrome sampling、decoder execution、threshold behavior、hardware logical error suppression 或 QCompute/CUDA-Q 数值优势。
+
+本轮新增的有效证据是 workflow control：agent lane 会校验 QEC proposal contract，并在 fake Claude proposal 缺少必需字段时从 case defaults 进行 deterministic repair。Comparator 现在把该行为写入 `result_bundle.json` 的 `evidence_context.repair_rows`，并在 `comparison_report.md` / `qcompute-abacus-analysis-report.md` 中生成 `Proposal contracts and repair` 表。
+
+QEC smoke comparison observed:
+
+| Case | Direct contract | Agent contract | Direct repairs | Agent repairs | Agent repair outcome | Repair advantage |
+|---|---|---|---:|---:|---|---|
+| `steane-qec-memory-syndrome` | none | repaired | 0 | 1 | `proposal_repaired_from_case_defaults` | `agent_more_repair_evidence` |
+
+Malformed-proposal focused tests additionally cover the stronger contrast where direct fails contract validation and agent repairs the same malformed proposal:
+
+| Scenario | Direct | Agent | Repair advantage |
+|---|---|---|---|
+| malformed QEC proposal with string `shots` | `failed`, `proposal_contract_status = invalid` | `passed`, `proposal_contract_status = repaired` | `agent_repaired_direct_failure` |
+
+This supports a narrow claim: MHE agent lane is stronger than direct Claude lane for structured dry-run workflow control and deterministic repair evidence under malformed QEC proposal tests. It still does not support numerical QEC superiority, runtime superiority, or real solver/hardware claims.
+
 ## 7.5 Workflow lane observations
 
 ### Extension baseline
@@ -234,15 +257,20 @@ Reviewer 复查 `bridge_status.json` 时应优先确认这些字段：
 | H/S bridge truthfulness | Complete | Sentinel case 为 `capability_skip`，未伪造支持。 |
 | H/S bridge metadata parser | Implemented scaffold | `bridge_status.json` 解析可读 ABACUS `INPUT` refs 与 H/S output flags，但不做矩阵转换。 |
 | Real QCompute execution | Pending formal report | 本地 `qiskit` / `qiskit_aer` 可见，但本轮未启用 `--allow-real-tools`。 |
+| QEC dry-run case | Complete for workflow evidence | `steane-qec-memory-syndrome` 写入 topology、contract、repair 和 non-claim evidence。 |
+| QEC repair comparator visibility | Complete | `repair_rows`、`repair_advantage` 和 `Proposal contracts and repair` 报告表已生成。 |
+| Real QEC execution | Pending | `qec_real_execution_gate.json` 仍记录 backend adapter、syndrome sampling、decoder execution 和 repeated validation 缺失。 |
 | Real ABACUS H/S bridge | Pending | 需要 converter 设计与测试。 |
 
 ## 7.9 Backlog
 
 1. 运行 `h2-fcidump-vqe-proxy` 的 real extension lane，并记录 `run_plan.json`、`run_artifact.json`、`validation.json`、`evidence.json`。
-2. 运行 real agent lane，验证 Claude proposal 后是否能稳定进入 QCompute extension pipeline。
-3. 将 real-mode energy / energy_error 与 dry-run reference echo 明确分表展示。
-4. 为 `h2-fcidump-jw-vs-bk` 输出 real mapping metadata 表，包括 Pauli term count、mapping method、qubit count。
-5. 扩展 ABACUS bridge parser，从 `INPUT` metadata 进入真实 `out_mat_hs` / `out_mat_hs2` matrix artifact 解析。
-6. 定义 H/S matrix 到 FCIDUMP 或 QCompute Pauli dictionary 的正式转换目标。
-7. 只有在 converter tests 通过后，才允许把 `abacus-hs-bridge-pending` 从 skipped sentinel 提升为 executable bridge case。
-8. 增加 repeated real runs，记录 median elapsed time、driver overhead、simulator variance 和 flaky flags。
+2. 对 QEC case 运行 real Claude challenge prompts，覆盖 underspecified、malformed 和 overclaiming proposals，记录真实 proposal contract pass/fail/repair rate。
+3. 为 QEC repair behavior 增加 repeated-run aggregation，记录 repair rate、contract failure rate、flaky repetition count 和 median driver elapsed time。
+4. 运行 real agent lane，验证 Claude proposal 后是否能稳定进入 QCompute extension pipeline。
+5. 将 real-mode energy / energy_error 与 dry-run reference echo 明确分表展示。
+6. 为 `h2-fcidump-jw-vs-bk` 输出 real mapping metadata 表，包括 Pauli term count、mapping method、qubit count。
+7. 扩展 ABACUS bridge parser，从 `INPUT` metadata 进入真实 `out_mat_hs` / `out_mat_hs2` matrix artifact 解析。
+8. 定义 H/S matrix 到 FCIDUMP 或 QCompute Pauli dictionary 的正式转换目标。
+9. 只有在 converter tests 通过后，才允许把 `abacus-hs-bridge-pending` 从 skipped sentinel 提升为 executable bridge case。
+10. 在 QEC backend adapter、real syndrome sampling、decoder execution 和 repeated validation 完成前，不提升 QEC dry-run case 为真实 QEC execution evidence。

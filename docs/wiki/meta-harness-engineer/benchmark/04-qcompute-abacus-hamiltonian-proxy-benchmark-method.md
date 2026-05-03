@@ -1,4 +1,4 @@
-# QCompute × ABACUS Hamiltonian Proxy Benchmark Method
+# QCompute × ABACUS Hamiltonian Proxy and QEC Benchmark Method
 
 > 版本：v0.1 | 最后更新：2026-04-28
 
@@ -18,6 +18,7 @@ This benchmark does cover:
 - Qiskit Aer simulator execution when real tools are enabled and available.
 - QCompute validation, energy-error reporting, and evidence bundle creation.
 - Explicit provenance references back to ABACUS H2 source inputs.
+- Steane-code QEC memory-circuit dry-run evidence for topology, syndrome shape, and claim boundaries.
 
 This benchmark does not claim:
 
@@ -25,6 +26,7 @@ This benchmark does not claim:
 - ABACUS currently exports FCIDUMP through the MHE ABACUS extension.
 - ABACUS H/S matrix outputs are currently converted into FCIDUMP or qubit Hamiltonians.
 - The VQE proxy is a production quantum-chemistry workflow or quantum-advantage result.
+- The QEC case executes real CUDA-Q/QCompute QEC kernels, proves threshold behavior, or shows hardware logical error suppression.
 
 The missing ABACUS H/S bridge is represented by a skipped sentinel case rather than a fake pass.
 
@@ -96,7 +98,41 @@ Expected metrics:
 - `bk_term_count`
 - `elapsed_seconds`
 
-### 3.3 `abacus-hs-bridge-pending`
+### 3.3 `steane-qec-memory-syndrome`
+
+Quantum error-correction dry-run case.
+
+Inputs:
+
+- Nature/QEC progress article notes from `docs/plan-drafts/qcompute-fixments.md`.
+- CUDA-Q QEC public interface reference for code, decoder, stabilizer, and memory-circuit concepts.
+
+QEC settings:
+
+- code: Steane `[[7,1,3]]` CSS code
+- decoder: single-error lookup-table syndrome decoder
+- experiment: memory circuit
+- initial state: `prep0`
+- stabilizer rounds: `1`
+- planned shots: `128`
+- execution status: `dry_run_only`
+
+Expected metrics:
+
+- `physical_qubits`
+- `logical_qubits`
+- `code_distance`
+- `stabilizer_count`
+- `syndrome_bits`
+- `memory_rounds`
+- `shots_completed`
+- `decoder_converged_rate`
+- `logical_failure_rate`
+- `elapsed_seconds`
+
+The dry-run records topology, proposal-contract status, and evidence shape only. Real QEC execution must remain skipped until QEC kernels, decoder execution, noise model, and repeated validation are implemented in the runner. The agent lane can validate a proposal contract and either consume the validated proposal or repair malformed proposals from case defaults, but that remains workflow evidence rather than real QEC execution evidence.
+
+### 3.4 `abacus-hs-bridge-pending`
 
 Unsupported bridge sentinel.
 
@@ -162,7 +198,7 @@ attempt_log.json
 summary.json
 ```
 
-QCompute extension/agent files for positive cases:
+QCompute extension/agent files for positive Hamiltonian cases:
 
 ```text
 hamiltonian.fcidump
@@ -172,6 +208,22 @@ run_plan.json
 run_artifact.json
 validation.json
 evidence.json
+```
+
+QEC dry-run evidence:
+
+```text
+qec_spec.json
+qec_reference.json
+qec_proposal_contract.json
+validation.json
+evidence.json
+```
+
+QEC real-mode gate evidence:
+
+```text
+qec_real_execution_gate.json
 ```
 
 Claude lane files:
@@ -262,6 +314,16 @@ PYTHONPATH=src python -m metaharness.cli benchmark-run \
   --runs-root .runs
 ```
 
+Dry-run the QEC memory-syndrome case:
+
+```bash
+PYTHONPATH=src python -m metaharness.cli benchmark-run \
+  --suite qcompute-abacus \
+  --lanes extension,direct,agent \
+  --cases steane-qec-memory-syndrome \
+  --runs-root .runs
+```
+
 Real extension run, dependency-gated:
 
 ```bash
@@ -289,6 +351,7 @@ A result is acceptable only when:
 - positive proxy cases include Hamiltonian metadata and QCompute evidence files;
 - `energy_error` is derived from QCompute validation when a real run executes;
 - dry-run outputs never claim real numerical execution;
+- the QEC dry-run case does not write Hamiltonian artifacts or claim real syndrome sampling;
 - the H/S bridge sentinel remains skipped until a converter is implemented;
 - generated artifacts stay under `.runs/` or an explicit `--runs-root`.
 

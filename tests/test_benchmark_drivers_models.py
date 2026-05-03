@@ -757,6 +757,68 @@ def test_comparator_records_agent_repaired_success_verdict(tmp_path: Path) -> No
     assert rows[0].agent_diagnostics_count == 1
 
 
+def test_comparator_writes_proposal_contract_repair_evidence(tmp_path: Path) -> None:
+    case = BenchmarkCaseSpec(
+        case_id="qec-repair",
+        suite="qcompute-abacus",
+        task_family="qec",
+        description="QEC proposal repair case",
+        required_capabilities=["qec_code_catalog"],
+        source_reference="qec.md:1",
+        expected_metrics=["logical_failure_rate"],
+        reference_metrics={"logical_failure_rate": MetricReference(value=0.0, tolerance=0.0)},
+    )
+    _write_passing_lane_summary(tmp_path, case, "extension")
+    direct_summary = LaneSummary(
+        case_id=case.case_id,
+        suite=case.suite,
+        lane="direct",
+        status="failed",
+        passed=False,
+        metrics={"logical_failure_rate": 0.0},
+        evidence_files=["qec_proposal_contract.json"],
+        proposal_contract_status="invalid",
+        failure_category="proposal_contract_failed",
+    )
+    agent_summary = LaneSummary(
+        case_id=case.case_id,
+        suite=case.suite,
+        lane="agent",
+        status="passed",
+        passed=True,
+        metrics={"logical_failure_rate": 0.0},
+        evidence_files=["qec_proposal_contract.json", "qec_spec.json"],
+        attempt_count=2,
+        repair_count=1,
+        proposal_contract_status="repaired",
+        repair_outcome="proposal_repaired_from_case_defaults",
+    )
+    write_json(
+        case_dir(tmp_path, case.suite, "direct", case.case_id) / "summary.json", direct_summary
+    )
+    write_json(
+        case_dir(tmp_path, case.suite, "agent", case.case_id) / "summary.json", agent_summary
+    )
+
+    write_comparison_outputs(runs_root=tmp_path, suite="qcompute-abacus")
+
+    comparison_dir = tmp_path / "qcompute-abacus-benchmark" / "comparison"
+    report = (comparison_dir / "comparison_report.md").read_text()
+    summary_table = (comparison_dir / "summary_table.csv").read_text()
+    analysis = (
+        tmp_path / "qcompute-abacus-benchmark" / "reports" / "qcompute-abacus-analysis-report.md"
+    ).read_text()
+    bundle = json.loads((comparison_dir / "result_bundle.json").read_text())
+    repair_rows = bundle["evidence_context"]["repair_rows"]
+    assert repair_rows[0]["repair_advantage"] == "agent_repaired_direct_failure"
+    assert "repair_advantage" in summary_table
+    assert "agent_repaired_direct_failure" in summary_table
+    assert "## Proposal contracts and repair" in report
+    assert "## Proposal contracts and repair" in analysis
+    assert "| qec-repair | invalid | repaired | 0 | 1 | none |" in report
+    assert "proposal_repaired_from_case_defaults | agent_repaired_direct_failure |" in report
+
+
 def test_comparator_records_capability_skip(tmp_path: Path) -> None:
     case = BenchmarkCaseSpec(
         case_id="gated",

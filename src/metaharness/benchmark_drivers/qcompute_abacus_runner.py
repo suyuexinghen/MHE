@@ -70,6 +70,17 @@ class QComputeAbacusBenchmarkRunner:
         output_dir = case_dir(self.runs_root, case.suite, "extension", case.case_id)
         if self._is_unsupported_bridge(case):
             return self._write_unsupported_bridge(case, "extension", output_dir)
+        if self._is_qec_case(case) and self.allow_real_tools:
+            qec_gate_path = self._write_qec_real_execution_gate(output_dir, case, None)
+            return write_lane_outputs(
+                runs_root=self.runs_root,
+                case=case,
+                lane="extension",
+                status="skipped",
+                evidence_files=[str(qec_gate_path)],
+                skip_reason="real QEC execution is not implemented for qcompute-abacus benchmark runs",
+                preflight_status="blocked",
+            )
         if not self.allow_real_tools:
             return dry_run_summary(
                 runs_root=self.runs_root,
@@ -113,6 +124,23 @@ class QComputeAbacusBenchmarkRunner:
                 evidence_files=evidence_files,
                 error_message=claude_result.error,
             )
+        qec_contract = None
+        if self._is_qec_case(case) and claude_result.proposal:
+            qec_contract = self._validate_qec_proposal(case, claude_result.proposal)
+            evidence_files.append(str(self._write_qec_proposal_contract(output_dir, qec_contract)))
+            if qec_contract["status"] != "valid":
+                return write_lane_outputs(
+                    runs_root=self.runs_root,
+                    case=case,
+                    lane="direct",
+                    status="failed",
+                    metrics=self._reference_metrics(case),
+                    evidence_files=evidence_files,
+                    attempt_log=attempt_log,
+                    error_message="QEC proposal contract validation failed",
+                    proposal_contract_status=qec_contract["status"],
+                    failure_category="proposal_contract_failed",
+                )
         metrics = self._reference_metrics(case)
         evidence_files.extend(
             self._write_direct_dry_run_evidence(output_dir, case, claude_result.proposal)
@@ -125,6 +153,7 @@ class QComputeAbacusBenchmarkRunner:
             metrics=metrics,
             evidence_files=evidence_files,
             attempt_log=attempt_log,
+            proposal_contract_status=qec_contract["status"] if qec_contract else None,
         )
 
     def run_agent(self, case: BenchmarkCaseSpec) -> LaneSummary:
@@ -151,11 +180,45 @@ class QComputeAbacusBenchmarkRunner:
                 evidence_files=evidence_files,
                 error_message=claude_result.error,
             )
+        qec_contract = None
+        if self._is_qec_case(case):
+            qec_contract = self._validate_qec_proposal(case, claude_result.proposal)
+            if qec_contract["status"] != "valid":
+                qec_contract = self._repair_qec_proposal(case, qec_contract)
+                attempt_log.add(
+                    AttemptRecord(
+                        attempt_id=attempt_log.attempt_count + 1,
+                        lane="agent",
+                        status="passed",
+                        repair=True,
+                        message="repaired QEC proposal from case defaults",
+                    )
+                )
+            evidence_files.append(str(self._write_qec_proposal_contract(output_dir, qec_contract)))
+        if self._is_qec_case(case) and self.allow_real_tools:
+            qec_gate_path = self._write_qec_real_execution_gate(output_dir, case, qec_contract)
+            return write_lane_outputs(
+                runs_root=self.runs_root,
+                case=case,
+                lane="agent",
+                status="skipped",
+                attempt_log=attempt_log,
+                evidence_files=[*evidence_files, str(qec_gate_path)],
+                skip_reason="real QEC execution is not implemented for qcompute-abacus benchmark runs",
+                proposal_contract_status=qec_contract["status"] if qec_contract else None,
+                preflight_status="blocked",
+                repair_outcome=qec_contract.get("repair_outcome") if qec_contract else None,
+            )
         if not self.allow_real_tools:
             metrics = self._reference_metrics(case)
             evidence_files.extend(
                 self._write_agent_dry_run_evidence(output_dir, case, claude_result.proposal)
             )
+            if qec_contract:
+                evidence_files.extend(
+                    str(path)
+                    for path in self._write_qec_dry_run_evidence(output_dir, case, qec_contract)
+                )
             return write_lane_outputs(
                 runs_root=self.runs_root,
                 case=case,
@@ -164,6 +227,8 @@ class QComputeAbacusBenchmarkRunner:
                 metrics=metrics,
                 evidence_files=evidence_files,
                 attempt_log=attempt_log,
+                proposal_contract_status=qec_contract["status"] if qec_contract else None,
+                repair_outcome=qec_contract.get("repair_outcome") if qec_contract else None,
             )
         if not self._qiskit_available():
             return write_lane_outputs(
@@ -390,13 +455,145 @@ class QComputeAbacusBenchmarkRunner:
                 {
                     "case_id": case.case_id,
                     "dry_run": True,
-                    "scope": "qcompute-abacus Hamiltonian proxy",
+                    "scope": "qcompute-abacus Hamiltonian proxy"
+                    if not self._is_qec_case(case)
+                    else "qcompute quantum error-correction dry-run proxy",
                 },
             ),
         ]
-        if not self._is_unsupported_bridge(case):
+        if self._is_qec_case(case):
+            evidence_paths.extend(self._write_qec_dry_run_evidence(output_dir, case))
+        elif not self._is_unsupported_bridge(case):
             evidence_paths.append(self._write_hamiltonian(output_dir))
         return [str(path) for path in evidence_paths]
+
+    def _write_qec_dry_run_evidence(
+        self,
+        output_dir: Path,
+        case: BenchmarkCaseSpec,
+        proposal_contract: dict[str, Any] | None = None,
+    ) -> list[Path]:
+        problem = case.problem_definition
+        spec_source = proposal_contract["normalized_proposal"] if proposal_contract else problem
+        qec_spec = write_json(
+            output_dir / "qec_spec.json",
+            {
+                "case_id": case.case_id,
+                "code": spec_source["code"],
+                "code_parameters": spec_source["code_parameters"],
+                "stabilizers": problem["stabilizers"],
+                "decoder": spec_source["decoder"],
+                "experiment": spec_source["experiment"],
+                "memory_rounds": spec_source["memory_rounds"],
+                "shots": spec_source["shots"],
+                "noise_model": spec_source["noise_model"],
+                "execution_status": problem["execution_status"],
+                "proposal_contract_status": proposal_contract["status"]
+                if proposal_contract
+                else "case_default",
+                "repair_outcome": proposal_contract.get("repair_outcome")
+                if proposal_contract
+                else None,
+            },
+        )
+        qec_reference = write_json(
+            output_dir / "qec_reference.json",
+            {
+                "source_reference": case.source_reference,
+                "metric_boundary": case.metadata["numeric_claim_boundary"],
+                "non_claims": case.metadata["non_claims"],
+                "real_execution_gate": "blocked_until_qec_backend_adapter_exists",
+                "repeat_readiness_metrics": [
+                    "decoder_converged_rate",
+                    "logical_failure_rate",
+                    "median_elapsed_seconds",
+                    "flaky_repetition_count",
+                ],
+            },
+        )
+        return [qec_spec, qec_reference]
+
+    def _validate_qec_proposal(
+        self, case: BenchmarkCaseSpec, proposal: dict[str, Any]
+    ) -> dict[str, Any]:
+        problem = case.problem_definition
+        source = proposal.get("qec_spec", proposal)
+        required = ["code", "decoder", "memory_rounds", "shots", "noise_model"]
+        missing = [key for key in required if key not in source]
+        mismatches: dict[str, Any] = {}
+        for key in ["code", "decoder", "memory_rounds", "noise_model"]:
+            if key in source and source[key] != problem[key]:
+                mismatches[key] = {"expected": problem[key], "actual": source[key]}
+        if "shots" in source and not isinstance(source["shots"], int):
+            mismatches["shots"] = {"expected_type": "int", "actual": source["shots"]}
+        status = "valid" if not missing and not mismatches else "invalid"
+        normalized = {
+            "code": source.get("code", problem["code"]),
+            "code_parameters": source.get("code_parameters", problem["code_parameters"]),
+            "decoder": source.get("decoder", problem["decoder"]),
+            "experiment": source.get("experiment", problem["experiment"]),
+            "memory_rounds": source.get("memory_rounds", problem["memory_rounds"]),
+            "shots": source.get("shots", problem["shots"]),
+            "noise_model": source.get("noise_model", problem["noise_model"]),
+        }
+        return {
+            "status": status,
+            "required_fields": required,
+            "missing_fields": missing,
+            "mismatches": mismatches,
+            "normalized_proposal": normalized,
+            "proposal_consumed_by_agent": False,
+        }
+
+    def _repair_qec_proposal(
+        self, case: BenchmarkCaseSpec, proposal_contract: dict[str, Any]
+    ) -> dict[str, Any]:
+        problem = case.problem_definition
+        repaired = dict(proposal_contract)
+        repaired["status"] = "repaired"
+        repaired["original_status"] = proposal_contract["status"]
+        repaired["normalized_proposal"] = {
+            "code": problem["code"],
+            "code_parameters": problem["code_parameters"],
+            "decoder": problem["decoder"],
+            "experiment": problem["experiment"],
+            "memory_rounds": problem["memory_rounds"],
+            "shots": problem["shots"],
+            "noise_model": problem["noise_model"],
+        }
+        repaired["proposal_consumed_by_agent"] = True
+        repaired["repair_outcome"] = "proposal_repaired_from_case_defaults"
+        return repaired
+
+    def _write_qec_proposal_contract(
+        self, output_dir: Path, proposal_contract: dict[str, Any]
+    ) -> Path:
+        return write_json(output_dir / "qec_proposal_contract.json", proposal_contract)
+
+    def _write_qec_real_execution_gate(
+        self,
+        output_dir: Path,
+        case: BenchmarkCaseSpec,
+        proposal_contract: dict[str, Any] | None,
+    ) -> Path:
+        return write_json(
+            output_dir / "qec_real_execution_gate.json",
+            {
+                "case_id": case.case_id,
+                "status": "blocked",
+                "promotion_ready": False,
+                "missing_capabilities": [
+                    "qec_backend_adapter",
+                    "real_syndrome_sampling",
+                    "decoder_execution",
+                    "repeat_run_validation",
+                ],
+                "proposal_contract_status": proposal_contract["status"]
+                if proposal_contract
+                else "missing",
+                "claim_boundary": "real QEC execution is not implemented for this benchmark case",
+            },
+        )
 
     def _write_direct_dry_run_evidence(
         self, output_dir: Path, case: BenchmarkCaseSpec, proposal: dict[str, Any]
@@ -532,6 +729,12 @@ class QComputeAbacusBenchmarkRunner:
         ]
 
     def _prompt(self, case: BenchmarkCaseSpec, *, lane: BenchmarkLane) -> str:
+        if self._is_qec_case(case):
+            return (
+                f"Prepare a {lane} benchmark proposal for MHE suite qcompute-abacus case "
+                f"{case.case_id}. Keep claims limited to Steane-code memory-circuit dry-run "
+                "artifact structure and do not claim real QEC execution or threshold evidence."
+            )
         return (
             f"Prepare a {lane} benchmark proposal for MHE suite qcompute-abacus case "
             f"{case.case_id}. Keep claims limited to FCIDUMP/VQE Hamiltonian proxy behavior "
@@ -540,6 +743,9 @@ class QComputeAbacusBenchmarkRunner:
 
     def _is_unsupported_bridge(self, case: BenchmarkCaseSpec) -> bool:
         return case.case_id == "abacus-hs-bridge-pending"
+
+    def _is_qec_case(self, case: BenchmarkCaseSpec) -> bool:
+        return case.task_family == "qcompute_qec_memory_syndrome"
 
     def _qiskit_available(self) -> bool:
         return find_spec("qiskit") is not None and find_spec("qiskit_aer") is not None
