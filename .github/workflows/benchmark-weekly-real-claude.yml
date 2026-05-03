@@ -1,0 +1,114 @@
+name: Benchmark weekly real Claude
+
+on:
+  schedule:
+    - cron: "43 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: "Benchmark suite"
+        default: qcompute-abacus
+        required: true
+        type: choice
+        options:
+          - octave-native
+          - nektar-pde
+          - qcompute-abacus
+          - fealpy-pde
+          - pycfd-pde
+      cases:
+        description: "Optional comma-separated case IDs"
+        default: ""
+        required: false
+        type: string
+      repeat:
+        description: "Repeat count"
+        default: "1"
+        required: true
+        type: string
+      allow_real_tools:
+        description: "Also enable external solver/tool execution"
+        default: false
+        required: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  real-claude-comparison:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      SUITE: ${{ inputs.suite || 'qcompute-abacus' }}
+      CASES: ${{ inputs.cases || '' }}
+      REPEAT: ${{ inputs.repeat || '1' }}
+      ALLOW_REAL_TOOLS: ${{ inputs.allow_real_tools || false }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+      - name: Check Claude CLI availability
+        run: |
+          if command -v claude; then
+            echo "CLAUDE_AVAILABLE=true" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          echo "CLAUDE_AVAILABLE=false" >> "$GITHUB_ENV"
+          mkdir -p ".runs/ci-real-claude/$SUITE/dependency-skip"
+          cat > ".runs/ci-real-claude/$SUITE/dependency-skip/claude_cli_unavailable.json" <<'EOF'
+          {"status":"skipped","failure_category":"unavailable_dependency","missing_dependency":"claude"}
+          EOF
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+          Real-Claude benchmark skipped because the Claude CLI is unavailable on this runner. This is dependency-skip evidence, not proposal-quality evidence.
+          EOF
+      - name: Run real-Claude benchmark
+        if: env.CLAUDE_AVAILABLE == 'true'
+        run: |
+          CASE_ARGS=()
+          if [ -n "$CASES" ]; then
+            CASE_ARGS=(--cases "$CASES")
+          fi
+          TOOL_ARGS=()
+          if [ "$ALLOW_REAL_TOOLS" = "true" ]; then
+            TOOL_ARGS=(--allow-real-tools)
+          fi
+          PYTHONPATH=src python -m metaharness.cli benchmark-run \
+            --suite "$SUITE" \
+            --lanes extension,direct,agent \
+            --runs-root ".runs/ci-real-claude/$SUITE" \
+            --allow-real-claude \
+            --repeat "$REPEAT" \
+            "${TOOL_ARGS[@]}" \
+            "${CASE_ARGS[@]}"
+      - name: Compare real-Claude benchmark
+        if: env.CLAUDE_AVAILABLE == 'true'
+        run: |
+          TOOL_ARGS=()
+          if [ "$ALLOW_REAL_TOOLS" = "true" ]; then
+            TOOL_ARGS=(--allow-real-tools)
+          fi
+          PYTHONPATH=src python -m metaharness.cli benchmark-compare \
+            --suite "$SUITE" \
+            --runs-root ".runs/ci-real-claude/$SUITE" \
+            --allow-real-claude \
+            --repeat "$REPEAT" \
+            "${TOOL_ARGS[@]}"
+      - name: Check approval policy
+        run: |
+          PYTHONPATH=src python -m metaharness.cli benchmark-approval-check \
+            --suite "$SUITE" \
+            --config-root .mhe
+      - name: Upload real-Claude artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-real-claude-${{ env.SUITE }}
+          path: .runs/ci-real-claude/${{ env.SUITE }}
+          if-no-files-found: warn
+          retention-days: 45

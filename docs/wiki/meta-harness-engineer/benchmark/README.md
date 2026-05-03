@@ -21,6 +21,10 @@
 | [11-Benchmark Approval-Gating Work Report](reports/approval-gating-work-report.md) | 汇总 benchmark comparison 管理员认可 gate、suite approval manifests、ABACUS scientific blocker 与下一步行动建议 | MHE 维护者 / 项目管理者 |
 | [12-BOUT++ Usage Validation Method](09-boutpp-usage-validation-method.md) | 记录 BOUT++ extension baseline、direct CLI/manual workflow、agent-assisted workflow 的 dry-run usage validation slice | MHE / BOUT++ 维护者 |
 | [13-PyCFD PDE Comparison Benchmark Method](10-pycfd-pde-benchmark-method.md) | 设计 PyCFD 2D Euler FVM comparison benchmark：extension/direct/agent lanes、real solver 与 real Claude 分离、residual metrics、approval gates 和 non-claim boundaries | MHE / PyCFD / PDE benchmark 维护者 |
+| [14-Benchmark Comparison CI/CD Blueprint](../blueprint/12-benchmark-comparison-cicd-blueprint.md) | 设计 Octave、Nektar、QCompute/QEC、PyCFD、Fealpy benchmark comparison 的 PR、nightly、weekly、release CI/CD 分层 | MHE 维护者 / CI 维护者 |
+| [15-Benchmark Comparison CI/CD Implementation Plan](../blueprint/12-benchmark-comparison-cicd-implementation-plan.md) | 记录复用 `benchmark-run` / `benchmark-compare` / `benchmark-approval-check` 的 workflow 实施步骤和验证命令 | MHE 维护者 / CI 维护者 |
+| [16-Benchmark Comparison CI/CD Roadmap](../blueprint/12-benchmark-comparison-cicd-roadmap.md) | 规划从 dry-run CI 到 real tools、real Claude、repeat aggregation 和 release approval gate 的证据升级路径 | MHE 维护者 / 项目管理者 |
+| [MHE Extension Comparison Conclusions](mhe-extension-comparison-conclusions.md) | 集中记录 MHE extension benchmark 对比结论、claim boundary、术语解释和 dated conclusion log | MHE 维护者 / 项目管理者 |
 
 ## 写作边界
 
