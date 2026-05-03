@@ -1,0 +1,22 @@
+{
+  "name": "boutpp_policy",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.boutpp.policy:BoutPPEvidencePolicy",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [{"name": "bundle", "type": "BoutPPEvidenceBundle", "required": true}],
+    "outputs": [{"name": "policy", "type": "BoutPPPolicyReport", "mode": "sync"}],
+    "events": [],
+    "provides": [{"name": "boutpp.policy.evaluate", "description": "Evaluate BOUT++ evidence bundles against promotion gates."}],
+    "requires": [{"name": "boutpp.evidence.bundle"}],
+    "slots": [{"slot": "boutpp_evidence_policy.primary", "binding": "primary", "required": true}]
+  },
+  "safety": {"protected": true, "mutability": "mutable", "sandbox_profile": "read-only", "hot_swap": false},
+  "policy": {"sandbox": {"tier": "read-only"}, "credentials": {"requires_subject": false, "allow_inline_credentials": false, "required_claims": []}},
+  "state_schema_version": 1,
+  "provides": ["boutpp.policy.evaluate"],
+  "requires": ["boutpp.evidence.bundle"],
+  "deps": {"components": [], "capabilities": ["boutpp.evidence.bundle"]},
+  "bins": []
+}

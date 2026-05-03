@@ -1,0 +1,22 @@
+{
+  "name": "boutpp_gateway",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.boutpp.gateway:BoutPPGatewayComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [{"name": "task", "type": "BoutPPProblemSpec", "required": false, "cardinality": "one"}],
+    "outputs": [{"name": "task", "type": "BoutPPProblemSpec", "mode": "sync"}],
+    "events": [],
+    "provides": [{"name": "boutpp.task.issue", "description": "Issue normalized BOUT++ run tasks."}],
+    "requires": [{"name": "boutpp.environment.probe"}, {"name": "boutpp.options.compile"}],
+    "slots": [{"slot": "boutpp_gateway.primary", "binding": "primary", "required": true}]
+  },
+  "safety": {"protected": false, "mutability": "mutable", "sandbox_profile": "workspace-write", "hot_swap": true},
+  "policy": {"sandbox": {"tier": "workspace-write"}, "credentials": {"requires_subject": false, "allow_inline_credentials": false, "required_claims": []}},
+  "state_schema_version": 1,
+  "provides": ["boutpp.task.issue"],
+  "requires": ["boutpp.environment.probe", "boutpp.options.compile"],
+  "deps": {"components": [], "capabilities": ["boutpp.environment.probe", "boutpp.options.compile"]},
+  "bins": []
+}

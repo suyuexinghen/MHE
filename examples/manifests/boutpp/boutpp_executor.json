@@ -1,0 +1,22 @@
+{
+  "name": "boutpp_executor",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.boutpp.executor:BoutPPExecutorComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [{"name": "plan", "type": "BoutPPRunPlan", "required": true, "cardinality": "one"}],
+    "outputs": [{"name": "artifact", "type": "BoutPPRunArtifact", "mode": "sync"}],
+    "events": [],
+    "provides": [{"name": "boutpp.mpi.execute", "description": "Execute BOUT++ run plans and collect artifacts."}, {"name": "boutpp.restart.execute", "description": "Execute BOUT++ restart modes."}],
+    "requires": [{"name": "boutpp.options.compile"}],
+    "slots": [{"slot": "boutpp_executor.primary", "binding": "primary", "required": true}]
+  },
+  "safety": {"protected": false, "mutability": "mutable", "sandbox_profile": "workspace-write", "hot_swap": true},
+  "policy": {"sandbox": {"tier": "workspace-write"}, "credentials": {"requires_subject": false, "allow_inline_credentials": false, "required_claims": []}},
+  "state_schema_version": 1,
+  "provides": ["boutpp.mpi.execute", "boutpp.restart.execute"],
+  "requires": ["boutpp.options.compile"],
+  "deps": {"components": [], "capabilities": ["boutpp.options.compile"]},
+  "bins": ["mpiexec"]
+}

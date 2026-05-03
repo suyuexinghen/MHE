@@ -1,0 +1,20 @@
+{
+  "name": "boutpp_environment",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.boutpp.environment:BoutPPEnvironmentProbeComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [{"name": "spec", "type": "BoutPPProblemSpec", "required": false}],
+    "outputs": [{"name": "environment", "type": "BoutPPEnvironmentReport", "mode": "sync"}],
+    "events": [],
+    "provides": [{"name": "boutpp.environment.probe", "description": "Probe BOUT++ runtime and postprocess availability."}],
+    "requires": [],
+    "slots": [{"slot": "boutpp_environment.primary", "binding": "primary", "required": true}]
+  },
+  "safety": {"protected": false, "mutability": "mutable", "sandbox_profile": "read-only", "hot_swap": true},
+  "policy": {"sandbox": {"tier": "read-only"}, "credentials": {"requires_subject": false, "allow_inline_credentials": false, "required_claims": []}},
+  "state_schema_version": 1,
+  "provides": ["boutpp.environment.probe"],
+  "bins": ["mpiexec", "nc-config"]
+}

@@ -1,0 +1,22 @@
+{
+  "name": "boutpp_study",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.boutpp.study:BoutPPStudyComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [{"name": "study_spec", "type": "BoutPPStudySpec", "required": true}],
+    "outputs": [{"name": "study_report", "type": "BoutPPStudyReport", "mode": "sync"}],
+    "events": [],
+    "provides": [{"name": "boutpp.study.sweep", "description": "Run BOUT++ parameter sweeps and select best passing trial."}],
+    "requires": [{"name": "boutpp.options.compile"}, {"name": "boutpp.mpi.execute"}, {"name": "boutpp.output.postprocess"}, {"name": "boutpp.validation.basic"}],
+    "slots": [{"slot": "boutpp_study.primary", "binding": "primary", "required": true}]
+  },
+  "safety": {"protected": false, "mutability": "mutable", "sandbox_profile": "workspace-write", "hot_swap": true},
+  "policy": {"sandbox": {"tier": "workspace-write"}, "credentials": {"requires_subject": false, "allow_inline_credentials": false, "required_claims": []}},
+  "state_schema_version": 1,
+  "provides": ["boutpp.study.sweep"],
+  "requires": ["boutpp.options.compile", "boutpp.mpi.execute", "boutpp.output.postprocess", "boutpp.validation.basic"],
+  "deps": {"components": [], "capabilities": ["boutpp.options.compile", "boutpp.mpi.execute", "boutpp.output.postprocess", "boutpp.validation.basic"]},
+  "bins": []
+}

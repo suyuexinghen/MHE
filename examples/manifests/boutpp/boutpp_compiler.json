@@ -1,0 +1,22 @@
+{
+  "name": "boutpp_compiler",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.boutpp.compiler:BoutPPCompilerComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [{"name": "spec", "type": "BoutPPProblemSpec", "required": true, "cardinality": "one"}],
+    "outputs": [{"name": "plan", "type": "BoutPPRunPlan", "mode": "sync"}],
+    "events": [],
+    "provides": [{"name": "boutpp.options.compile", "description": "Compile BOUT++ options and command metadata."}],
+    "requires": [{"name": "boutpp.environment.probe"}],
+    "slots": [{"slot": "boutpp_compiler.primary", "binding": "primary", "required": true}]
+  },
+  "safety": {"protected": false, "mutability": "mutable", "sandbox_profile": "workspace-write", "hot_swap": true},
+  "policy": {"sandbox": {"tier": "workspace-write"}, "credentials": {"requires_subject": false, "allow_inline_credentials": false, "required_claims": []}},
+  "state_schema_version": 1,
+  "provides": ["boutpp.options.compile"],
+  "requires": ["boutpp.environment.probe"],
+  "deps": {"components": [], "capabilities": ["boutpp.environment.probe"]},
+  "bins": []
+}

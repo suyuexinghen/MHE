@@ -1,0 +1,22 @@
+{
+  "name": "boutpp_postprocess",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.boutpp.postprocess:BoutPPPostprocessComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [{"name": "artifact", "type": "BoutPPRunArtifact", "required": true}],
+    "outputs": [{"name": "postprocess", "type": "BoutPPPostprocessReport", "mode": "sync"}],
+    "events": [],
+    "provides": [{"name": "boutpp.output.postprocess", "description": "Read BOUT++ logs, settings, and dumps."}],
+    "requires": [{"name": "boutpp.mpi.execute"}],
+    "slots": [{"slot": "boutpp_postprocess.primary", "binding": "primary", "required": true}]
+  },
+  "safety": {"protected": false, "mutability": "mutable", "sandbox_profile": "workspace-write", "hot_swap": true},
+  "policy": {"sandbox": {"tier": "workspace-write"}, "credentials": {"requires_subject": false, "allow_inline_credentials": false, "required_claims": []}},
+  "state_schema_version": 1,
+  "provides": ["boutpp.output.postprocess"],
+  "requires": ["boutpp.mpi.execute"],
+  "deps": {"components": [], "capabilities": ["boutpp.mpi.execute"]},
+  "bins": []
+}
