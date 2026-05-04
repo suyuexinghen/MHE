@@ -32,23 +32,16 @@ from metaharness.benchmark_drivers.qcompute_abacus_cases import get_qcompute_aba
 from metaharness.benchmark_drivers.qcompute_abacus_runner import QComputeAbacusBenchmarkRunner
 from metaharness.config.xml_parser import parse_graph_xml
 from metaharness.config.xsd_validator import XmlStructuralError, validate_harness_xml
-from metaharness.core.boot import HarnessRuntime
 from metaharness.core.connection_engine import ConnectionEngine
 from metaharness.core.graph_versions import GraphVersionStore
 from metaharness.core.models import PendingConnectionSet
 from metaharness.core.research import ResearchOrchestrator
 from metaharness.demo import DemoHarness
-from metaharness.observability import AssemblyMetricsService
 from metaharness.research.domains.fealpy import FEALPyRuleBasedExperimentDesigner
 from metaharness.research.dossier import build_research_dossier
 from metaharness.research.reviewers import MetricThresholdReviewer
 from metaharness.research.store import ResearchStore
-from metaharness.sdk.discovery import (
-    DiscoveredManifest,
-    DiscoveryResult,
-    DiscoverySource,
-    discover_manifest_paths,
-)
+from metaharness.sdk.discovery import discover_manifest_paths
 from metaharness.sdk.loader import declare_component, load_manifest
 from metaharness.sdk.registry import ComponentRegistry
 from metaharness.sdk.research import ExperimentPlan, Hypothesis, ResearchBudget, ResearchQuestion
@@ -58,31 +51,6 @@ from metaharness_ext.fealpy.benchmark_cases import get_fealpy_cases
 from metaharness_ext.fealpy.benchmark_runner import FealpyBenchmarkRunner
 from metaharness_ext.pycfd.benchmark_cases import pycfd_case_catalog
 from metaharness_ext.pycfd.benchmark_runner import PyCFDBenchmarkRunner
-
-
-class _ManifestRootDiscovery:
-    def __init__(self, roots: list[Path]) -> None:
-        self.roots = list(roots)
-
-    def resolve(self) -> DiscoveryResult:
-        winners: dict[str, DiscoveredManifest] = {}
-        overridden: list[DiscoveredManifest] = []
-        for root in self.roots:
-            for manifest_path in discover_manifest_paths(root):
-                manifest = load_manifest(manifest_path)
-                discovered = DiscoveredManifest(
-                    manifest=manifest,
-                    path=manifest_path,
-                    source=DiscoverySource.CUSTOM,
-                )
-                existing = winners.get(discovered.identity)
-                if existing is not None:
-                    overridden.append(existing)
-                winners[discovered.identity] = discovered
-        return DiscoveryResult(
-            winners=sorted(winners.values(), key=lambda item: item.identity),
-            overridden=overridden,
-        )
 
 
 def _cmd_demo(args: argparse.Namespace) -> int:
@@ -876,50 +844,6 @@ def _hypothesis_from_question(question: ResearchQuestion, *, suffix: str = "") -
     )
 
 
-def _cmd_metrics_assembly(args: argparse.Namespace) -> int:
-    if not args.manifests:
-        print("metrics assembly requires at least one --manifests root", file=sys.stderr)
-        return 2
-    try:
-        validate_harness_xml(Path(args.graph).read_text())
-        graph = parse_graph_xml(Path(args.graph))
-        runtime = HarnessRuntime(_ManifestRootDiscovery([Path(path) for path in args.manifests]))
-        runtime.boot()
-        graph_version = runtime.commit_graph(
-            PendingConnectionSet(nodes=graph.nodes, edges=graph.edges),
-            candidate_id=args.candidate_id,
-        )
-        health_summaries = [
-            event.payload["assembly_health"]
-            for event in runtime.session_events()
-            if "assembly_health" in event.payload
-        ]
-        instantiation_records = [read_json(Path(path)) for path in args.instantiation_record]
-        service = AssemblyMetricsService()
-        report = service.collect(
-            assembly_ledger=runtime.assembly_ledger,
-            copy_count_index=runtime.copy_count_index,
-            health_summaries=health_summaries,
-            instantiation_records=instantiation_records,
-            selection_lifecycle=runtime.selection_lifecycle,
-        )
-        report["source"] = {
-            "graph": str(Path(args.graph)),
-            "manifests": [str(Path(path)) for path in args.manifests],
-            "candidate_id": args.candidate_id,
-            "graph_version": graph_version,
-        }
-        if args.markdown_report:
-            path = service.write_markdown_report(report, Path(args.markdown_report))
-            report["markdown_report"] = str(path)
-    except (OSError, json.JSONDecodeError, ValueError, XmlStructuralError, ValidationError) as exc:
-        print(f"metrics assembly input error: {exc}", file=sys.stderr)
-        return 2
-    json.dump(report, sys.stdout, indent=2, sort_keys=True)
-    sys.stdout.write("\n")
-    return 0
-
-
 def _cmd_version(_: argparse.Namespace) -> int:
     print(__version__)
     return 0
@@ -1071,30 +995,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="prior negative-result memory JSON to merge into the dossier sidecar",
     )
     research_run.set_defaults(func=_cmd_research_run)
-
-    metrics = subparsers.add_parser("metrics", help="Report runtime evidence metrics")
-    metrics_subparsers = metrics.add_subparsers(dest="metrics_command", required=True)
-    assembly_metrics = metrics_subparsers.add_parser(
-        "assembly", help="Report assembly and instantiation evidence metrics"
-    )
-    assembly_metrics.add_argument("--graph", required=True, help="path to graph XML to boot")
-    assembly_metrics.add_argument(
-        "--manifests",
-        action="append",
-        default=[],
-        help="manifest directory to include during boot (repeatable)",
-    )
-    assembly_metrics.add_argument("--candidate-id", default="metrics-assembly")
-    assembly_metrics.add_argument(
-        "--instantiation-record",
-        action="append",
-        default=[],
-        help="optional InstantiationRecord JSON to include in the report (repeatable)",
-    )
-    assembly_metrics.add_argument(
-        "--markdown-report", default=None, help="optional path for a Markdown report"
-    )
-    assembly_metrics.set_defaults(func=_cmd_metrics_assembly)
 
     version = subparsers.add_parser("version", help="Print the package version")
     version.set_defaults(func=_cmd_version)

@@ -23,6 +23,7 @@
 | [08-热加载与状态迁移](08-hot-reload.md) | STR协议、Checkpoint策略、组件级蓝绿部署、观察窗口、Saga回滚、迁移适配器 |
 | [09-模板库与代码生成](09-template-library.md) | 模板设计原则、slot filling vs 自由生成、6步代码生成管线、MVP Proposer、反事实诊断提示 |
 | [10-开发与扩展指南](10-extension-guide.md) | 候选图优先的扩展流程、新建组件、替换核心组件、创建模板、扩展搜索策略、添加安全规则与hooks、5阶段实施路线图 |
+| [11-MHE Core 升级框架与 Extension 改进指南](11-upgraded-core-framework-and-extension-improvement.md) | assembly、instantiation、selection、metrics 升级后的 core 框架能力与 extension 改进路线 |
 
 ---
 
@@ -55,6 +56,10 @@
 ### 如果你要扩展新能力
 
 先看：[10-开发与扩展指南](10-extension-guide.md)
+
+### 如果你要理解升级后的 core 能力如何反哺 extension
+
+先看：[11-MHE Core 升级框架与 Extension 改进指南](11-upgraded-core-framework-and-extension-improvement.md)
 
 ---
 

@@ -83,6 +83,7 @@ class BoutPPProblemSpec(BaseModel):
     executable: str = "conduction"
     source_case_dir: str | None = None
     grid_file: str | None = None
+    top_level_options: dict[str, BoutPPOptionValue] = Field(default_factory=dict)
     options: dict[str, dict[str, BoutPPOptionValue]] = Field(default_factory=dict)
     cli_overrides: list[str] = Field(default_factory=list)
     mpi: BoutPPMpiSpec = Field(default_factory=BoutPPMpiSpec)

@@ -104,6 +104,13 @@ spec = BoutPPProblemSpec(
     case_name="conduction",
     executable=f"{case_dir}/conduction",
     source_case_dir=case_dir,
+    top_level_options={"MXG": 0},
+    options={
+        "mesh": {"nx": 1, "ny": 100, "nz": 1, "dy": 0.2, "symmetricGlobalY": True, "ixseps1": -1, "ixseps2": -1},
+        "conduction": {"chi": 1.0},
+        "T": {"scale": 1.0, "function": "gauss(y-pi, 0.2)", "bndry_all": "dirichlet_o4(0.0)"},
+        "solver": {"output_step": 0.1, "nout": 100},
+    },
     mpi=BoutPPMpiSpec(launcher_mode="mpi", launcher="mpirun", processes=2),
     output=BoutPPOutputSpec(
         data_dir="data",
@@ -128,7 +135,7 @@ The local CMake cache records `mpiexec` with `-n`, while the current MHE compile
 
 ## Current Limitation
 
-The local conduction tutorial relies on a top-level `MXG = 0` input. The current typed BOUT++ compiler only renders named sections, so it cannot yet reproduce that top-level option directly. In the smoke runs above, that gap caused the generated input to fall back to `MXG = 2`, which makes `nx = 1` invalid and triggers `Error: nx must be greater than 2 times MXG`.
+The typed BOUT++ compiler now supports top-level options through `BoutPPProblemSpec.top_level_options`, so the conduction smoke can render `MXG = 0` before named sections. Keep the tutorial mesh, conduction, variable, and solver settings in `options`; otherwise the generated `BOUT.inp` intentionally replaces the copied source input and BOUT++ will report missing mesh values such as `nx`.
 
 ## Smoke Execution Gate
 

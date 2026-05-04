@@ -22,6 +22,10 @@ class TestBoutPPProblemSpec:
         assert spec.case_name == "conduction"
         assert spec.executable == "conduction"
 
+    def test_top_level_options(self):
+        spec = BoutPPProblemSpec(task_id="boutpp-test", top_level_options={"MXG": 0})
+        assert spec.top_level_options == {"MXG": 0}
+
     def test_task_id_validation(self):
         with pytest.raises(ValueError, match="simple identifier"):
             BoutPPProblemSpec(task_id="bad/path")
