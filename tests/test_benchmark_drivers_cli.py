@@ -35,6 +35,37 @@ def test_benchmark_run_cli_writes_dry_run_outputs(tmp_path: Path, capsys) -> Non
     ).exists()
 
 
+def test_benchmark_run_cli_redirects_current_workdir_into_runs(
+    tmp_path: Path, capsys, monkeypatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    status = main(
+        [
+            "benchmark-run",
+            "--suite",
+            "octave-native",
+            "--lanes",
+            "direct",
+            "--cases",
+            "sinc-values",
+            "--runs-root",
+            ".",
+        ]
+    )
+
+    assert status == 0
+    payload = json.loads(capsys.readouterr().out)
+    output_dir = tmp_path / ".runs" / "octave-native-benchmark" / "direct" / "sinc-values"
+    assert (
+        str(Path(".runs") / "octave-native-benchmark" / "direct" / "sinc-values" / "summary.json")
+        in payload["summary_paths"]
+    )
+    assert output_dir.exists()
+    assert (output_dir / "solve.m").exists()
+    assert not (tmp_path / "octave-native-benchmark").exists()
+
+
 def test_benchmark_run_cli_allows_real_claude_without_real_tools(tmp_path: Path) -> None:
     status = main(
         [

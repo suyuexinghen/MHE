@@ -19,8 +19,18 @@ SUITE_DIRS: dict[BenchmarkSuite, str] = {
 }
 
 
+def _normalize_runs_root(runs_root: Path) -> Path:
+    if runs_root.name == ".runs":
+        return runs_root
+    if runs_root == Path("."):
+        return Path(".runs")
+    if runs_root.resolve() == Path.cwd().resolve():
+        return runs_root / ".runs"
+    return runs_root
+
+
 def suite_root(runs_root: Path, suite: BenchmarkSuite) -> Path:
-    return runs_root / SUITE_DIRS[suite]
+    return _normalize_runs_root(runs_root) / SUITE_DIRS[suite]
 
 
 def case_dir(runs_root: Path, suite: BenchmarkSuite, lane: BenchmarkLane, case_id: str) -> Path:
