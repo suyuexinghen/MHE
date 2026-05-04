@@ -26,7 +26,10 @@ def boutpp_usage_case_catalog() -> dict[str, BenchmarkCaseSpec]:
                 "mpi": {"processes": 1, "launcher_mode": "direct"},
                 "restart": {"mode": "fresh"},
                 "output": {"data_dir": "data", "require_logs": True, "require_settings": True},
-                "validation": {"required_variables": [], "metric_thresholds": {"elapsed_seconds": 0.0}},
+                "validation": {
+                    "required_variables": [],
+                    "metric_thresholds": {"elapsed_seconds": 0.0},
+                },
                 "timeout_seconds": 300,
             },
         )
@@ -38,4 +41,4 @@ def get_boutpp_usage_cases(case_ids: list[str] | None = None) -> list[BenchmarkC
     catalog = boutpp_usage_case_catalog()
     if case_ids is None:
         return list(catalog.values())
-    return [catalog[case_id] for case_id in case_ids if case_id in catalog]
+    return [catalog[case_id] for case_id in case_ids]

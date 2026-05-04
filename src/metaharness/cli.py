@@ -47,6 +47,8 @@ from metaharness.sdk.registry import ComponentRegistry
 from metaharness.sdk.research import ExperimentPlan, Hypothesis, ResearchBudget, ResearchQuestion
 from metaharness_ext.ai4pde.case_parser import Ai4PdeCaseXmlError, parse_ai4pde_case_xml
 from metaharness_ext.ai4pde.demo import AI4PDECaseDemoHarness
+from metaharness_ext.boutpp.benchmark_cases import get_boutpp_usage_cases
+from metaharness_ext.boutpp.benchmark_runner import BoutPPUsageValidationRunner
 from metaharness_ext.fealpy.benchmark_cases import get_fealpy_cases
 from metaharness_ext.fealpy.benchmark_runner import FealpyBenchmarkRunner
 from metaharness_ext.pycfd.benchmark_cases import pycfd_case_catalog
@@ -322,6 +324,15 @@ def _cmd_benchmark_run(args: argparse.Namespace) -> int:
                 runs_root=runs_root,
                 allow_real_tools=args.allow_real_tools,
                 pycfd_src_path=args.pycfd_src_path,
+                brain_provider=brain_provider,
+                adaptive_agent=args.adaptive_agent,
+                max_repair_attempts=args.max_repair_attempts,
+            )
+        elif suite == "boutpp-usage":
+            cases = get_boutpp_usage_cases(case_ids)
+            runner = BoutPPUsageValidationRunner(
+                runs_root=runs_root,
+                allow_real_tools=args.allow_real_tools,
                 brain_provider=brain_provider,
                 adaptive_agent=args.adaptive_agent,
                 max_repair_attempts=args.max_repair_attempts,
@@ -889,7 +900,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     benchmark_run.add_argument(
         "--suite",
-        choices=["octave-native", "nektar-pde", "qcompute-abacus", "fealpy-pde", "pycfd-pde"],
+        choices=[
+            "octave-native",
+            "nektar-pde",
+            "qcompute-abacus",
+            "fealpy-pde",
+            "pycfd-pde",
+            "boutpp-usage",
+        ],
         required=True,
     )
     benchmark_run.add_argument("--lanes", default="extension,direct,agent")
@@ -928,7 +946,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     benchmark_compare.add_argument(
         "--suite",
-        choices=["octave-native", "nektar-pde", "qcompute-abacus", "fealpy-pde", "pycfd-pde"],
+        choices=[
+            "octave-native",
+            "nektar-pde",
+            "qcompute-abacus",
+            "fealpy-pde",
+            "pycfd-pde",
+            "boutpp-usage",
+        ],
         required=True,
     )
     benchmark_compare.add_argument("--runs-root", default=".runs")
@@ -950,7 +975,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     approval_check.add_argument(
         "--suite",
-        choices=["octave-native", "nektar-pde", "qcompute-abacus", "fealpy-pde", "pycfd-pde"],
+        choices=[
+            "octave-native",
+            "nektar-pde",
+            "qcompute-abacus",
+            "fealpy-pde",
+            "pycfd-pde",
+            "boutpp-usage",
+        ],
         required=True,
     )
     approval_check.add_argument("--cases", default="")
@@ -976,7 +1008,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     research_run.add_argument(
         "--suite",
-        choices=["octave-native", "nektar-pde", "qcompute-abacus", "fealpy-pde", "pycfd-pde"],
+        choices=[
+            "octave-native",
+            "nektar-pde",
+            "qcompute-abacus",
+            "fealpy-pde",
+            "pycfd-pde",
+            "boutpp-usage",
+        ],
         default=None,
     )
     research_run.add_argument("--cases", default="", help="comma-separated benchmark case ids")

@@ -262,3 +262,17 @@ Agent 在策略选择时必须权衡保真度增益与 QPU 时间成本。
 
 这使 QCompute 的 evidence 不只是"通过/失败"信号，而是可供 governance 层进行
 独立评估的完整上下文。
+
+## 4.9 Assembly / Instantiation Evidence Boundary
+
+QCompute 保留扩展原生 `mode`，同时在 evidence/governance handoff 中映射到 MHE core `ExecutionMode`：
+
+| Native mode / backend | Core mode | 外部验证边界 |
+|---|---|---|
+| `simulate` 或 `backend.simulator=true` | `simulation` | 不计入 externally verified，即使有本地 `raw_output_path` |
+| `hybrid` | `staged` | 表示分阶段工作流，不声明已完成真实后端验证 |
+| `run` + 非模拟器 + completed artifact + provider receipt refs | `external_verified` | 需要 provider/backend receipt refs，例如 backend、shots、raw output path 和 validation status 派生的 receipt ref |
+| `run` + 非模拟器 + completed artifact + 缺少 provider receipt refs | `instantiated` | 只说明真实执行边界已形成，不计入 externally verified |
+| 其他未知或不完整组合 | `unknown` | 保持可见但不升级为成功声明 |
+
+当前默认测试仍使用 Qiskit Aer simulator/mock 路径；Quafu 等真实后端继续保持环境变量与 token 门控、显式 opt-in，不在默认 CI 中运行。Framework metrics 只能说明 assembly/instantiation evidence 完整性，不能单独证明量子算法科学优越性或硬件结果可重复性。

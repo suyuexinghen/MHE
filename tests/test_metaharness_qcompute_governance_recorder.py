@@ -154,10 +154,19 @@ class TestGovernanceRecordWithArtifactStore:
         assert [snapshot.artifact_kind for snapshot in evidence_history] == ["evidence_bundle"]
         assert validation_history[0].parent_snapshot_id == run_history[0].snapshot_id
         assert evidence_history[0].parent_snapshot_id == validation_history[0].snapshot_id
-        assert reloaded_audit.by_kind("execution.artifact_snapshots_recorded")[0].payload == {
+        snapshot_payload = reloaded_audit.by_kind("execution.artifact_snapshots_recorded")[
+            0
+        ].payload
+        instantiation_snapshot = reloaded_artifacts.get(
+            snapshot_payload["instantiation_snapshot_id"]
+        )
+        assert instantiation_snapshot is not None
+        assert instantiation_snapshot.artifact_kind == "instantiation_record"
+        assert snapshot_payload == {
             "run_snapshot_id": run_history[0].snapshot_id,
             "validation_snapshot_id": validation_history[0].snapshot_id,
             "evidence_snapshot_id": evidence_history[0].snapshot_id,
+            "instantiation_snapshot_id": instantiation_snapshot.snapshot_id,
             "candidate_id": "art-1",
             "graph_version": 0,
         }

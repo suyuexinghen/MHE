@@ -4,6 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
 
+from metaharness.core.execution_modes import InstantiationRecord
 from metaharness.core.models import ValidationIssue
 from metaharness_ext.moose.types import (
     MooseInputMode,
@@ -211,6 +212,7 @@ class MooseEvidenceBundle(BaseModel):
     validation: MooseValidationReport | None = None
     evidence_files: list[str] = Field(default_factory=list)
     evidence_refs: list[str] = Field(default_factory=list)
+    instantiation_records: list[InstantiationRecord] = Field(default_factory=list)
     warnings: list[MooseEvidenceWarning] = Field(default_factory=list)
     provenance: dict[str, Any] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)

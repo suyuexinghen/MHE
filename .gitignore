@@ -8,7 +8,7 @@ MHE_CMA_Improvement_Analysis.*
 drafts
 sessions_export_extra
 sessions_export
-.claude
+.claude/worktrees
 .runs
 abacus_runs
 __pycache__

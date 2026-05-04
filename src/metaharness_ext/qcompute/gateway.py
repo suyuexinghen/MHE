@@ -151,6 +151,7 @@ class QComputeGatewayComponent(HarnessComponent):
             plan_ref=failed_plan_id,
             backend_actual=spec.backend.platform,
             status="failed",
+            native_execution_mode=spec.mode,
             error_message=(f"Environment probe reported unavailable backend: {env_report.status}"),
             terminal_error_type="environment_unavailable",
             shots_requested=spec.shots,

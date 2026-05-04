@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from metaharness.core.execution_modes import ExecutionMode, InstantiationRecord
 from metaharness_ext.jedi.contracts import (
     JediDiagnosticSummary,
     JediEvidenceBundle,
@@ -7,6 +8,40 @@ from metaharness_ext.jedi.contracts import (
     JediRunArtifact,
     JediValidationReport,
 )
+
+
+def map_jedi_execution_mode(value: str | None) -> ExecutionMode:
+    if value in {"schema", "validate_only"}:
+        return ExecutionMode.DRY_RUN
+    if value == "real_run":
+        return ExecutionMode.INSTANTIATED
+    return ExecutionMode.UNKNOWN
+
+
+def build_jedi_instantiation_record(
+    run: JediRunArtifact,
+    validation: JediValidationReport | None = None,
+    *,
+    evidence_files: list[str] | None = None,
+) -> InstantiationRecord:
+    graph_version = validation.graph_version_id if validation is not None else None
+    return InstantiationRecord(
+        execution_mode=map_jedi_execution_mode(str(run.execution_mode)),
+        native_execution_mode=str(run.execution_mode),
+        claim_ref=f"jedi:{run.application_family}:{run.execution_mode}",
+        action_ref=" ".join(run.command) if run.command else None,
+        run_artifact_ref=run.working_directory,
+        validation_ref=f"jedi-validation:{validation.run_id}" if validation is not None else None,
+        evidence_refs=list(evidence_files or []),
+        candidate_id=(validation.candidate_id if validation is not None else None) or run.run_id,
+        graph_version=graph_version,
+        attributes={
+            "extension_family": "jedi",
+            "application_family": run.application_family,
+            "run_status": run.status,
+            "return_code": run.return_code,
+        },
+    )
 
 
 def build_evidence_bundle(
@@ -66,6 +101,12 @@ def build_evidence_bundle(
             )
         )
 
+    instantiation_record = build_jedi_instantiation_record(
+        run,
+        validation,
+        evidence_files=evidence_files,
+    )
+
     return JediEvidenceBundle(
         task_id=run.task_id,
         run_id=run.run_id,
@@ -81,6 +122,7 @@ def build_evidence_bundle(
         session_id=(validation.session_id if validation is not None else None) or run.task_id,
         session_events=list(validation.session_events) if validation is not None else [],
         audit_refs=list(validation.audit_refs) if validation is not None else [],
+        instantiation_record=instantiation_record,
         metadata={
             "status": run.status,
             "return_code": run.return_code,

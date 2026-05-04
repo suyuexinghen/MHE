@@ -499,6 +499,95 @@ def test_nektar_benchmark_run_cli_writes_dry_run_outputs(tmp_path: Path) -> None
     ).exists()
 
 
+def test_boutpp_benchmark_run_cli_writes_claude_lane_outputs(tmp_path: Path) -> None:
+    status = main(
+        [
+            "benchmark-run",
+            "--suite",
+            "boutpp-usage",
+            "--lanes",
+            "extension,direct,agent",
+            "--cases",
+            "conduction-basic",
+            "--runs-root",
+            str(tmp_path),
+        ]
+    )
+
+    assert status == 0
+    assert (tmp_path / "boutpp-usage-benchmark" / "specs" / "conduction-basic.json").exists()
+    assert (
+        tmp_path / "boutpp-usage-benchmark" / "direct" / "conduction-basic" / "claude_prompt.txt"
+    ).exists()
+    assert (
+        tmp_path
+        / "boutpp-usage-benchmark"
+        / "agent"
+        / "conduction-basic"
+        / "proposal_preflight.json"
+    ).exists()
+
+
+def test_boutpp_benchmark_run_cli_rejects_unknown_case(tmp_path: Path, capsys) -> None:
+    status = main(
+        [
+            "benchmark-run",
+            "--suite",
+            "boutpp-usage",
+            "--lanes",
+            "extension",
+            "--cases",
+            "missing-case",
+            "--runs-root",
+            str(tmp_path),
+        ]
+    )
+
+    assert status == 2
+    assert "unknown benchmark case: missing-case" in capsys.readouterr().err
+
+
+def test_boutpp_benchmark_run_cli_forwards_agent_options(tmp_path: Path, monkeypatch) -> None:
+    captured = {}
+
+    class FakeBoutPPUsageValidationRunner:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+            self.runs_root = kwargs["runs_root"]
+
+        def run_case(self, case, lanes):
+            return []
+
+    monkeypatch.setattr(
+        "metaharness.cli.BoutPPUsageValidationRunner", FakeBoutPPUsageValidationRunner
+    )
+
+    status = main(
+        [
+            "benchmark-run",
+            "--suite",
+            "boutpp-usage",
+            "--lanes",
+            "agent",
+            "--cases",
+            "conduction-basic",
+            "--runs-root",
+            str(tmp_path),
+            "--allow-real-claude",
+            "--claude-binary",
+            "missing-claude-for-test",
+            "--adaptive-agent",
+            "--max-repair-attempts",
+            "3",
+        ]
+    )
+
+    assert status == 0
+    assert captured["brain_provider"] is not None
+    assert captured["adaptive_agent"] is True
+    assert captured["max_repair_attempts"] == 3
+
+
 def test_benchmark_compare_cli_writes_reports(tmp_path: Path) -> None:
     assert (
         main(
@@ -614,3 +703,37 @@ def test_qcompute_abacus_benchmark_compare_cli_writes_reports(tmp_path: Path) ->
 
     assert status == 0
     assert (tmp_path / "qcompute-abacus-benchmark" / "comparison" / "result_bundle.json").exists()
+
+
+def test_boutpp_benchmark_compare_cli_writes_reports(tmp_path: Path) -> None:
+    assert (
+        main(
+            [
+                "benchmark-run",
+                "--suite",
+                "boutpp-usage",
+                "--lanes",
+                "extension,direct,agent",
+                "--cases",
+                "conduction-basic",
+                "--runs-root",
+                str(tmp_path),
+            ]
+        )
+        == 0
+    )
+
+    status = main(
+        [
+            "benchmark-compare",
+            "--suite",
+            "boutpp-usage",
+            "--runs-root",
+            str(tmp_path),
+        ]
+    )
+
+    assert status == 0
+    comparison_dir = tmp_path / "boutpp-usage-benchmark" / "comparison"
+    assert (comparison_dir / "result_bundle.json").exists()
+    assert "direct_preflight_status" in (comparison_dir / "summary_table.csv").read_text()

@@ -30,7 +30,7 @@ from metaharness_ext.moose.contracts import (
     MooseWorkspaceSpec,
 )
 from metaharness_ext.moose.environment import MooseEnvironmentProbeComponent
-from metaharness_ext.moose.evidence import build_evidence_bundle
+from metaharness_ext.moose.evidence import build_evidence_bundle, build_instantiation_record
 from metaharness_ext.moose.executor import MooseExecutorComponent
 from metaharness_ext.moose.gateway import MooseGatewayComponent
 from metaharness_ext.moose.input_compiler import MooseInputCompilerComponent
@@ -100,4 +100,5 @@ __all__ = [
     "MooseWorkspaceSpec",
     "PROTECTED_SLOTS",
     "build_evidence_bundle",
+    "build_instantiation_record",
 ]

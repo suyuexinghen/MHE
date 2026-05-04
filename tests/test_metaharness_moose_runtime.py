@@ -3,6 +3,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from metaharness.core.execution_modes import ExecutionMode
 from metaharness_ext.moose.contracts import (
     MooseEnvironmentReport,
     MooseEvidenceBundle,
@@ -13,7 +14,7 @@ from metaharness_ext.moose.contracts import (
     MooseWorkspaceSpec,
 )
 from metaharness_ext.moose.environment import MooseEnvironmentProbeComponent
-from metaharness_ext.moose.evidence import build_evidence_bundle
+from metaharness_ext.moose.evidence import build_evidence_bundle, build_instantiation_record
 from metaharness_ext.moose.executor import MooseExecutorComponent
 from metaharness_ext.moose.input_compiler import MooseInputCompilerComponent
 from metaharness_ext.moose.policy import MooseEvidencePolicy
@@ -70,6 +71,21 @@ def test_moose_input_compiler_renders_parameters_and_command(tmp_path: Path) -> 
     assert plan.workspace_dir == str(tmp_path / "run")
 
 
+def test_moose_input_generation_maps_to_core_dry_run(tmp_path: Path) -> None:
+    spec = _spec()
+    plan = MooseInputCompilerComponent().compile(
+        spec, run_id="moose-run", workspace_dir=str(tmp_path / "run")
+    )
+
+    record = build_instantiation_record(plan=plan)
+
+    assert record is not None
+    assert record.execution_mode is ExecutionMode.DRY_RUN
+    assert record.native_execution_mode == "input_deck_generation"
+    assert record.run_artifact_ref is None
+    assert record.external_evidence_refs == []
+
+
 def test_moose_executor_and_validator_use_mocked_subprocess(monkeypatch, tmp_path: Path) -> None:
     spec = _spec()
     plan = MooseInputCompilerComponent().compile(
@@ -97,6 +113,15 @@ def test_moose_executor_and_validator_use_mocked_subprocess(monkeypatch, tmp_pat
     assert artifact.warnings[0].severity == "suspicious"
     assert validation.passed is True
     assert validation.status.value == "executed"
+
+    record = build_instantiation_record(plan=plan, artifact=artifact, validation=validation)
+    assert record is not None
+    assert record.execution_mode is ExecutionMode.INSTANTIATED
+    assert record.native_execution_mode == "executable_run"
+    assert record.run_artifact_ref == artifact.artifact_id
+    assert record.validation_ref == validation.artifact_ref
+    assert record.evidence_refs == artifact.evidence_refs
+    assert record.external_evidence_refs == []
 
 
 def test_moose_executor_discovers_custom_output_directory(monkeypatch, tmp_path: Path) -> None:
@@ -140,6 +165,12 @@ def test_moose_executor_short_circuits_unavailable_environment(tmp_path: Path) -
     assert artifact.return_code is None
     assert artifact.warnings[0].severity == "blocking"
 
+    record = build_instantiation_record(plan=plan, artifact=artifact)
+    assert record is not None
+    assert record.execution_mode is ExecutionMode.UNKNOWN
+    assert record.native_execution_mode == "execution_unavailable"
+    assert record.external_evidence_refs == []
+
 
 def test_moose_policy_and_evidence_bundle(tmp_path: Path) -> None:
     spec = _spec()
@@ -180,4 +211,6 @@ def test_moose_policy_and_evidence_bundle(tmp_path: Path) -> None:
     assert bundle.run_id == artifact.run_id
     assert bundle.plan_ref == plan.plan_id
     assert bundle.validation_ref == artifact.artifact_id
+    assert len(bundle.instantiation_records) == 1
+    assert bundle.instantiation_records[0].execution_mode is ExecutionMode.INSTANTIATED
     assert policy.decision == "allow"

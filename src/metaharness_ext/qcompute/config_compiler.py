@@ -77,6 +77,7 @@ class QComputeConfigCompilerComponent(HarnessComponent):
             experiment_ref=spec.task_id,
             circuit_openqasm=qasm_text,
             target_backend=spec.backend,
+            native_execution_mode=spec.mode,
             compilation_strategy=self._compilation_strategy(spec),
             compilation_metadata=compilation_metadata,
             estimated_depth=estimated_depth,

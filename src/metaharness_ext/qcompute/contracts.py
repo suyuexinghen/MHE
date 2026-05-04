@@ -163,6 +163,7 @@ class QComputeRunPlan(BaseModel):
     experiment_ref: str
     circuit_openqasm: str
     target_backend: QComputeBackendSpec
+    native_execution_mode: QComputeExecutionMode | None = None
     compilation_strategy: QComputeCompilationStrategy
     compilation_metadata: dict[str, Any] = Field(default_factory=dict)
     estimated_depth: int | None = None
@@ -255,6 +256,7 @@ class QComputeRunArtifact(BaseModel):
     plan_ref: str
     backend_actual: str
     status: QComputeRunArtifactStatus
+    native_execution_mode: QComputeExecutionMode | None = None
     counts: dict[str, int] | None = None
     statevector: list[complex] | None = None
     probabilities: dict[str, float] | None = None
@@ -273,6 +275,7 @@ class QComputeRunArtifact(BaseModel):
     checkpoint_refs: list[str] = Field(default_factory=list)
     provenance_refs: list[str] = Field(default_factory=list)
     trace_refs: list[str] = Field(default_factory=list)
+    external_evidence_refs: list[str] = Field(default_factory=list)
     scored_evidence: ScoredEvidence | None = None
     execution_policy: QComputeExecutionPolicy = Field(default_factory=QComputeExecutionPolicy)
 
@@ -295,6 +298,7 @@ class QComputeEvidenceBundle(BaseModel):
     scored_evidence: ScoredEvidence | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     provenance_refs: list[str] = Field(default_factory=list)
+    external_evidence_refs: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

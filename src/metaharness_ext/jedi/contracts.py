@@ -5,6 +5,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, TypeAdapter, field_validator, model_validator
 
+from metaharness.core.execution_modes import InstantiationRecord
 from metaharness.core.graph_versions import CandidateRecord
 from metaharness.core.models import SessionEvent, ValidationReport
 from metaharness.safety.gates import GateResult
@@ -294,6 +295,7 @@ class JediEvidenceBundle(BaseModel):
     session_id: str | None = None
     session_events: list[SessionEvent] = Field(default_factory=list)
     audit_refs: list[str] = Field(default_factory=list)
+    instantiation_record: InstantiationRecord | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

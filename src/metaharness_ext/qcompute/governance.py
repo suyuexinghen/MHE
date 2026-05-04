@@ -16,6 +16,7 @@ from metaharness_ext.qcompute.contracts import (
     QComputePolicyReport,
     QComputeValidationReport,
 )
+from metaharness_ext.qcompute.evidence import build_instantiation_record
 
 
 class QComputeGovernanceAdapter:
@@ -198,6 +199,11 @@ class QComputeGovernanceAdapter:
             )
             audit_refs.append(f"audit-record:{record.record_id}")
 
+        instantiation_record = build_instantiation_record(
+            bundle,
+            candidate_id=candidate_id,
+            graph_version=graph_version,
+        )
         handoff_record = audit_log.append(
             "qcompute.governance_handoff",
             actor=self.actor,
@@ -208,6 +214,7 @@ class QComputeGovernanceAdapter:
                 "graph_version": graph_version,
                 "policy_decision": policy.decision,
                 "validation_status": validation.status.value,
+                "instantiation_record": instantiation_record.model_dump(mode="json"),
             },
         )
         audit_refs.append(f"audit-record:{handoff_record.record_id}")
@@ -253,6 +260,11 @@ class QComputeGovernanceAdapter:
                 audit_log=audit_log,
                 actor=f"{self.actor}_recorder",
             )
+            instantiation_record = build_instantiation_record(
+                bundle,
+                candidate_id=candidate_id,
+                graph_version=graph_version,
+            )
             record = recorder.record(
                 session_id=self.session_id or validation.task_id,
                 run_artifact=bundle.run_artifact,
@@ -261,6 +273,11 @@ class QComputeGovernanceAdapter:
                 candidate_id=candidate_id,
                 graph_version=graph_version,
                 policy_decision=policy.decision,
+                execution_mode=instantiation_record.execution_mode,
+                native_execution_mode=instantiation_record.native_execution_mode,
+                instantiation_record=instantiation_record,
+                external_evidence_refs=instantiation_record.external_evidence_refs,
+                extension_family="qcompute",
                 safety_payload={
                     "reason": policy.reason,
                     "gate_count": len(policy.gates),

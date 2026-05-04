@@ -1,9 +1,19 @@
+from metaharness.core.execution_modes import ExecutionMode
+from metaharness.observability.metrics import AssemblyMetricsService
 from metaharness_ext.jedi.contracts import (
     JediDiagnosticSummary,
     JediRunArtifact,
     JediValidationReport,
 )
-from metaharness_ext.jedi.evidence import build_evidence_bundle
+from metaharness_ext.jedi.evidence import build_evidence_bundle, map_jedi_execution_mode
+
+
+def test_jedi_execution_mode_mapping_preserves_dry_run_and_real_boundaries() -> None:
+    assert map_jedi_execution_mode("schema") is ExecutionMode.DRY_RUN
+    assert map_jedi_execution_mode("validate_only") is ExecutionMode.DRY_RUN
+    assert map_jedi_execution_mode("real_run") is ExecutionMode.INSTANTIATED
+    assert map_jedi_execution_mode("legacy") is ExecutionMode.UNKNOWN
+    assert map_jedi_execution_mode(None) is ExecutionMode.UNKNOWN
 
 
 def test_build_evidence_bundle_aggregates_run_validation_and_summary() -> None:
@@ -61,6 +71,14 @@ def test_build_evidence_bundle_aggregates_run_validation_and_summary() -> None:
     assert bundle.session_id == "task-1"
     assert bundle.session_events == []
     assert bundle.audit_refs == []
+    assert bundle.instantiation_record is not None
+    assert bundle.instantiation_record.execution_mode is ExecutionMode.INSTANTIATED
+    assert bundle.instantiation_record.native_execution_mode == "real_run"
+    assert bundle.instantiation_record.candidate_id == "run-1"
+    assert bundle.instantiation_record.run_artifact_ref == "/tmp/run"
+    assert bundle.instantiation_record.validation_ref == "jedi-validation:run-1"
+    assert "/tmp/analysis.out" in bundle.instantiation_record.evidence_refs
+    assert bundle.instantiation_record.external_evidence_refs == []
     assert bundle.metadata["policy_decision"] == "allow"
     assert bundle.metadata["diagnostics_present"] is True
     assert bundle.metadata["diagnostic_files_scanned"] == 2
@@ -109,6 +127,38 @@ def test_build_evidence_bundle_preserves_validation_prerequisite_and_checkpoint_
     assert bundle.validation.checkpoint_refs == [
         "checkpoint://jedi/prerequisite/workspace-testinput"
     ]
+    assert bundle.instantiation_record is not None
+    assert bundle.instantiation_record.execution_mode is ExecutionMode.DRY_RUN
+    assert bundle.instantiation_record.native_execution_mode == "validate_only"
+
+
+def test_jedi_instantiation_record_is_visible_to_core_metrics_without_external_overclaim() -> None:
+    run = JediRunArtifact(
+        task_id="task-metrics",
+        run_id="run-metrics",
+        application_family="hofx",
+        execution_mode="real_run",
+        command=["/usr/bin/qgHofX4D.x", "config.yaml"],
+        return_code=0,
+        config_path="/tmp/config.yaml",
+        stdout_path="/tmp/stdout.log",
+        stderr_path="/tmp/stderr.log",
+        output_files=["/tmp/hofx.out"],
+        diagnostic_files=["/tmp/diagnostics.json"],
+        working_directory="/tmp/run",
+        status="completed",
+    )
+
+    bundle = build_evidence_bundle(run)
+    assert bundle.instantiation_record is not None
+
+    report = AssemblyMetricsService().collect(
+        instantiation_records=[bundle.instantiation_record],
+    )
+
+    assert report["summary"]["instantiation_record_count"] == 1
+    assert report["summary"]["external_verified_instantiation_count"] == 0
+    assert report["summary"]["unknown_instantiation_count"] == 0
 
 
 def test_build_evidence_bundle_warns_for_incomplete_real_run_evidence() -> None:
