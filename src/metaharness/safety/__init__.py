@@ -1,6 +1,11 @@
 """Safety and governance chain for Meta-Harness mutations."""
 
 from metaharness.safety.ab_shadow import ABShadowTester, ShadowTestResult
+from metaharness.safety.assembly_health import (
+    AssemblyHealthGate,
+    AssemblyHealthPolicy,
+    AssemblyHealthPolicyMode,
+)
 from metaharness.safety.auto_rollback import AutoRollback, HealthProbe
 from metaharness.safety.gates import GateDecision, GateResult, SafetyGate
 from metaharness.safety.hooks import GuardHook, HookRegistry, MutateHook, ReduceHook
@@ -22,6 +27,9 @@ from metaharness.safety.sandbox_validator import SandboxValidator
 
 __all__ = [
     "ABShadowTester",
+    "AssemblyHealthGate",
+    "AssemblyHealthPolicy",
+    "AssemblyHealthPolicyMode",
     "AutoRollback",
     "GateDecision",
     "GateResult",

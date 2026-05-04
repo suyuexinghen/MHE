@@ -5,9 +5,10 @@ from typing import Any
 
 import pytest
 
-from metaharness.core.execution import ExecutionLifecycleService
-from metaharness.core.models import SessionEventType
+from metaharness.core.execution import ExecutionEvidenceRecorder, ExecutionLifecycleService
+from metaharness.core.models import ExecutionMode, InstantiationRecord, SessionEventType
 from metaharness.observability.events import InMemorySessionStore
+from metaharness.provenance import ArtifactSnapshotStore, AuditLog, ProvGraph
 from metaharness.sdk.execution import ExecutionStatus, FibonacciPollingStrategy, JobHandle
 
 
@@ -25,6 +26,17 @@ class DemoArtifact:
     plan_ref: str
     status: str = "completed"
     raw_output_path: str | None = None
+
+
+@dataclass(slots=True)
+class DemoValidation:
+    task_id: str
+    status: str = "validated"
+
+
+@dataclass(slots=True)
+class DemoEvidenceBundle:
+    bundle_id: str
 
 
 class ScriptedExecutor:
@@ -50,6 +62,19 @@ class ScriptedExecutor:
 def test_execution_lifecycle_event_type_values_are_stable() -> None:
     assert SessionEventType.TASK_RUNNING.value == "task_running"
     assert SessionEventType.TASK_CANCELLED.value == "task_cancelled"
+    assert SessionEventType.INSTANTIATION_RECORDED.value == "instantiation_recorded"
+    assert SessionEventType.EXECUTION_RECONCILED.value == "execution_reconciled"
+
+
+def test_execution_mode_normalizes_extension_native_modes() -> None:
+    assert (
+        ExecutionMode.normalize("simulate", extension_family="qcompute") == ExecutionMode.SIMULATION
+    )
+    assert (
+        ExecutionMode.normalize("real_run", extension_family="jedi") == ExecutionMode.INSTANTIATED
+    )
+    assert ExecutionMode.normalize("dpgen_run", extension_family="deepmd") == ExecutionMode.STAGED
+    assert ExecutionMode.normalize("train", extension_family="deepmd") == ExecutionMode.UNKNOWN
 
 
 @pytest.mark.asyncio
@@ -139,3 +164,54 @@ async def test_execution_lifecycle_cancel_records_cancelled_event() -> None:
     assert handle.completed_at is not None
     assert event.event_type == SessionEventType.TASK_CANCELLED
     assert store.get_events("session-1") == [event]
+
+
+def test_execution_evidence_recorder_persists_instantiation_reconciliation() -> None:
+    session_store = InMemorySessionStore()
+    artifact_store = ArtifactSnapshotStore()
+    provenance_graph = ProvGraph()
+    audit_log = AuditLog()
+    recorder = ExecutionEvidenceRecorder(
+        session_store=session_store,
+        artifact_store=artifact_store,
+        provenance_graph=provenance_graph,
+        audit_log=audit_log,
+    )
+
+    result = recorder.record(
+        session_id="session-1",
+        run_artifact=DemoArtifact(artifact_id="artifact-1", plan_ref="plan-1"),
+        validation_outcome=DemoValidation(task_id="candidate-1"),
+        evidence_bundle=DemoEvidenceBundle(bundle_id="bundle-1"),
+        graph_version=3,
+        native_execution_mode="simulate",
+        external_evidence_refs=["receipt:lab-1"],
+        extension_family="qcompute",
+    )
+
+    events = session_store.get_events("session-1")
+    assert [event.event_type for event in events] == [
+        SessionEventType.CANDIDATE_VALIDATED,
+        SessionEventType.INSTANTIATION_RECORDED,
+        SessionEventType.EXECUTION_RECONCILED,
+    ]
+    assert result.instantiation_snapshot is not None
+    assert result.instantiation_snapshot.artifact_kind == "instantiation_record"
+    assert result.evidence_snapshot.payload["execution_reconciliation"] == {
+        "execution_mode": "simulation",
+        "native_execution_mode": "simulate",
+        "external_evidence_refs": ["receipt:lab-1"],
+        "extension_family": "qcompute",
+    }
+    record = InstantiationRecord.model_validate(result.instantiation_snapshot.payload)
+    assert record.execution_mode == ExecutionMode.SIMULATION
+    assert record.reconciliation_status == "external_evidence_attached"
+    assert record.external_evidence_refs == ["receipt:lab-1"]
+    assert (
+        events[-1].payload["instantiation_snapshot_id"] == result.instantiation_snapshot.snapshot_id
+    )
+    assert (
+        f"artifact-snapshot:{result.instantiation_snapshot.snapshot_id}"
+        in provenance_graph.entities
+    )
+    assert any(ref.startswith("audit-record:") for ref in result.audit_refs)

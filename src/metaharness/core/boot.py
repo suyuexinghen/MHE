@@ -12,6 +12,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from metaharness.core.assembly import (
+    AssemblyHealthSummary,
+    AssemblyLedger,
+    CopyCountIndex,
+    DependencyGraphSnapshot,
+)
 from metaharness.core.connection_engine import ConnectionEngine
 from metaharness.core.drain import DrainCoordinator
 from metaharness.core.event_bus import (
@@ -41,6 +47,7 @@ from metaharness.core.models import (
 )
 from metaharness.core.mutation import MutationSubmitter
 from metaharness.core.port_index import PortIndex, RouteTable
+from metaharness.core.selection import SelectionLifecycle, SelectionStateKind
 from metaharness.hotreload.migration import MigrationAdapterRegistry
 from metaharness.hotreload.observation import EventList, MetricMap, ObservationProbe
 from metaharness.identity import InMemoryIdentityBoundary
@@ -48,6 +55,8 @@ from metaharness.observability.events import InMemorySessionStore, SessionStore,
 from metaharness.provenance import ArtifactSnapshotStore, AuditLog, ProvGraph, RelationKind
 from metaharness.safety import (
     ABShadowTester,
+    AssemblyHealthGate,
+    AssemblyHealthPolicy,
     AutoRollback,
     SafetyPipeline,
     SandboxValidator,
@@ -114,6 +123,10 @@ class HarnessRuntime:
         provenance_graph: ProvGraph | None = None,
         artifact_store: ArtifactSnapshotStore | None = None,
         resource_quota: Any | None = None,
+        assembly_ledger: AssemblyLedger | None = None,
+        copy_count_index: CopyCountIndex | None = None,
+        selection_lifecycle: SelectionLifecycle | None = None,
+        assembly_health_policy: AssemblyHealthPolicy | None = None,
         require_route_handlers: bool = False,
     ) -> None:
         self.discovery = discovery
@@ -125,7 +138,15 @@ class HarnessRuntime:
         self.submitter = MutationSubmitter(engine=self.engine)
         self.shadow_tester = ABShadowTester()
         self.auto_rollback = AutoRollback(self.engine)
-        self.safety_pipeline = SafetyPipeline([SandboxValidator(self.registry), self.shadow_tester])
+        self.assembly_health_policy = assembly_health_policy or AssemblyHealthPolicy()
+        self.selection_lifecycle = selection_lifecycle or SelectionLifecycle()
+        self.safety_pipeline = SafetyPipeline(
+            [
+                SandboxValidator(self.registry),
+                self.shadow_tester,
+                AssemblyHealthGate(self.assembly_health_policy),
+            ]
+        )
         self.migration_adapters = MigrationAdapterRegistry()
         self.components: dict[str, HarnessComponent] = {}
         self.drain_coordinator = DrainCoordinator(
@@ -145,9 +166,12 @@ class HarnessRuntime:
         self.provenance_graph = provenance_graph or ProvGraph()
         self.artifact_store = artifact_store or ArtifactSnapshotStore()
         self.resource_quota = resource_quota
+        self.assembly_ledger = assembly_ledger or AssemblyLedger()
+        self.copy_count_index = copy_count_index or CopyCountIndex()
         self.require_route_handlers = require_route_handlers
         self._shadow_trials: list[dict[str, Any]] = []
         self._protected_approvals: dict[str, str] = {}
+        self._assembly_dependency_graphs: dict[str, DependencyGraphSnapshot] = {}
         self.recovered_session = self._recover_session(session_id)
 
     @classmethod
@@ -168,6 +192,10 @@ class HarnessRuntime:
         provenance_graph: ProvGraph | None = None,
         artifact_store: ArtifactSnapshotStore | None = None,
         resource_quota: Any | None = None,
+        assembly_ledger: AssemblyLedger | None = None,
+        copy_count_index: CopyCountIndex | None = None,
+        selection_lifecycle: SelectionLifecycle | None = None,
+        assembly_health_policy: AssemblyHealthPolicy | None = None,
         require_route_handlers: bool = False,
     ) -> "HarnessRuntime":
         return cls(
@@ -185,6 +213,10 @@ class HarnessRuntime:
             provenance_graph=provenance_graph,
             artifact_store=artifact_store,
             resource_quota=resource_quota,
+            assembly_ledger=assembly_ledger,
+            copy_count_index=copy_count_index,
+            selection_lifecycle=selection_lifecycle,
+            assembly_health_policy=assembly_health_policy,
             require_route_handlers=require_route_handlers,
         )
 
@@ -264,6 +296,228 @@ class HarnessRuntime:
                 for result in safety_result.results
             ],
         }
+
+    def _component_refs(self, snapshot: GraphSnapshot) -> list[str]:
+        return [node.component_id for node in snapshot.nodes]
+
+    def _edge_refs(self, snapshot: GraphSnapshot) -> list[str]:
+        return [edge.connection_id for edge in snapshot.edges]
+
+    def _component_ref_from_endpoint(self, endpoint: str) -> str:
+        parts = endpoint.split(".")
+        return ".".join(parts[:2]) if len(parts) >= 2 else endpoint
+
+    def _dependency_edges(self, snapshot: GraphSnapshot) -> list[tuple[str, str]]:
+        edges: list[tuple[str, str]] = []
+        for edge in snapshot.edges:
+            source_ref = self._component_ref_from_endpoint(edge.source)
+            target_ref = self._component_ref_from_endpoint(edge.target)
+            if source_ref != target_ref:
+                edges.append((source_ref, target_ref))
+        return edges
+
+    def _parent_graph_refs(self, rollback_target: int | None) -> list[str]:
+        return [f"graph-version:{rollback_target}"] if rollback_target is not None else []
+
+    def _validation_refs(self, report: ValidationReport) -> list[str]:
+        if not report.issues:
+            return ["validation:valid"]
+        return [f"validation:{issue.code}:{issue.subject}" for issue in report.issues]
+
+    def _persist_dependency_graph(
+        self, snapshot: DependencyGraphSnapshot
+    ) -> DependencyGraphSnapshot:
+        artifact = self.artifact_store.save(
+            "assembly_dependency_graph",
+            f"assembly-dependency-graph:{snapshot.snapshot_id}",
+            snapshot.model_dump(mode="json"),
+            graph_version=snapshot.graph_version,
+            candidate_id=snapshot.candidate_id,
+        )
+        persisted = self.assembly_ledger.mark_dependency_graph_persisted(
+            snapshot.snapshot_id,
+            artifact.snapshot_id,
+        )
+        graph_snapshot = persisted or snapshot
+        artifact_entity = self.provenance_graph.add_entity(
+            id=f"artifact-snapshot:{artifact.snapshot_id}",
+            kind="artifact_snapshot",
+            artifact_kind=artifact.artifact_kind,
+            artifact_ref=artifact.artifact_ref,
+            candidate_id=artifact.candidate_id,
+            graph_version=artifact.graph_version,
+        )
+        if snapshot.candidate_id is not None:
+            candidate_entity = self.provenance_graph.add_entity(
+                id=f"graph-candidate:{snapshot.candidate_id}",
+                kind="graph_candidate",
+                candidate_id=snapshot.candidate_id,
+                proposed_graph_version=snapshot.graph_version,
+            )
+            self.provenance_graph.relate(
+                artifact_entity.id,
+                RelationKind.WAS_DERIVED_FROM,
+                candidate_entity.id,
+            )
+        if snapshot.graph_version is not None:
+            version_entity = self.provenance_graph.add_entity(
+                id=f"graph-version:{snapshot.graph_version}",
+                kind="graph_version",
+                graph_version=snapshot.graph_version,
+            )
+            self.provenance_graph.relate(
+                artifact_entity.id,
+                RelationKind.WAS_DERIVED_FROM,
+                version_entity.id,
+            )
+        self.audit_log.append(
+            "assembly.dependency_graph_snapshot_recorded",
+            actor="harness_runtime",
+            payload={
+                "artifact_snapshot_id": artifact.snapshot_id,
+                "dependency_graph_ref": snapshot.snapshot_id,
+                "candidate_id": snapshot.candidate_id,
+                "graph_version": snapshot.graph_version,
+                "lineage_status": graph_snapshot.lineage_status,
+                "assembly_index": graph_snapshot.assembly_index,
+            },
+        )
+        return graph_snapshot
+
+    def _record_candidate_assembly(self, promotion: PromotionContext) -> DependencyGraphSnapshot:
+        component_refs = self._component_refs(promotion.candidate_snapshot)
+        validation_refs = self._validation_refs(promotion.validation_report)
+        self.assembly_ledger.record_graph_candidate(
+            promotion.candidate_id,
+            graph_version=promotion.proposed_graph_version,
+            component_refs=component_refs,
+            edge_refs=self._edge_refs(promotion.candidate_snapshot),
+            parent_refs=self._parent_graph_refs(promotion.rollback_target),
+            validation_refs=validation_refs,
+            assembly_context={
+                "valid": promotion.validation_report.valid,
+                "issue_count": len(promotion.validation_report.issues),
+            },
+        )
+        for component_ref in component_refs:
+            self.copy_count_index.mark_candidate_member(component_ref)
+        dependency_graph = self.assembly_ledger.record_dependency_graph(
+            candidate_id=promotion.candidate_id,
+            graph_version=promotion.proposed_graph_version,
+            component_refs=component_refs,
+            dependency_edges=self._dependency_edges(promotion.candidate_snapshot),
+            parent_refs=self._parent_graph_refs(promotion.rollback_target),
+            evidence_refs=validation_refs,
+            copy_count_index=self.copy_count_index,
+        )
+        dependency_graph = self._persist_dependency_graph(dependency_graph)
+        self._assembly_dependency_graphs[promotion.candidate_id] = dependency_graph
+        return dependency_graph
+
+    def _record_committed_assembly(
+        self, promotion: PromotionContext, graph_version: int
+    ) -> AssemblyHealthSummary:
+        component_refs = self._component_refs(promotion.candidate_snapshot)
+        validation_refs = self._validation_refs(promotion.validation_report)
+        self.assembly_ledger.record_graph_committed(
+            promotion.candidate_id,
+            graph_version=graph_version,
+            component_refs=component_refs,
+            edge_refs=self._edge_refs(promotion.candidate_snapshot),
+            parent_refs=self._parent_graph_refs(promotion.rollback_target),
+            validation_refs=validation_refs,
+            assembly_context={
+                "valid": promotion.validation_report.valid,
+                "issue_count": len(promotion.validation_report.issues),
+            },
+        )
+        for component_ref in component_refs:
+            self.copy_count_index.mark_committed_member(component_ref)
+        dependency_graph = self.assembly_ledger.record_dependency_graph(
+            candidate_id=promotion.candidate_id,
+            graph_version=graph_version,
+            component_refs=component_refs,
+            dependency_edges=self._dependency_edges(promotion.candidate_snapshot),
+            parent_refs=self._parent_graph_refs(promotion.rollback_target),
+            evidence_refs=validation_refs,
+            copy_count_index=self.copy_count_index,
+        )
+        dependency_graph = self._persist_dependency_graph(dependency_graph)
+        self._assembly_dependency_graphs[promotion.candidate_id] = dependency_graph
+        return self.assembly_ledger.health_summary(
+            candidate_id=promotion.candidate_id,
+            graph_version=graph_version,
+            component_refs=component_refs,
+            edge_count=len(promotion.candidate_snapshot.edges),
+            copy_count_index=self.copy_count_index,
+            dependency_graph_snapshot=dependency_graph,
+        )
+
+    def _assembly_health_evidence(self, safety_result: Any) -> dict[str, Any]:
+        for result in safety_result.results:
+            if result.gate == "assembly_health":
+                return dict(result.evidence)
+        return {}
+
+    def _record_selection_states(
+        self,
+        promotion: PromotionContext,
+        *,
+        graph_version: int,
+        state: SelectionStateKind,
+        reason: str,
+        evidence_refs: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        if self.selection_lifecycle is None:
+            return []
+        state_records: list[dict[str, Any]] = []
+        component_refs = self._component_refs(promotion.candidate_snapshot)
+        for component_ref in component_refs:
+            if state == SelectionStateKind.PROMOTED:
+                recorded = self.selection_lifecycle.promote(
+                    component_ref,
+                    candidate_id=promotion.candidate_id,
+                    graph_version=graph_version,
+                    reason=reason,
+                    evidence_refs=evidence_refs,
+                )
+            elif state == SelectionStateKind.DEPRECATED:
+                recorded = self.selection_lifecycle.deprecate(
+                    component_ref,
+                    candidate_id=promotion.candidate_id,
+                    graph_version=graph_version,
+                    reason=reason,
+                    evidence_refs=evidence_refs,
+                )
+            elif state == SelectionStateKind.SUSPENDED:
+                recorded = self.selection_lifecycle.suspend(
+                    component_ref,
+                    candidate_id=promotion.candidate_id,
+                    graph_version=graph_version,
+                    reason=reason,
+                    evidence_refs=evidence_refs,
+                )
+            else:
+                recorded = self.selection_lifecycle.graveyard(
+                    component_ref,
+                    candidate_id=promotion.candidate_id,
+                    graph_version=graph_version,
+                    reason=reason,
+                    evidence_refs=evidence_refs,
+                )
+            state_records.append(recorded.model_dump(mode="json"))
+        self._append_runtime_evidence(
+            SessionEventType.SELECTION_RECORDED,
+            promotion,
+            graph_version=graph_version,
+            payload={
+                "selection_state": state.value,
+                "reason": reason,
+                "selection_states": state_records,
+                "evidence_refs": list(evidence_refs or []),
+            },
+        )
+        return state_records
 
     def _append_runtime_evidence(
         self,
@@ -379,6 +633,11 @@ class HarnessRuntime:
                 mutation_submitter=runtime.mutation_submitter or self.submitter,
                 resource_quota=runtime.resource_quota or self.resource_quota,
                 drain_coordinator=runtime.drain_coordinator or self.drain_coordinator,
+                assembly_ledger=runtime.assembly_ledger or self.assembly_ledger,
+                copy_count_index=runtime.copy_count_index or self.copy_count_index,
+                selection_lifecycle=runtime.selection_lifecycle or self.selection_lifecycle,
+                assembly_health_policy=runtime.assembly_health_policy
+                or self.assembly_health_policy,
             )
             runtime.services = services
             if runtime.event_bus is None:
@@ -401,6 +660,14 @@ class HarnessRuntime:
                 runtime.resource_quota = services.resource_quota
             if runtime.drain_coordinator is None:
                 runtime.drain_coordinator = services.drain_coordinator
+            if runtime.assembly_ledger is None:
+                runtime.assembly_ledger = services.assembly_ledger
+            if runtime.copy_count_index is None:
+                runtime.copy_count_index = services.copy_count_index
+            if runtime.selection_lifecycle is None:
+                runtime.selection_lifecycle = services.selection_lifecycle
+            if runtime.assembly_health_policy is None:
+                runtime.assembly_health_policy = services.assembly_health_policy
             if runtime.migration_adapters is None:
                 runtime.migration_adapters = self.migration_adapters
             component, api = declare_component(component_id, manifest, runtime=runtime)
@@ -410,6 +677,19 @@ class HarnessRuntime:
                 component_id=component_id,
                 declarations=declarations,
             )
+            self.assembly_ledger.record_component_registered(
+                component_id,
+                manifest_id=manifest.resolved_id(),
+                source_refs=[f"entry:{manifest.entry}"],
+                assembly_context={
+                    "boot_order": len(booted_ids),
+                    "dependency_components": list(manifest.deps.components),
+                    "dependency_capabilities": list(manifest.deps.capabilities),
+                },
+            )
+            self.copy_count_index.mark_registered(component_id)
+            for dependency_ref in manifest.deps.components:
+                self.copy_count_index.mark_dependency(dependency_ref)
             asyncio.run(component.activate(runtime))
             self.components[component_id] = component
             for record in declarations.connection_handlers:
@@ -502,6 +782,12 @@ class HarnessRuntime:
         return {
             "trials": self._shadow_trials,
             "authorized_protected_components": authorized_protected_components,
+            "assembly_ledger": self.assembly_ledger,
+            "copy_count_index": self.copy_count_index,
+            "assembly_health_policy": self.assembly_health_policy,
+            "dependency_graph_snapshot": self._assembly_dependency_graphs.get(
+                promotion.candidate_id
+            ),
         }
 
     def _validate_candidate_readiness(self, snapshot: GraphSnapshot) -> ValidationReport:
@@ -683,14 +969,15 @@ class HarnessRuntime:
         effective_graph_version = graph_version if graph_version > 0 else None
         review = reviewed_candidate.external_review
         source = review.source if review is not None else "external_candidate_record"
+        self._record_candidate_assembly(promotion)
         if emit_runtime_evidence:
             self._append_runtime_evidence(
                 SessionEventType.CANDIDATE_CREATED,
                 promotion,
                 graph_version=effective_graph_version,
                 payload={
-                    "node_ids": [node.component_id for node in reviewed_candidate.snapshot.nodes],
-                    "edge_ids": [edge.connection_id for edge in reviewed_candidate.snapshot.edges],
+                    "node_ids": self._component_refs(reviewed_candidate.snapshot),
+                    "edge_ids": self._edge_refs(reviewed_candidate.snapshot),
                     "rollback_target": self.version_manager.active_version,
                     "source": source,
                 },
@@ -788,6 +1075,15 @@ class HarnessRuntime:
                 update={"promoted": False, "deferred": deferred}
             )
             self.version_manager.update_candidate(reviewed_candidate)
+            self._record_selection_states(
+                promotion,
+                graph_version=candidate.snapshot.graph_version,
+                state=(SelectionStateKind.SUSPENDED if deferred else SelectionStateKind.GRAVEYARD),
+                reason=reason,
+                evidence_refs=self._assembly_health_evidence(safety_result).get(
+                    "evidence_refs", []
+                ),
+            )
             self._append_runtime_evidence(
                 event_type,
                 promotion,
@@ -820,6 +1116,14 @@ class HarnessRuntime:
             else candidate.report.model_copy(update={"valid": True})
         )
         promotion = promotion.model_copy(update={"validation_report": commit_report})
+        committed_health = self._record_committed_assembly(promotion, version)
+        self._record_selection_states(
+            promotion,
+            graph_version=version,
+            state=SelectionStateKind.PROMOTED,
+            reason="graph_committed",
+            evidence_refs=committed_health.evidence_refs,
+        )
         reviewed_candidate = candidate.model_copy(
             update={"report": commit_report, "promoted": True, "deferred": False}
         )
@@ -833,6 +1137,7 @@ class HarnessRuntime:
                 "rollback_target": promotion.rollback_target,
                 "validation": self._serialize_validation_report(promotion),
                 "safety": self._serialize_safety_result(safety_result),
+                "assembly_health": committed_health.model_dump(mode="json"),
             },
         )
         self.event_bus.publish(AFTER_COMMIT_GRAPH, promotion)
@@ -984,13 +1289,14 @@ class HarnessRuntime:
                 )
                 promotion = promotion.model_copy(update={"validation_report": report})
 
+        self._record_candidate_assembly(promotion)
         self._append_runtime_evidence(
             SessionEventType.CANDIDATE_CREATED,
             promotion,
             graph_version=proposed_version,
             payload={
-                "node_ids": [node.component_id for node in candidate.nodes],
-                "edge_ids": [edge.connection_id for edge in candidate.edges],
+                "node_ids": self._component_refs(candidate),
+                "edge_ids": self._edge_refs(candidate),
                 "rollback_target": rollback_target,
                 "actor": actor,
                 "approval_id": approval_id,
@@ -1039,6 +1345,15 @@ class HarnessRuntime:
                     or ("safety_deferred" if deferred else "safety_rejected")
                 )
             )
+            self._record_selection_states(
+                promotion,
+                graph_version=proposed_version,
+                state=(SelectionStateKind.SUSPENDED if deferred else SelectionStateKind.GRAVEYARD),
+                reason=rejection_reason,
+                evidence_refs=self._assembly_health_evidence(safety_result).get(
+                    "evidence_refs", []
+                ),
+            )
             self._append_runtime_evidence(
                 event_type,
                 promotion,
@@ -1081,6 +1396,14 @@ class HarnessRuntime:
             self.lifecycle.record(node.component_id, ComponentPhase.ACTIVATED)
             self.lifecycle.record(node.component_id, ComponentPhase.COMMITTED)
         self._run_post_commit_health_checks(promotion, version)
+        committed_health = self._record_committed_assembly(promotion, version)
+        self._record_selection_states(
+            promotion,
+            graph_version=version,
+            state=SelectionStateKind.PROMOTED,
+            reason="graph_committed",
+            evidence_refs=committed_health.evidence_refs,
+        )
         self._append_runtime_evidence(
             SessionEventType.GRAPH_COMMITTED,
             promotion,
@@ -1092,6 +1415,7 @@ class HarnessRuntime:
                 "approval_id": promotion.approval_id,
                 "validation": self._serialize_validation_report(promotion),
                 "safety": self._serialize_safety_result(safety_result),
+                "assembly_health": committed_health.model_dump(mode="json"),
             },
         )
         self.event_bus.publish(AFTER_COMMIT_GRAPH, promotion)

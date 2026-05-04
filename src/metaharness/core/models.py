@@ -8,6 +8,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from metaharness.core.execution_modes import ExecutionMode, InstantiationRecord  # noqa: F401
 from metaharness.sdk.contracts import ConnectionPolicy, RouteMode
 from metaharness.sdk.lifecycle import ComponentPhase
 from metaharness.sdk.manifest import ComponentManifest
@@ -236,6 +237,9 @@ class SessionEventType(str, Enum):
     TASK_FAILED = "task_failed"
     TASK_CANCELLED = "task_cancelled"
     TASK_RETRIED = "task_retried"
+    INSTANTIATION_RECORDED = "instantiation_recorded"
+    EXECUTION_RECONCILED = "execution_reconciled"
+    SELECTION_RECORDED = "selection_recorded"
     CHECKPOINT_SAVED = "checkpoint_saved"
     SAFETY_GATE_EVALUATED = "safety_gate_evaluated"
     HOT_SWAP_INITIATED = "hot_swap_initiated"

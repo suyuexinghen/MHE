@@ -8,6 +8,8 @@ from typing import Any, Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field, field_validator
 
+from metaharness.core.execution_modes import ExecutionMode, InstantiationRecord
+
 
 class ExecutionStatus(str, Enum):
     """Lifecycle states for asynchronous execution."""
@@ -191,8 +193,10 @@ __all__ = [
     "AsyncExecutorProtocol",
     "EnvironmentReportProtocol",
     "EvidenceBundleProtocol",
+    "ExecutionMode",
     "ExecutionStatus",
     "FibonacciPollingStrategy",
+    "InstantiationRecord",
     "JobHandle",
     "PollingStrategy",
     "ResourceQuota",

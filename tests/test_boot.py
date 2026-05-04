@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from metaharness.config.xml_parser import parse_graph_xml
+from metaharness.core.assembly import AssemblyLedger, CopyCountIndex
 from metaharness.core.boot import HarnessRuntime
 from metaharness.core.brain import BrainProvider
 from metaharness.core.event_bus import (
@@ -220,6 +221,7 @@ def test_session_event_type_includes_execution_lifecycle_values() -> None:
     assert SessionEventType.TASK_COMPLETED.value == "task_completed"
     assert SessionEventType.TASK_FAILED.value == "task_failed"
     assert SessionEventType.TASK_RETRIED.value == "task_retried"
+    assert SessionEventType.SELECTION_RECORDED.value == "selection_recorded"
 
 
 def test_wake_recovers_file_backed_session_events(tmp_path: Path) -> None:
@@ -321,12 +323,14 @@ def test_commit_graph_records_session_events_and_graph_links(
         SessionEventType.SAFETY_GATE_EVALUATED,
         SessionEventType.DRAIN_STARTED,
         SessionEventType.DRAIN_COMPLETED,
+        SessionEventType.SELECTION_RECORDED,
         SessionEventType.GRAPH_COMMITTED,
     ]
     assert all(event.candidate_id == "evidence-commit" for event in events)
     assert all(event.graph_version == 1 for event in events)
+    assert events[-4].payload["drain_epoch"] == "drain-evidence-commit-1"
     assert events[-3].payload["drain_epoch"] == "drain-evidence-commit-1"
-    assert events[-2].payload["drain_epoch"] == "drain-evidence-commit-1"
+    assert events[-2].payload["selection_state"] == "promoted"
     assert events[-1].payload["committed_graph_version"] == 1
 
     provenance = runtime.provenance_graph.to_dict()
@@ -345,6 +349,93 @@ def test_commit_graph_records_session_events_and_graph_links(
         for relation in provenance["relations"]
     )
     assert len(runtime.audit_log.by_kind("session.graph_committed")) == 1
+
+
+def test_commit_graph_records_assembly_candidate_and_commit_facts(
+    manifest_dir: Path, graphs_dir: Path
+) -> None:
+    runtime = HarnessRuntime(ComponentDiscovery(bundled=manifest_dir))
+    runtime.boot()
+    snapshot = parse_graph_xml(graphs_dir / "default-topology.xml")
+
+    version = runtime.commit_graph(
+        PendingConnectionSet(nodes=snapshot.nodes, edges=snapshot.edges),
+        candidate_id="assembly-commit",
+    )
+
+    component_refs = [node.component_id for node in snapshot.nodes]
+    candidate_records = runtime.assembly_ledger.records_for_candidate("assembly-commit")
+    assert version == 1
+    assert [record.artifact_kind for record in candidate_records] == [
+        "graph_candidate",
+        "graph_version",
+    ]
+    assert candidate_records[0].component_refs == component_refs
+    assert candidate_records[1].artifact_ref == "graph-version:1"
+    for component_ref in component_refs:
+        copy_record = runtime.copy_count_index.record_for(component_ref)
+        assert copy_record.registered_count == 1
+        assert copy_record.candidate_membership_count == 1
+        assert copy_record.committed_membership_count == 1
+        assert copy_record.graph_reuse_count == 1
+    committed = runtime.session_events(event_type=SessionEventType.GRAPH_COMMITTED)[-1]
+    health = committed.payload["assembly_health"]
+    assert health["candidate_id"] == "assembly-commit"
+    assert health["assembly_index"] >= 1
+    assert health["lineage_status"] == "complete"
+    assert health["warnings"] == []
+    assert any(ref.startswith("artifact-snapshot:") for ref in health["evidence_refs"])
+    artifact_ref = next(
+        ref for ref in health["evidence_refs"] if ref.startswith("artifact-snapshot:")
+    )
+    artifact_snapshot = runtime.artifact_store.get(artifact_ref.removeprefix("artifact-snapshot:"))
+    assert artifact_snapshot is not None
+    assert artifact_snapshot.artifact_kind == "assembly_dependency_graph"
+    assert artifact_snapshot.candidate_id == "assembly-commit"
+    assert len(runtime.audit_log.by_kind("assembly.dependency_graph_snapshot_recorded")) == 2
+    selection_event = runtime.session_events(event_type=SessionEventType.SELECTION_RECORDED)[-1]
+    assert selection_event.payload["selection_state"] == "promoted"
+    assert len(selection_event.payload["selection_states"]) == len(component_refs)
+    assert runtime.selection_lifecycle.latest(component_refs[0]).state.value == "promoted"
+    provenance = runtime.provenance_graph.to_dict()
+    assert f"artifact-snapshot:{artifact_snapshot.snapshot_id}" in provenance["entities"]
+
+
+def test_rejected_graph_records_candidate_assembly_without_commit_counts(
+    manifest_dir: Path, graphs_dir: Path
+) -> None:
+    runtime = HarnessRuntime(ComponentDiscovery(bundled=manifest_dir))
+    runtime.boot()
+    snapshot = parse_graph_xml(graphs_dir / "default-topology.xml")
+    original_stage = runtime.engine.stage
+
+    def stage_with_blocking_issue(pending: PendingConnectionSet):
+        candidate, report = original_stage(pending)
+        report.valid = False
+        report.issues.append(
+            ValidationIssue(
+                code="explicit_gate",
+                message="Issue blocks promotion explicitly",
+                subject="runtime.primary",
+                blocks_promotion=True,
+            )
+        )
+        return candidate, report
+
+    runtime.engine.stage = stage_with_blocking_issue
+
+    with pytest.raises(ValueError, match="failed promotion gate"):
+        runtime.commit_graph(
+            PendingConnectionSet(nodes=snapshot.nodes, edges=snapshot.edges),
+            candidate_id="assembly-reject",
+        )
+
+    candidate_records = runtime.assembly_ledger.records_for_candidate("assembly-reject")
+    assert [record.artifact_kind for record in candidate_records] == ["graph_candidate"]
+    runtime_record = runtime.copy_count_index.record_for("runtime.primary")
+    assert runtime_record.candidate_membership_count == 1
+    assert runtime_record.committed_membership_count == 0
+    assert runtime_record.graph_reuse_count == 0
 
 
 def test_commit_graph_rejection_records_session_evidence_with_candidate_linkage(
@@ -383,8 +474,10 @@ def test_commit_graph_rejection_records_session_evidence_with_candidate_linkage(
         SessionEventType.CANDIDATE_CREATED,
         SessionEventType.CANDIDATE_VALIDATED,
         SessionEventType.SAFETY_GATE_EVALUATED,
+        SessionEventType.SELECTION_RECORDED,
         SessionEventType.CANDIDATE_REJECTED,
     ]
+    assert events[-2].payload["selection_state"] == "graveyard"
     rejected = events[-1]
     assert rejected.candidate_id == "evidence-reject"
     assert rejected.graph_version == 1
@@ -417,8 +510,10 @@ def test_runtime_uses_default_safety_pipeline(manifest_dir: Path, graphs_dir: Pa
         "policy_review",
         "level_1_sandbox_validator",
         "level_2_ab_shadow",
+        "assembly_health",
     ]
     assert safety_event.payload["results"][2]["evidence"]["configured"] is False
+    assert safety_event.payload["results"][3]["decision"] == "allow"
 
 
 def test_commit_graph_rejects_shadow_divergence(manifest_dir: Path, graphs_dir: Path) -> None:
@@ -622,10 +717,11 @@ def test_review_deferred_candidate_can_promote_after_policy_allows(
     assert runtime.version_manager.active_version == 1
     assert runtime.build_route_table() is not None
     events = session_store.get_events(runtime.session_id)
-    assert [event.event_type for event in events[-4:]] == [
+    assert [event.event_type for event in events[-5:]] == [
         SessionEventType.SAFETY_GATE_EVALUATED,
         SessionEventType.DRAIN_STARTED,
         SessionEventType.DRAIN_COMPLETED,
+        SessionEventType.SELECTION_RECORDED,
         SessionEventType.GRAPH_COMMITTED,
     ]
 
@@ -907,12 +1003,18 @@ def test_boot_injects_runtime_services(manifest_dir: Path) -> None:
     assert gateway_runtime.services.identity_boundary is runtime._default_identity_boundary
     assert gateway_runtime.services.mutation_submitter is runtime.submitter
     assert gateway_runtime.services.resource_quota is quota
+    assert gateway_runtime.services.assembly_ledger is runtime.assembly_ledger
+    assert gateway_runtime.services.copy_count_index is runtime.copy_count_index
     assert gateway_runtime.resolved_resource_quota() is quota
+    assert gateway_runtime.resolved_assembly_ledger() is runtime.assembly_ledger
+    assert gateway_runtime.resolved_copy_count_index() is runtime.copy_count_index
 
 
 def test_component_runtime_resolvers_prefer_services_over_legacy_fields() -> None:
     legacy_boundary = object()
     service_boundary = object()
+    service_ledger = AssemblyLedger()
+    service_copy_counts = CopyCountIndex()
     services = RuntimeServices(
         event_bus=object(),
         session_store=object(),
@@ -923,6 +1025,8 @@ def test_component_runtime_resolvers_prefer_services_over_legacy_fields() -> Non
         graph_reader=object(),
         mutation_submitter=object(),
         resource_quota=ResourceQuota(resource_type="cpu", remaining=4),
+        assembly_ledger=service_ledger,
+        copy_count_index=service_copy_counts,
     )
     runtime = ComponentRuntime(
         services=services,
@@ -935,6 +1039,8 @@ def test_component_runtime_resolvers_prefer_services_over_legacy_fields() -> Non
         graph_reader=object(),
         mutation_submitter=object(),
         resource_quota=ResourceQuota(resource_type="gpu", remaining=1),
+        assembly_ledger=AssemblyLedger(),
+        copy_count_index=CopyCountIndex(),
     )
 
     assert runtime.resolved_event_bus() is services.event_bus
@@ -946,6 +1052,8 @@ def test_component_runtime_resolvers_prefer_services_over_legacy_fields() -> Non
     assert runtime.resolved_graph_reader() is services.graph_reader
     assert runtime.resolved_mutation_submitter() is services.mutation_submitter
     assert runtime.resolved_resource_quota() is services.resource_quota
+    assert runtime.resolved_assembly_ledger() is service_ledger
+    assert runtime.resolved_copy_count_index() is service_copy_counts
 
 
 def test_component_runtime_resolvers_fall_back_to_legacy_fields() -> None:
@@ -959,6 +1067,8 @@ def test_component_runtime_resolvers_fall_back_to_legacy_fields() -> None:
         graph_reader=object(),
         mutation_submitter=object(),
         resource_quota=ResourceQuota(resource_type="gpu", remaining=1),
+        assembly_ledger=AssemblyLedger(),
+        copy_count_index=CopyCountIndex(),
     )
 
     assert runtime.resolved_event_bus() is runtime.event_bus
@@ -970,6 +1080,8 @@ def test_component_runtime_resolvers_fall_back_to_legacy_fields() -> None:
     assert runtime.resolved_graph_reader() is runtime.graph_reader
     assert runtime.resolved_mutation_submitter() is runtime.mutation_submitter
     assert runtime.resolved_resource_quota() is runtime.resource_quota
+    assert runtime.resolved_assembly_ledger() is runtime.assembly_ledger
+    assert runtime.resolved_copy_count_index() is runtime.copy_count_index
 
 
 def test_component_runtime_prefers_brain_provider_and_falls_back_to_llm() -> None:

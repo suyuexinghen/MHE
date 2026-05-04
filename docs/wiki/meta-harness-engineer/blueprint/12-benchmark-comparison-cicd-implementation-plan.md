@@ -46,6 +46,7 @@ Behavior:
 - run the first real-tool smoke on the `extension` lane only, because direct/agent real comparisons need real Claude proposal evidence or explicit fallback provenance;
 - allow dependency skips to complete as truthful evidence rather than masking them;
 - run comparison and approval checks after each suite;
+- write a GitHub job summary from `extension/*/summary.json`, because extension-only comparator rows can be `incomplete` by design;
 - upload retained artifacts with a longer retention period than PR artifacts.
 
 Suggested initial case policy:
@@ -141,3 +142,4 @@ If no local GitHub Actions YAML validator is available, treat remote CI as the f
 - Extension-only real-tool smoke produced retained bundles under `.runs/ci-real-tools-extension-check/<suite>/` for all five suites.
 - Observed real-tool outcomes: Octave `ode45-exp-decay`, QCompute `h2-fcidump-vqe-proxy`, and Fealpy `poisson-2d-numpy` passed; PyCFD `vortex-2d` skipped because `PYCFD_SRC_PATH` / environment was unavailable; Nektar `advdiff-2d` failed with `ADRSolver` exit code `-11` and missing L2/Linf metrics.
 - Comparator rows are `incomplete` for extension-only smoke because direct and agent lanes are intentionally absent; interpret the lane `summary.json` status as the real-tool smoke truth and reserve three-lane verdicts for PR dry-run or real-Claude comparison jobs.
+- The nightly workflow now appends a GitHub step summary from extension-lane `summary.json` files so reviewers can see passed, skipped, and failed smoke outcomes without mistaking `incomplete` comparison rows for suite failure.

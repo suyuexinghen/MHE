@@ -46,7 +46,7 @@ CI jobs should write runtime outputs under `.runs/<ci-run-id>/` and upload the r
 .runs/<ci-run-id>/<suite>-benchmark/comparison/run_manifest.json
 ```
 
-Release jobs should consume retained artifacts or checked approval manifests, not regenerate stronger claims from chat summaries.
+Release jobs should consume retained artifacts or checked approval manifests, not regenerate stronger claims from chat summaries. For extension-only real-tool smoke, `extension/*/summary.json` is the primary truth source for pass, skip, and failure status; full comparator verdicts are reserved for workflows that intentionally run `extension`, `direct`, and `agent` lanes together.
 
 ## Truth Hierarchy
 

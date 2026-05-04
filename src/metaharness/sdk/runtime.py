@@ -30,6 +30,10 @@ class RuntimeServices:
     mutation_submitter: Any | None = None
     resource_quota: "ResourceQuotaProtocol | Any | None" = None
     drain_coordinator: Any | None = None
+    assembly_ledger: Any | None = None
+    copy_count_index: Any | None = None
+    selection_lifecycle: Any | None = None
+    assembly_health_policy: Any | None = None
 
 
 @dataclass(slots=True)
@@ -62,6 +66,10 @@ class ComponentRuntime:
     identity_boundary: Any | None = None
     resource_quota: "ResourceQuotaProtocol | Any | None" = None
     drain_coordinator: Any | None = None
+    assembly_ledger: Any | None = None
+    copy_count_index: Any | None = None
+    selection_lifecycle: Any | None = None
+    assembly_health_policy: Any | None = None
     migration_adapters: "MigrationAdapterRegistry | None" = None
 
     def resolved_brain_provider(self) -> BrainProvider | Any | None:
@@ -98,6 +106,20 @@ class ComponentRuntime:
 
     def resolved_drain_coordinator(self) -> Any | None:
         return self.services.drain_coordinator if self.services else self.drain_coordinator
+
+    def resolved_assembly_ledger(self) -> Any | None:
+        return self.services.assembly_ledger if self.services else self.assembly_ledger
+
+    def resolved_copy_count_index(self) -> Any | None:
+        return self.services.copy_count_index if self.services else self.copy_count_index
+
+    def resolved_selection_lifecycle(self) -> Any | None:
+        return self.services.selection_lifecycle if self.services else self.selection_lifecycle
+
+    def resolved_assembly_health_policy(self) -> Any | None:
+        return (
+            self.services.assembly_health_policy if self.services else self.assembly_health_policy
+        )
 
     def require_credentials(
         self,

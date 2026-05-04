@@ -6,8 +6,10 @@ from typing import Any
 from metaharness.sdk import (
     EnvironmentReportProtocol,
     EvidenceBundleProtocol,
+    ExecutionMode,
     ExecutionStatus,
     FibonacciPollingStrategy,
+    InstantiationRecord,
     JobHandle,
     ResourceQuota,
     ResourceQuotaProtocol,
@@ -68,6 +70,15 @@ def _build_experiment_spec() -> QComputeExperimentSpec:
         shots=2048,
         fidelity_threshold=0.95,
     )
+
+
+def test_execution_mode_and_instantiation_record_are_sdk_visible() -> None:
+    record = InstantiationRecord(
+        execution_mode=ExecutionMode.DRY_RUN, native_execution_mode="validate_only"
+    )
+
+    assert record.execution_mode == ExecutionMode.DRY_RUN
+    assert record.native_execution_mode == "validate_only"
 
 
 def test_execution_status_values_are_stable() -> None:

@@ -94,6 +94,40 @@ jobs:
           PYTHONPATH=src python -m metaharness.cli benchmark-approval-check \
             --suite "${{ matrix.suite }}" \
             --config-root .mhe
+      - name: Summarize extension smoke truth
+        if: always()
+        env:
+          REQUESTED_SUITE: ${{ inputs.suite || 'all' }}
+        run: |
+          if [ "$REQUESTED_SUITE" != "all" ] && [ "$REQUESTED_SUITE" != "${{ matrix.suite }}" ]; then
+            exit 0
+          fi
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          suite = "${{ matrix.suite }}"
+          root = Path(".runs/ci-real-tools") / suite / f"{suite}-benchmark" / "extension"
+          summary_path = Path(os.environ["GITHUB_STEP_SUMMARY"])
+
+          with summary_path.open("a", encoding="utf-8") as handle:
+              handle.write(f"### {suite} real-tool extension smoke\n\n")
+              handle.write("This job intentionally runs only the `extension` lane. Treat `extension/*/summary.json` as the smoke truth source; comparison rows can be `incomplete` because `direct` and `agent` lanes are absent.\n\n")
+              handle.write("| Case | Status | Detail | Evidence files |\n")
+              handle.write("|---|---|---|---|\n")
+
+              summaries = sorted(root.glob("*/summary.json"))
+              if not summaries:
+                  handle.write("| n/a | missing | No extension summary files were written. | 0 |\n")
+
+              for path in summaries:
+                  data = json.loads(path.read_text(encoding="utf-8"))
+                  status = data.get("status") or ("passed" if data.get("passed") else "failed")
+                  detail = data.get("skip_reason") or data.get("failure_category") or data.get("error_message") or "ok"
+                  evidence_count = len(data.get("evidence_files") or [])
+                  handle.write(f"| `{data.get('case_id', path.parent.name)}` | `{status}` | {detail} | {evidence_count} |\n")
+          PY
       - name: Upload real-tool artifacts
         if: always()
         uses: actions/upload-artifact@v4

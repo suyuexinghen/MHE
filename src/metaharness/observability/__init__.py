@@ -1,6 +1,7 @@
 """Observability, audit, and provenance for Meta-Harness."""
 
 from metaharness.observability.metrics import (
+    AssemblyMetricsService,
     Counter,
     Gauge,
     Histogram,
@@ -17,6 +18,7 @@ from metaharness.observability.trace import (
 from metaharness.observability.trajectory import Trajectory, TrajectoryStore
 
 __all__ = [
+    "AssemblyMetricsService",
     "Counter",
     "Gauge",
     "Histogram",

@@ -59,6 +59,16 @@ A benchmark suite should not move from one tier to the next unless the previous 
 | CI-pycfd-env | Real execution coverage | PyCFD real-tool smoke skips because the environment is unavailable | `.runs/ci-real-tools-extension-check/pycfd-pde/.../summary.json` | Configure `PYCFD_SRC_PATH` or dependency gate before claiming PyCFD real CI coverage | High |
 | CI-domain-signoff | Governance gaps | CI cannot provide scientific signoff | `.mhe/config.json` says CI validates schema, not scientific truth | Add release package checklist for human/domain review | Medium |
 
+## Extension Improvement Backlog
+
+| Suite | Real-tool smoke finding | Extension improvement | Evidence needed before stronger claims | Priority |
+|---|---|---|---|---|
+| Octave native | `ode45-exp-decay` passed with endpoint and max-error metrics | Add repeated smoke cases that cover stiffness, event handling, and plotting/output evidence without changing direct/agent claims | retained repeat summaries over multiple real Octave cases | Medium |
+| Nektar PDE | `advdiff-2d` failed with `ADRSolver` exit `-11` and missing L2/Linf metrics | Diagnose session/driver portability, capture solver stderr classification, and add a preflight that distinguishes incompatible sessions from solver crashes | clean rerun where either ADR metrics pass or a dependency/compatibility skip is auditable | High |
+| QCompute/QEC | `h2-fcidump-vqe-proxy` passed as proxy execution; QEC remains dry-run gated | Keep ABACUS H/S and QEC real gates blocked while improving proposal-contract, decoder-readiness, and backend-adapter sentinel evidence | real Qiskit Aer proxy repeats, then QEC backend adapter tests with decoder and repeated syndrome sampling | Medium |
+| Fealpy PDE | `poisson-2d-numpy` passed with FEM error metrics | Promote backend-specific smoke cases one at a time and require backend labels in summaries before comparing numpy, pytorch, or jax maturity | retained real backend smoke for each enabled backend with L2/H1 metrics | Medium |
+| PyCFD PDE | `vortex-2d` skipped because `PYCFD_SRC_PATH` / environment was unavailable | Add explicit environment probe docs and CI skip artifact fields, then run the short real-solver baseline where PyCFD is installed | retained real PyCFD smoke root with residual, timing, and mesh metrics | High |
+
 ## Exit Criteria
 
 The first CI/CD implementation is complete when:

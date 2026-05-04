@@ -513,6 +513,11 @@ The current codebase includes:
 - trace/span collection
 - trajectory grouping
 - simple component-level observability helpers
+- assembly metrics aggregation and `metaharness metrics assembly` JSON/Markdown reporting
+
+Assembly metrics are collected by `AssemblyMetricsService` from the in-memory assembly ledger, copy-count index, dependency DAG snapshots, assembly-health summaries, instantiation records, and selection lifecycle records. The CLI report boots a provided graph with provided manifests, commits that graph, can ingest explicit `--instantiation-record` JSON files, then emits machine-readable metrics plus an optional Markdown summary.
+
+These metrics are evidence-boundary reports. They do not prove scientific validity, do not treat dry-run or simulation evidence as real-world instantiation, and do not count unknown evidence as externally verified execution.
 
 `trace_id` is primarily a **correlation field** today.
 

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from metaharness.components.policy import PolicyComponent
 from metaharness.config.xml_parser import parse_graph_xml
+from metaharness.core.assembly import AssemblyHealthSummary, AssemblyLedger, CopyCountIndex
 from metaharness.core.connection_engine import ConnectionEngine
 from metaharness.core.graph_versions import GraphVersionStore
 from metaharness.core.models import PendingConnectionSet, PromotionContext, ValidationIssue
@@ -13,6 +14,9 @@ from metaharness.core.mutation import MutationProposal
 from metaharness.core.validators import validate_graph
 from metaharness.safety import (
     ABShadowTester,
+    AssemblyHealthGate,
+    AssemblyHealthPolicy,
+    AssemblyHealthPolicyMode,
     AutoRollback,
     GateDecision,
     GateResult,
@@ -305,6 +309,156 @@ def test_pipeline_rejects_promotion_when_protected_components_are_flagged(
     assert "protected_component_change:policy.primary" == result.rejected_reason
     assert result.promotion is promotion
     assert result.results[-1].evidence["decision_id"] == "candidate-protected"
+
+
+def test_assembly_health_gate_warns_without_blocking_promotion(
+    manifest_dir: Path, graphs_dir: Path
+) -> None:
+    _, registry = _proposal(manifest_dir, graphs_dir)
+    snapshot = parse_graph_xml(graphs_dir / "minimal-happy-path.xml")
+    promotion = PromotionContext(
+        candidate_id="assembly-warn",
+        candidate_snapshot=snapshot,
+        validation_report=validate_graph(snapshot, registry),
+        proposed_graph_version=1,
+    )
+
+    result = AssemblyHealthGate().evaluate_promotion(promotion)
+
+    assert result.decision == GateDecision.ALLOW
+    assert result.reason == "assembly_health_warn"
+    assert result.evidence["candidate_id"] == "assembly-warn"
+    assert result.evidence["warnings"] == ["assembly_ledger_missing"]
+
+
+def test_assembly_health_gate_reports_low_copy_warning_only(
+    manifest_dir: Path, graphs_dir: Path
+) -> None:
+    _, registry = _proposal(manifest_dir, graphs_dir)
+    snapshot = parse_graph_xml(graphs_dir / "minimal-happy-path.xml")
+    ledger = AssemblyLedger()
+    index = CopyCountIndex()
+    for node in snapshot.nodes:
+        ledger.record_component_registered(node.component_id)
+    promotion = PromotionContext(
+        candidate_id="assembly-low-copy",
+        candidate_snapshot=snapshot,
+        validation_report=validate_graph(snapshot, registry),
+        proposed_graph_version=1,
+    )
+
+    result = AssemblyHealthGate().evaluate_promotion(
+        promotion,
+        context={"assembly_ledger": ledger, "copy_count_index": index},
+    )
+
+    assert result.decision == GateDecision.ALLOW
+    assert result.reason == "assembly_health_warn"
+    assert result.evidence["new_component_refs"] == []
+    assert result.evidence["warnings"] == ["low_copy_components"]
+
+
+def test_pipeline_keeps_assembly_health_warning_non_blocking(
+    manifest_dir: Path, graphs_dir: Path
+) -> None:
+    _, registry = _proposal(manifest_dir, graphs_dir)
+    snapshot = parse_graph_xml(graphs_dir / "minimal-happy-path.xml")
+    promotion = PromotionContext(
+        candidate_id="assembly-pipeline",
+        candidate_snapshot=snapshot,
+        validation_report=validate_graph(snapshot, registry),
+        proposed_graph_version=1,
+    )
+
+    result = SafetyPipeline([AssemblyHealthGate()]).evaluate_graph_promotion(promotion)
+
+    assert result.allowed is True
+    assert result.results[-1].gate == "assembly_health"
+    assert result.results[-1].decision == GateDecision.ALLOW
+
+
+def test_assembly_health_policy_can_defer_high_risk_summary(
+    manifest_dir: Path, graphs_dir: Path
+) -> None:
+    _, registry = _proposal(manifest_dir, graphs_dir)
+    snapshot = parse_graph_xml(graphs_dir / "minimal-happy-path.xml")
+    promotion = PromotionContext(
+        candidate_id="assembly-defer",
+        candidate_snapshot=snapshot,
+        validation_report=validate_graph(snapshot, registry),
+        proposed_graph_version=1,
+    )
+    summary = AssemblyHealthSummary(
+        candidate_id="assembly-defer",
+        graph_version=1,
+        component_count=2,
+        edge_count=1,
+        lineage_status="partial",
+        warnings=["assembly_lineage_partial"],
+    )
+
+    result = AssemblyHealthGate(
+        AssemblyHealthPolicy(mode=AssemblyHealthPolicyMode.DEFER_HIGH_RISK)
+    ).evaluate_promotion(promotion, context={"assembly_health_summary": summary})
+
+    assert result.decision == GateDecision.DEFER
+    assert result.reason == "assembly_health_deferred"
+    assert result.evidence["policy_mode"] == "defer_high_risk"
+    assert result.evidence["risk_level"] == "high"
+
+
+def test_assembly_health_policy_rejects_only_explicit_critical_mismatch(
+    manifest_dir: Path, graphs_dir: Path
+) -> None:
+    _, registry = _proposal(manifest_dir, graphs_dir)
+    snapshot = parse_graph_xml(graphs_dir / "minimal-happy-path.xml")
+    promotion = PromotionContext(
+        candidate_id="assembly-critical",
+        candidate_snapshot=snapshot,
+        validation_report=validate_graph(snapshot, registry),
+        proposed_graph_version=1,
+    )
+    summary = AssemblyHealthSummary(
+        candidate_id="assembly-critical",
+        graph_version=1,
+        component_count=2,
+        edge_count=1,
+        lineage_status="complete",
+    )
+
+    result = AssemblyHealthGate(
+        AssemblyHealthPolicy(mode=AssemblyHealthPolicyMode.REJECT_CRITICAL)
+    ).evaluate_promotion(
+        promotion,
+        context={
+            "assembly_health_summary": summary,
+            "critical_mismatch_refs": ["instantiation-record:bad"],
+        },
+    )
+
+    assert result.decision == GateDecision.REJECT
+    assert result.reason == "assembly_health_critical"
+    assert result.evidence["critical_mismatch_refs"] == ["instantiation-record:bad"]
+
+
+def test_assembly_health_policy_does_not_reject_unknown_legacy_evidence(
+    manifest_dir: Path, graphs_dir: Path
+) -> None:
+    _, registry = _proposal(manifest_dir, graphs_dir)
+    snapshot = parse_graph_xml(graphs_dir / "minimal-happy-path.xml")
+    promotion = PromotionContext(
+        candidate_id="assembly-unknown",
+        candidate_snapshot=snapshot,
+        validation_report=validate_graph(snapshot, registry),
+        proposed_graph_version=1,
+    )
+    policy = AssemblyHealthPolicy(mode=AssemblyHealthPolicyMode.REJECT_CRITICAL)
+
+    result = AssemblyHealthGate(policy).evaluate_promotion(promotion)
+
+    assert result.decision == GateDecision.DEFER
+    assert result.reason == "assembly_health_deferred"
+    assert result.evidence["risk_level"] == "high"
 
 
 class _PromotionDeferGate:
