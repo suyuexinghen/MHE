@@ -1,6 +1,6 @@
 # BOUT++ Real Smoke Method
 
-> 版本：v0.1 | 状态：local opt-in method | 面向 `metaharness_ext.boutpp` 的真实 BOUT++ smoke evidence 升级路径。
+> 版本：v0.2 | 状态：local opt-in repeated smoke implemented | 面向 `metaharness_ext.boutpp` 的真实 BOUT++ smoke evidence 升级路径。
 
 ## Purpose
 
@@ -133,9 +133,31 @@ report = BoutPPValidatorComponent().validate(artifact, plan_ref=plan.plan_id, va
 
 The local CMake cache records `mpiexec` with `-n`, while the current MHE compiler emits MPI commands as `<launcher> -np <processes> ...`. Prefer `mpirun` for the MHE smoke if it accepts `-np`. If only `mpiexec -n` works locally, treat that as a compiler compatibility backlog item rather than forcing the smoke to pass.
 
+## Current Implementation
+
+`src/metaharness_ext/boutpp/real_smoke.py` now provides an opt-in repeated smoke harness with three cataloged cases:
+
+| Case | Default | Current status | Evidence meaning |
+|---|---:|---|---|
+| `conduction-real` | enabled | passed 2/2 in retained local evidence | compiled BOUT++ executable integration for one tutorial case |
+| `boutpp-python-runexample` | disabled | skipped | Python `boutpp` module support is optional and not promoted by this local build |
+| `staggered-grid-wrapper` | disabled | skipped | wrapper example lacks a stable compiled BOUT++ binary contract in the local build |
+
+The harness writes per-case `preflight.json`, per-repeat `boutpp_problem_spec.json`, `boutpp_run_plan.json`, `boutpp_run_artifact.json`, `boutpp_postprocess_report.json`, and `boutpp_validation_report.json`, plus a suite-level `boutpp_real_repeated_smoke_summary.json`.
+
+Retained local evidence:
+
+```text
+.runs/boutpp-real-repeated-smoke-v2/boutpp_real_repeated_smoke_summary.json
+```
+
+That run used `real_tools = true`, `real_claude = false`, `repeat_count = 2`, `mpi_launcher = "mpirun"`, and `build_root = "/home/linden/code/work/Solvers/FEM/BOUT-dev/build"`. The enabled `conduction-real` case passed both repeats with `return_code = 0`, `validation_passed = true`, seven evidence references per repeat, two logs, two dump files, and two restart files. The two additional example candidates were preserved as capability-gated skips with reviewer-visible skip reasons.
+
 ## Current Limitation
 
 The typed BOUT++ compiler now supports top-level options through `BoutPPProblemSpec.top_level_options`, so the conduction smoke can render `MXG = 0` before named sections. Keep the tutorial mesh, conduction, variable, and solver settings in `options`; otherwise the generated `BOUT.inp` intentionally replaces the copied source input and BOUT++ will report missing mesh values such as `nx`.
+
+This evidence still validates only artifact-level execution and retained output discovery. It does not parse NetCDF variables, compare against analytic convergence criteria, or establish broad BOUT++ physics model coverage.
 
 ## Smoke Execution Gate
 
@@ -146,7 +168,7 @@ MHE_RUN_REAL_BOUTPP=1 \
 BOUT_ROOT=/home/linden/code/work/Solvers/FEM/BOUT-dev \
 BOUTPP_ROOT=/home/linden/code/work/Solvers/FEM/BOUT-dev/build \
 PYTHONPATH=src \
-python -m pytest tests/test_metaharness_boutpp_smoke.py -q
+python -m pytest tests/test_metaharness_boutpp_real_smoke.py -q
 ```
 
 If an automated smoke test is added later, it should skip unless all of these conditions are true:
@@ -187,8 +209,8 @@ Do not merge the real smoke result into direct numerical superiority claims. The
 
 ## Backlog From This Method
 
-- Add `tests/test_metaharness_boutpp_smoke.py` with `MHE_RUN_REAL_BOUTPP=1` gating.
 - Add an MPI launcher flag compatibility option if local `mpiexec` requires `-n` instead of `-np`.
 - Add a benchmark comparator row for real-smoke promotion status.
 - Add optional NetCDF variable assertions for `T` only when `netCDF4` is available.
-- Retain a clean run root under `.runs/boutpp-real-smoke/` or `/var/tmp/mhe-runs/<run-id>` for reviewer inspection when real evidence is reported.
+- Promote more example cases only after each has a stable executable contract, case-local input directory, and reviewer-visible preflight evidence.
+- Retain clean run roots under `.runs/boutpp-real-repeated-smoke-*` or `/var/tmp/mhe-runs/<run-id>` whenever real evidence is reported.

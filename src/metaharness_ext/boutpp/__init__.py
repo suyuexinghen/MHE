@@ -42,6 +42,15 @@ from metaharness_ext.boutpp.gateway import BoutPPGatewayComponent
 from metaharness_ext.boutpp.governance import BoutPPGovernanceAdapter
 from metaharness_ext.boutpp.policy import BoutPPEvidencePolicy
 from metaharness_ext.boutpp.postprocess import BoutPPPostprocessComponent
+from metaharness_ext.boutpp.real_smoke import (
+    BoutPPRealSmokeCase,
+    boutpp_real_smoke_case_catalog,
+    build_boutpp_real_smoke_spec,
+    get_boutpp_real_smoke_cases,
+    preferred_mpi_launcher,
+    preflight_boutpp_real_smoke_case,
+    run_repeated_boutpp_real_smoke,
+)
 from metaharness_ext.boutpp.slots import (
     BOUTPP_COMPILER_SLOT,
     BOUTPP_ENVIRONMENT_SLOT,
@@ -92,6 +101,7 @@ __all__ = (
     "BoutPPPostprocessComponent",
     "BoutPPPostprocessReport",
     "BoutPPProblemSpec",
+    "BoutPPRealSmokeCase",
     "BoutPPRestartSpec",
     "BoutPPRunArtifact",
     "BoutPPRunPlan",
@@ -104,7 +114,13 @@ __all__ = (
     "BoutPPValidationSpec",
     "BoutPPValidatorComponent",
     "PROTECTED_SLOTS",
+    "boutpp_real_smoke_case_catalog",
     "boutpp_usage_case_catalog",
+    "build_boutpp_real_smoke_spec",
     "build_evidence_bundle",
+    "get_boutpp_real_smoke_cases",
     "get_boutpp_usage_cases",
+    "preferred_mpi_launcher",
+    "preflight_boutpp_real_smoke_case",
+    "run_repeated_boutpp_real_smoke",
 )
