@@ -250,7 +250,16 @@ def _read_repeat_summary(comp_dir: Path) -> dict[str, Any] | None:
 def _proposal_source(
     runs_root: Path, suite: BenchmarkSuite, lane: BenchmarkLane, case_id: str
 ) -> str:
-    command_path = case_dir(runs_root, suite, lane, case_id) / "claude_command.json"
+    lane_dir = case_dir(runs_root, suite, lane, case_id)
+    contract_path = lane_dir / "moose_proposal_contract.json"
+    if contract_path.exists():
+        try:
+            contract_source = read_json(contract_path).get("proposal_source")
+        except (JSONDecodeError, OSError):
+            contract_source = None
+        if contract_source:
+            return str(contract_source)
+    command_path = lane_dir / "claude_command.json"
     if not command_path.exists():
         return "none"
     try:
@@ -1005,10 +1014,17 @@ def _analysis_markdown(
                 "- Transient PDE cases (Allen-Cahn, Navier-Stokes) require time-stepping infrastructure in the solver.",
             ]
         )
+    elif suite == "moose-usage":
+        lines.extend(
+            [
+                "- Dry-run summaries validate MOOSE workflow layout and comparison logic, not MOOSE numerical accuracy, convergence, or runtime superiority.",
+                "- Direct and agent real MOOSE CLI lanes are intentionally skipped until a safe workspace-isolated runner contract exists.",
+            ]
+        )
     else:
         lines.extend(
             [
-                "- Dry-run summaries validate harness layout and comparison logic, not Octave numerical runtime.",
+                f"- Dry-run summaries validate harness layout and comparison logic, not {suite} numerical runtime.",
                 "- Direct and agent lanes should use the same Claude CLI binary, model, and turn budget in real runs.",
             ]
         )

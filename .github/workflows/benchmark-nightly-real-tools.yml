@@ -17,6 +17,8 @@ on:
           - qcompute-abacus
           - fealpy-pde
           - pycfd-pde
+          - boutpp-usage
+          - moose-usage
       cases:
         description: "Optional comma-separated case IDs"
         default: ""
@@ -44,6 +46,10 @@ jobs:
             smoke_cases: poisson-2d-numpy
           - suite: pycfd-pde
             smoke_cases: vortex-2d
+          - suite: boutpp-usage
+            smoke_cases: conduction-basic
+          - suite: moose-usage
+            smoke_cases: simple-diffusion-hit
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

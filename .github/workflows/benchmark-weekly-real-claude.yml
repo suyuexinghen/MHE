@@ -16,6 +16,8 @@ on:
           - qcompute-abacus
           - fealpy-pde
           - pycfd-pde
+          - boutpp-usage
+          - moose-usage
       cases:
         description: "Optional comma-separated case IDs"
         default: ""

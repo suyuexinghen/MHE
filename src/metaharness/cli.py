@@ -24,6 +24,8 @@ from metaharness.benchmark_drivers.io import (
     write_json,
 )
 from metaharness.benchmark_drivers.models import BenchmarkLane, BenchmarkSuite
+from metaharness.benchmark_drivers.moose_cases import get_moose_cases
+from metaharness.benchmark_drivers.moose_runner import MooseBenchmarkRunner
 from metaharness.benchmark_drivers.nektar_cases import get_nektar_cases
 from metaharness.benchmark_drivers.nektar_runner import NektarBenchmarkRunner
 from metaharness.benchmark_drivers.octave_cases import get_octave_cases
@@ -336,6 +338,13 @@ def _cmd_benchmark_run(args: argparse.Namespace) -> int:
                 brain_provider=brain_provider,
                 adaptive_agent=args.adaptive_agent,
                 max_repair_attempts=args.max_repair_attempts,
+            )
+        elif suite == "moose-usage":
+            cases = get_moose_cases(case_ids)
+            runner = MooseBenchmarkRunner(
+                runs_root=runs_root,
+                allow_real_tools=args.allow_real_tools,
+                brain_provider=brain_provider,
             )
         else:
             cases = get_qcompute_abacus_cases(case_ids)
@@ -907,6 +916,7 @@ def build_parser() -> argparse.ArgumentParser:
             "fealpy-pde",
             "pycfd-pde",
             "boutpp-usage",
+            "moose-usage",
         ],
         required=True,
     )
@@ -953,6 +963,7 @@ def build_parser() -> argparse.ArgumentParser:
             "fealpy-pde",
             "pycfd-pde",
             "boutpp-usage",
+            "moose-usage",
         ],
         required=True,
     )
@@ -982,6 +993,7 @@ def build_parser() -> argparse.ArgumentParser:
             "fealpy-pde",
             "pycfd-pde",
             "boutpp-usage",
+            "moose-usage",
         ],
         required=True,
     )
@@ -1015,6 +1027,7 @@ def build_parser() -> argparse.ArgumentParser:
             "fealpy-pde",
             "pycfd-pde",
             "boutpp-usage",
+            "moose-usage",
         ],
         default=None,
     )

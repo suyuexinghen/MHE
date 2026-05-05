@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import platform
 import shutil
 import subprocess
@@ -92,6 +93,7 @@ def build_run_manifest(
             "DiffusionSolver": _version("DiffusionSolver"),
             "CompressibleFlowSolver": _version("CompressibleFlowSolver"),
             "abacus": _version("abacus"),
+            "moose": _version(os.environ.get("MHE_MOOSE_BINARY", "moose-opt")),
             "qiskit": {"available": _module_available("qiskit")},
             "qiskit_aer": {"available": _module_available("qiskit_aer")},
             "pennylane": {"available": _module_available("pennylane")},

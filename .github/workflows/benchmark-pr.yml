@@ -47,6 +47,8 @@ jobs:
           python -m pytest tests/test_benchmark_drivers_cli.py -q
           python -m pytest tests/test_benchmark_approval_policy.py -q
           python -m pytest tests/test_metaharness_pycfd_benchmark_ci.py -q
+          python -m pytest tests/test_metaharness_boutpp_benchmark_runner.py -q
+          python -m pytest tests/test_benchmark_drivers_moose.py -q
 
   dry-run-benchmark:
     runs-on: ubuntu-latest
@@ -60,6 +62,8 @@ jobs:
           - qcompute-abacus
           - fealpy-pde
           - pycfd-pde
+          - boutpp-usage
+          - moose-usage
     steps:
       - uses: actions/checkout@v4
         with:

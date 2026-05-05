@@ -1,6 +1,6 @@
 # Benchmark Wiki
 
-> 版本：v0.3 | 最后更新：2026-05-03
+> 版本：v0.3 | 最后更新：2026-05-04
 
 本目录收纳 MHE 相关 benchmark 设计、实验计划与结果报告。它不替代各 extension 的设计 wiki，而是记录跨工具、跨流程、跨 agent 形态的对比实验。
 
@@ -25,6 +25,7 @@
 | [15-Benchmark Comparison CI/CD Blueprint](../blueprint/12-benchmark-comparison-cicd-blueprint.md) | 设计 Octave、Nektar、QCompute/QEC、PyCFD、Fealpy benchmark comparison 的 PR、nightly、weekly、release CI/CD 分层 | MHE 维护者 / CI 维护者 |
 | [16-Benchmark Comparison CI/CD Implementation Plan](../blueprint/12-benchmark-comparison-cicd-implementation-plan.md) | 记录复用 `benchmark-run` / `benchmark-compare` / `benchmark-approval-check` 的 workflow 实施步骤和验证命令 | MHE 维护者 / CI 维护者 |
 | [17-Benchmark Comparison CI/CD Roadmap](../blueprint/12-benchmark-comparison-cicd-roadmap.md) | 规划从 dry-run CI 到 real tools、real Claude、repeat aggregation 和 release approval gate 的证据升级路径 | MHE 维护者 / 项目管理者 |
+| [18-MOOSE Usage Validation Method](13-moose-usage-validation-method.md) | 记录 MOOSE extension 的 dry-run usage comparison、malformed proposal repair contrast、opt-in local `moose_test-opt` real extension smoke gate 与 claim boundary | MHE / MOOSE 维护者 |
 | [MHE Extension Comparison Conclusions](mhe-extension-comparison-conclusions.md) | 集中记录 MHE extension benchmark 对比结论、claim boundary、术语解释和 dated conclusion log | MHE 维护者 / 项目管理者 |
 
 ## 写作边界

@@ -1,6 +1,6 @@
 # MHE Extension Comparison Conclusions
 
-> Last updated: 2026-05-03  
+> Last updated: 2026-05-04  
 > Purpose: central record of claim-boundary-safe comparison conclusions for MHE extension benchmarks.
 
 ## How to read this report
@@ -22,6 +22,8 @@ The strongest current external statement is:
 | Octave native | Dry-run 10-case comparison complete; real-Claude preflight smoke and controlled repair fixtures exist; later extension-only real Octave baseline passed 3 small cases over repeated real runs. | Benchmark framework captures Octave lane evidence, proposal failures, repair taxonomy, and real extension solver execution for a small baseline. | Does not prove MHE/direct/agent numerical superiority; controlled repair fixture does not prove general repair ability. | Broader real tools + real Claude repeated comparison with executable direct/agent proposals. |
 | Nektar PDE | Dry-run 6-case comparison complete; extension real-solver Phase B evidence exists for selected cases; Phase C real-Claude/direct/agent runs passed selected ADR cases under bounded prompts. | Nektar workflow can be run through real tools and real Claude lanes for selected cases, with proposal failures separated from solver failures. | Does not prove broad Nektar superiority; skipped solver families remain capability-gated. | Expand retained real repeated runs, validate more solver families, and preserve external run roots. |
 | QCompute × ABACUS | Hamiltonian proxy and mapping dry-runs pass; H/S bridge remains sentinel; QEC dry-run repair evidence is comparator-visible. | QCompute benchmark expresses proxy Hamiltonian workflow, explicit unsupported bridge evidence, and QEC proposal-contract repair evidence. | Does not prove quantum advantage, real QPU/QEC execution, ABACUS H/S conversion, or QEC numerical superiority. | Run real Qiskit Aer proxy when authorized; add real Claude QEC challenge prompts; keep QEC real gate blocked until backend/decoder/repeat validation exists. |
+| BOUT++ | Usage comparison with dry-run and real-Claude lanes passes; local opt-in repeated real smoke passes `conduction-real` 2/2 and records two candidate skips. | BOUT++ evidence now covers workflow comparison, Claude proposal preflight, local executable integration, artifact discovery, and truthful capability gating for additional examples. | Does not prove BOUT++ numerical accuracy, convergence, runtime superiority, broad physics model coverage, or MHE superiority over direct Claude. | Add NetCDF/domain validation, comparator-visible real-smoke promotion rows, more stable compiled examples, and repeated direct/agent real-tool comparisons. |
+| MOOSE | Usage comparison dry-run and opt-in local extension real smoke now exist for the INL MOOSE test app. | MOOSE evidence covers structured HIT input specs, extension plan/evidence bundles, malformed proposal repair visibility, and selected local `moose_test-opt` execution. | Does not prove MOOSE numerical accuracy, convergence, runtime superiority, broad MOOSE app coverage, or direct/agent real-tool superiority. | Add repeated real smoke, safe direct/agent real MOOSE CLI lanes, solver-log/domain metrics, and broader input families after source-truth anchoring. |
 | PyCFD PDE | Earlier PyCFD docs recorded real execution evidence for the current catalog; the latest CI/CD real-tool smoke skipped `vortex-2d` because the PyCFD environment was unavailable. | PyCFD has prior real-run evidence, but current CI/CD smoke does not yet provide retained real PyCFD coverage on the benchmark runner. | Does not prove PyCFD is numerically superior to Fealpy, Nektar, Octave, QCompute, or direct Claude Code; current CI smoke must not be reported as PyCFD real execution coverage. | Configure `PYCFD_SRC_PATH` / environment gating, retain a clean real smoke root, expose direct proposal source, and collect repeated pass/repair rates. |
 | Fealpy PDE | Earlier comparison docs identified Fealpy as dry-run only; the latest CI/CD real-tool smoke passed `poisson-2d-numpy` once with real backend metrics. | Fealpy now has selected single-case numpy-backend real smoke evidence, plus benchmark plumbing and multi-backend design surface. | Does not validate all numpy/pytorch/jax backend claims, repeated stability, or numerical superiority over PyCFD/Nektar. | Add backend-labeled real smoke and repeats, then compare evidence with PyCFD/Nektar only by domain-specific metrics. |
 | Approval and reporting framework | Approval gates and evidence bundles exist for benchmark promotion. | MHE can make manager-facing claim boundaries explicit and auditable. | Approval does not replace scientific validation or prove numerical/runtime superiority. | Attach scientific/domain signoff and retained real-run evidence to stronger claims. |
@@ -51,6 +53,22 @@ The QCompute benchmark supports H2 FCIDUMP Hamiltonian proxy dry-runs, JW/BK met
 Current claim boundary:
 
 > QCompute/QEC evidence supports structured workflow control, unsupported-capability truthfulness, and agent repair auditability in dry-run QEC proposal tests. It does not support real QEC execution, quantum advantage, hardware error-suppression, or numerical superiority.
+
+### BOUT++
+
+The BOUT++ benchmark now has two evidence tiers: `boutpp-usage` comparison evidence for extension/direct/agent workflow and real-Claude proposal preflight, plus a local opt-in repeated real smoke where `conduction-real` passed 2/2 using the local BOUT++ build. Additional example candidates are represented as reviewer-visible skips rather than promoted coverage.
+
+Current claim boundary:
+
+> BOUT++ evidence supports structured workflow comparison, local executable integration for one repeated smoke case, artifact discovery, and truthful capability gating. It does not support numerical accuracy, convergence, runtime superiority, broad BOUT++ solver-family coverage, or MHE superiority over direct Claude.
+
+### MOOSE
+
+The MOOSE benchmark now has a `moose-usage` suite for the INL MOOSE test application. The dry-run comparison captures structured HIT input specs, extension plan/evidence bundles, direct proposal-contract failure, and agent repair evidence. A separate opt-in real extension smoke can execute the local `/home/linden/code/work/Solvers/FEM/moose/test/moose_test-opt` binary for the selected simple diffusion case when the dependency environment is configured.
+
+Current claim boundary:
+
+> MOOSE evidence supports structured workflow comparison, deterministic proposal repair visibility, and selected local test-app execution through the extension lane. It does not support MOOSE numerical accuracy, convergence, runtime superiority, broad app coverage, or direct/agent real-tool superiority claims.
 
 ### PyCFD PDE
 
@@ -158,3 +176,60 @@ Conclusion:
 - Strongest supported statement: the extension suite backlog should now prioritize solver portability, dependency gating, backend labeling, and repeated-run retention before any broader performance or superiority claim.
 - Non-claim: this does not prove cross-solver ranking, direct-vs-agent superiority, or stable repeated-run performance.
 - Next evidence needed: repeated Octave smoke cases, Nektar crash diagnosis and clean rerun, PyCFD environment probing and a retained baseline root, Fealpy backend-by-backend smoke, and QCompute/QEC backend-adapter evidence before promoting real QEC execution.
+
+### 2026-05-04 — BOUT++ usage comparison with Claude lanes
+
+Source evidence:
+
+- `.runs/boutpp-claude-comparison/boutpp-usage-benchmark/comparison/result_bundle.json`
+- `.runs/boutpp-claude-comparison/boutpp-usage-benchmark/comparison/comparison_report.md`
+- `.runs/boutpp-real-claude-comparison/boutpp-usage-benchmark/comparison/result_bundle.json`
+- `.runs/boutpp-real-claude-comparison/boutpp-usage-benchmark/comparison/comparison_report.md`
+- `src/metaharness_ext/boutpp/benchmark_runner.py`
+- `src/metaharness/cli.py`
+
+Conclusion:
+
+- 数值/科学求解质量：仍未证明。当前 BOUT++ comparison 主要验证 usage workflow、proposal/preflight、run plan、`BOUT.inp` 和 comparator evidence；即使 real-Claude lanes 通过，也不等同于真实 BOUT++ 数值正确性、收敛性、性能优势或广泛 solver 支持。
+- Workflow quality：已形成可审计基线。`extension`、`direct`、`agent` 三个 lane 都能通过 `boutpp-usage` benchmark CLI 运行并进入 comparator；dry-run comparison 与 real-Claude comparison 均得到 `all_passed` verdict。
+- Claude lane evidence：direct 与 agent lanes 都产生 Claude proposal、`proposal_preflight.json`、attempt log、lane summary 和 comparison bundle。real-Claude run 中 direct/agent 的 `proposal_contract_status = valid` 且 `preflight_status = passed`，说明 Claude lane 能生成符合当前 BOUT++ usage contract 的 proposal。
+- Strongest supported statement：BOUT++ extension benchmark 现在支持结构化 workflow 对比、typed spec / run plan / `BOUT.inp` evidence、Claude proposal preflight、CLI routing、comparison bundle 和 claim-boundary-safe report automation。
+- Non-claim：这不是 BOUT++ 数值准确性证明，不是 MHE 相比 direct Claude 的 solver 性能优势证明，不是 repeated real-run stability 证明，也不是广泛 BOUT++ physics model / solver family coverage 证明。
+- Next evidence needed：在当前 usage comparison 基线稳定后，下一步应推进 opt-in real BOUT++ repeated smoke，保留 clean run roots，增加 domain-specific artifact/NetCDF validation，并在更多 BOUT++ example cases 上收集 repeated pass-rate、proposal validity rate 和 failure classification evidence。
+
+### 2026-05-04 — BOUT++ opt-in repeated real smoke
+
+Source evidence:
+
+- `.runs/boutpp-real-repeated-smoke-v2/boutpp_real_repeated_smoke_summary.json`
+- `.runs/boutpp-real-repeated-smoke-v2/conduction-real/conduction-real-repeat-01/boutpp_run_artifact.json`
+- `.runs/boutpp-real-repeated-smoke-v2/conduction-real/conduction-real-repeat-02/boutpp_run_artifact.json`
+- `docs/wiki/meta-harness-engineer/benchmark/11-boutpp-real-smoke-method.md`
+- `src/metaharness_ext/boutpp/real_smoke.py`
+
+Conclusion:
+
+- 数值/科学求解质量：仍然只得到 case-scoped artifact-level evidence。`conduction-real` 在本地 BOUT++ build 上 repeated real-tools smoke 通过 2/2，说明该 tutorial executable 能被 MHE pipeline 稳定驱动并产生日志、settings、dump 与 restart artifacts；但没有 NetCDF 变量解析、解析解误差、收敛阶、性能比较或广泛 physics model coverage。
+- Workflow quality：增强。新 harness 会先写 `preflight.json`，再为每次 repeat 保留 problem spec、run plan、run artifact、postprocess report、validation report 和 suite summary；更多 example cases 以 `default_enabled = false` 的 capability-gated skip 暴露，而不是伪装成已支持。
+- Strongest supported statement：BOUT++ extension 现在有 opt-in real-tools repeated smoke evidence，证明本地 `examples/conduction` 可通过 MHE typed spec、MPI launcher、workspace isolation、artifact discovery 和 validation pipeline 重复运行成功。
+- Non-claim：这不是 BOUT++ 数值准确性、收敛性、运行时优势、广泛 solver-family 支持、direct/agent real-tool superiority 或 real-Claude solver-quality 证明。
+- Next evidence needed：增加 NetCDF/domain metrics validation，给 real-smoke promotion 加 comparator-visible row，选择更多具有稳定 executable 和 input contract 的 BOUT++ examples，并在 real-tools + real-Claude direct/agent lanes 中收集 proposal validity、failure classification 和 repeated pass-rate evidence。
+
+### 2026-05-04 — MOOSE usage comparison and local real extension smoke
+
+Source evidence:
+
+- `.runs/moose-usage-validation/moose-usage-benchmark/comparison/result_bundle.json`
+- `.runs/moose-usage-validation/moose-usage-benchmark/comparison/comparison_report.md`
+- `.runs/moose-real-tool-benchmark/moose-usage-benchmark/extension/simple-diffusion-hit/moose_run_artifact.json`
+- `docs/wiki/meta-harness-engineer/benchmark/13-moose-usage-validation-method.md`
+- `src/metaharness/benchmark_drivers/moose_runner.py`
+
+Conclusion:
+
+- 数值/科学求解质量：仍未证明。当前 MOOSE evidence 只覆盖 selected INL MOOSE test-app workflow、HIT input handling、Exodus artifact discovery 和 validation/policy outcome；没有残差解析、收敛验证、性能比较、重复稳定性或广泛 app coverage。
+- Workflow quality：增强。`moose-usage` suite 能通过 benchmark CLI 产生 extension/direct/agent lane summaries、proposal contract artifacts、comparison bundle 和 repair evidence；`malformed-hit-proposal` 让 direct failure 与 agent deterministic repair 在 comparator 中可见。
+- Real-tool evidence：本地 opt-in extension lane 可使用 `/home/linden/code/work/Solvers/FEM/moose/test/moose_test-opt` 跑通 `simple-diffusion-hit`，但 direct/agent real MOOSE CLI lanes 仍被明确跳过。
+- Strongest supported statement：MOOSE extension benchmark 现在支持结构化 workflow 对比、proposal repair visibility、extension evidence bundles，以及 selected local real test-app execution。
+- Non-claim：这不是 MOOSE 数值准确性、收敛性、运行时优势、广泛 MOOSE app 支持、MHE 相比 direct Claude 的 solver superiority 或 direct/agent real-tool superiority 证明。
+- Next evidence needed：增加 repeated real extension smoke，安全实现 direct/agent real MOOSE CLI lanes，解析 solver log/domain metrics，并在更多 source-truth anchored MOOSE inputs 上收集 pass-rate、proposal validity 和 failure classification evidence。

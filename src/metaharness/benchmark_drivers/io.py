@@ -16,6 +16,7 @@ SUITE_DIRS: dict[BenchmarkSuite, str] = {
     "fealpy-pde": "fealpy-pde-benchmark",
     "pycfd-pde": "pycfd-pde-benchmark",
     "boutpp-usage": "boutpp-usage-benchmark",
+    "moose-usage": "moose-usage-benchmark",
 }
 
 

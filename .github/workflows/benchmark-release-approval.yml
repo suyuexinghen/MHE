@@ -27,6 +27,8 @@ jobs:
           - qcompute-abacus
           - fealpy-pde
           - pycfd-pde
+          - boutpp-usage
+          - moose-usage
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
