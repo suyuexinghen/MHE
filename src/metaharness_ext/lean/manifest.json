@@ -1,0 +1,17 @@
+{
+  "name": "lean_gateway",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.lean.gateway:LeanGatewayComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [],
+    "outputs": [{"name": "task", "type": "LeanTaskSpec", "mode": "sync", "description": "Lean proof task"}],
+    "provides": [{"name": "lean.orchestrate.workflow", "description": "Orchestrate Lean proof workflows"}],
+    "requires": [],
+    "slots": [{"slot": "lean_gateway.primary", "binding": "primary", "required": true}]
+  },
+  "safety": {"protected": false, "sandbox_profile": "workspace-read"},
+  "policy": {"sandbox": {"tier": "workspace-read"}},
+  "state_schema_version": 1
+}

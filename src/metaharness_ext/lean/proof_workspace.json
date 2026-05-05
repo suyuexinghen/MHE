@@ -1,0 +1,17 @@
+{
+  "name": "lean_proof_workspace",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.lean.proof_workspace:LeanProofWorkspaceComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [{"name": "blueprint", "type": "LeanBlueprint", "required": true, "description": "Lean proof blueprint", "cardinality": "one"}],
+    "outputs": [{"name": "plan", "type": "LeanRunPlan", "mode": "sync", "description": "Lean run plan"}],
+    "provides": [{"name": "lean.prepare.workspace", "description": "Prepare isolated Lean proof workspace"}],
+    "requires": [],
+    "slots": [{"slot": "lean_proof_workspace.primary", "binding": "primary", "required": true}]
+  },
+  "safety": {"protected": false, "sandbox_profile": "workspace-write"},
+  "policy": {"sandbox": {"tier": "workspace-write"}},
+  "state_schema_version": 1
+}

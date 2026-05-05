@@ -1,0 +1,17 @@
+{
+  "name": "lean_executor",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.lean.executor:LeanExecutorComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [{"name": "plan", "type": "LeanRunPlan", "required": true, "description": "Lean run plan", "cardinality": "one"}],
+    "outputs": [{"name": "run", "type": "LeanRunArtifact", "mode": "sync", "description": "Lean run artifact"}],
+    "provides": [{"name": "lean.execute.proof", "description": "Execute Lean proof run"}],
+    "requires": [],
+    "slots": [{"slot": "lean_executor.primary", "binding": "primary", "required": true}]
+  },
+  "safety": {"protected": false, "sandbox_profile": "workspace-write"},
+  "policy": {"sandbox": {"tier": "workspace-write"}},
+  "state_schema_version": 1
+}

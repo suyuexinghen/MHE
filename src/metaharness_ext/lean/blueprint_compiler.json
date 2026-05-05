@@ -1,0 +1,17 @@
+{
+  "name": "lean_blueprint_compiler",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.lean.blueprint_compiler:LeanBlueprintCompilerComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [{"name": "task", "type": "LeanTaskSpec", "required": true, "description": "Lean proof task", "cardinality": "one"}],
+    "outputs": [{"name": "blueprint", "type": "LeanBlueprint", "mode": "sync", "description": "Lean proof blueprint"}],
+    "provides": [{"name": "lean.compile.blueprint", "description": "Compile Lean proof blueprint"}],
+    "requires": [],
+    "slots": [{"slot": "lean_blueprint_compiler.primary", "binding": "primary", "required": true}]
+  },
+  "safety": {"protected": false, "sandbox_profile": "workspace-read"},
+  "policy": {"sandbox": {"tier": "workspace-read"}},
+  "state_schema_version": 1
+}

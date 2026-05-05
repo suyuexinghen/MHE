@@ -1,0 +1,17 @@
+{
+  "name": "lean_evidence",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.lean.evidence:LeanEvidenceComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [{"name": "validation", "type": "LeanValidationReport", "required": true, "description": "Lean validation report", "cardinality": "one"}],
+    "outputs": [{"name": "evidence", "type": "LeanEvidenceBundle", "mode": "sync", "description": "Lean evidence bundle"}],
+    "provides": [{"name": "lean.build.evidence", "description": "Build Lean evidence bundle"}],
+    "requires": [],
+    "slots": [{"slot": "lean_evidence.primary", "binding": "primary", "required": true}]
+  },
+  "safety": {"protected": false, "sandbox_profile": "workspace-read"},
+  "policy": {"sandbox": {"tier": "workspace-read"}},
+  "state_schema_version": 1
+}

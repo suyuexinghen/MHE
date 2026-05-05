@@ -1,0 +1,20 @@
+{
+  "name": "lean_validator",
+  "version": "0.1.0",
+  "kind": "governance",
+  "entry": "metaharness_ext.lean.validator:LeanValidatorComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [{"name": "run", "type": "LeanRunArtifact", "required": true, "description": "Lean run artifact", "cardinality": "one"}],
+    "outputs": [{"name": "validation", "type": "LeanValidationReport", "mode": "sync", "description": "Lean validation report"}],
+    "provides": [
+      {"name": "lean.validate.result", "description": "Validate Lean proof result"},
+      {"name": "lean.evaluate.policy", "description": "Evaluate Lean-specific validation policy"}
+    ],
+    "requires": [],
+    "slots": [{"slot": "lean_validator.primary", "binding": "primary", "required": true}]
+  },
+  "safety": {"protected": true, "sandbox_profile": "workspace-read"},
+  "policy": {"sandbox": {"tier": "workspace-read"}},
+  "state_schema_version": 1
+}

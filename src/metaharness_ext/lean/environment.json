@@ -1,0 +1,17 @@
+{
+  "name": "lean_environment",
+  "version": "0.1.0",
+  "kind": "core",
+  "entry": "metaharness_ext.lean.environment:LeanEnvironmentComponent",
+  "harness_version": ">=0.1.0",
+  "contracts": {
+    "inputs": [{"name": "task", "type": "LeanTaskSpec", "required": true, "description": "Lean proof task", "cardinality": "one"}],
+    "outputs": [{"name": "environment", "type": "LeanEnvironmentReport", "mode": "sync", "description": "Lean environment report"}],
+    "provides": [{"name": "lean.probe.environment", "description": "Probe Lean and Lake environment"}],
+    "requires": [],
+    "slots": [{"slot": "lean_environment.primary", "binding": "primary", "required": true}]
+  },
+  "safety": {"protected": false, "sandbox_profile": "workspace-read"},
+  "policy": {"sandbox": {"tier": "workspace-read"}},
+  "state_schema_version": 1
+}
