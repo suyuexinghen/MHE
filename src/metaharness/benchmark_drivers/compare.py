@@ -247,18 +247,48 @@ def _read_repeat_summary(comp_dir: Path) -> dict[str, Any] | None:
         return None
 
 
+def _read_boutpp_real_smoke_summary(
+    runs_root: Path, suite: BenchmarkSuite
+) -> dict[str, Any] | None:
+    if suite != "boutpp-usage":
+        return None
+    candidates = [
+        suite_root(runs_root, suite) / "boutpp_real_repeated_smoke_summary.json",
+        runs_root / "boutpp_real_repeated_smoke_summary.json",
+    ]
+    for summary_path in candidates:
+        if not summary_path.exists():
+            continue
+        try:
+            summary = read_json(summary_path)
+        except (JSONDecodeError, OSError):
+            continue
+        summary["source_summary_path"] = str(summary_path)
+        return summary
+    return None
+
+
 def _proposal_source(
     runs_root: Path, suite: BenchmarkSuite, lane: BenchmarkLane, case_id: str
 ) -> str:
     lane_dir = case_dir(runs_root, suite, lane, case_id)
-    contract_path = lane_dir / "moose_proposal_contract.json"
-    if contract_path.exists():
+    for contract_name in ("moose_proposal_contract.json", "lean_proposal_contract.json"):
+        contract_path = lane_dir / contract_name
+        if contract_path.exists():
+            try:
+                contract_source = read_json(contract_path).get("proposal_source")
+            except (JSONDecodeError, OSError):
+                contract_source = None
+            if contract_source:
+                return str(contract_source)
+    preflight_path = lane_dir / "proposal_preflight.json"
+    if preflight_path.exists():
         try:
-            contract_source = read_json(contract_path).get("proposal_source")
+            preflight_source = read_json(preflight_path).get("proposal_source")
         except (JSONDecodeError, OSError):
-            contract_source = None
-        if contract_source:
-            return str(contract_source)
+            preflight_source = None
+        if preflight_source:
+            return str(preflight_source)
     command_path = lane_dir / "claude_command.json"
     if not command_path.exists():
         return "none"
@@ -281,6 +311,7 @@ def _evidence_context(
 ) -> dict[str, Any]:
     claude_cli = manifest.get("claude_cli", {})
     grouped = load_lane_summaries(runs_root, suite)
+    boutpp_real_smoke_summary = _read_boutpp_real_smoke_summary(runs_root, suite)
     proposal_sources = {
         row.case_id: {
             "direct": _proposal_source(runs_root, suite, "direct", row.case_id),
@@ -298,7 +329,49 @@ def _evidence_context(
         "capability_gate_rows": _capability_gate_rows(runs_root, suite),
         "repair_rows": _repair_rows(rows),
         "repeat_rows": [] if repeat_summary is None else repeat_summary.get("rows", []),
+        "boutpp_real_smoke_rows": _boutpp_real_smoke_rows(boutpp_real_smoke_summary),
     }
+
+
+def _boutpp_real_smoke_rows(summary: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if summary is None:
+        return []
+    preflights = {
+        str(item.get("case_id")): item
+        for item in summary.get("preflight_records", [])
+        if item.get("case_id")
+    }
+    rows: list[dict[str, Any]] = []
+    for case_summary in summary.get("case_summaries", []):
+        case_id = str(case_summary.get("case_id", "unknown"))
+        repeat_count = int(case_summary.get("repeat_count") or 0)
+        passed_count = int(case_summary.get("passed_count") or 0)
+        status = case_summary.get("status")
+        preflight = preflights.get(case_id, {})
+        failed_count = max(0, repeat_count - passed_count)
+        skipped_count = 1 if status == "skipped" else 0
+        evidence_files = case_summary.get("evidence_files", [])
+        rows.append(
+            {
+                "case_id": case_id,
+                "status": status,
+                "promotion_ready": preflight.get("promotion_ready", False),
+                "real_tools": summary.get("real_tools"),
+                "real_claude": summary.get("real_claude"),
+                "repeat_count": repeat_count,
+                "passed_count": passed_count,
+                "failed_count": failed_count,
+                "skipped_count": skipped_count,
+                "missing_prerequisites": preflight.get("missing_prerequisites", []),
+                "skip_reason": case_summary.get("skip_reason") or preflight.get("skip_reason"),
+                "validation_statuses": [
+                    repeat.get("validation_status") for repeat in case_summary.get("repeats", [])
+                ],
+                "evidence_ref_count": len(evidence_files),
+                "source_summary_path": summary.get("source_summary_path"),
+            }
+        )
+    return rows
 
 
 def _preflight_rows(runs_root: Path, suite: BenchmarkSuite) -> list[dict[str, Any]]:
@@ -885,6 +958,33 @@ def _preflight_markdown_lines(evidence_context: dict[str, Any]) -> list[str]:
     return lines
 
 
+def _boutpp_real_smoke_markdown_lines(evidence_context: dict[str, Any]) -> list[str]:
+    smoke_rows = evidence_context.get("boutpp_real_smoke_rows", [])
+    if not smoke_rows:
+        return []
+    lines = [
+        "",
+        "## BOUT++ real-smoke promotion evidence",
+        "",
+        "| Case | Status | Promotion ready | Real tools | Real Claude | Runs | Passed | Failed | Skipped | Missing prerequisites | Validation statuses |",
+        "|---|---|---|---|---|---:|---:|---:|---:|---|---|",
+    ]
+    for smoke_row in smoke_rows:
+        missing = ", ".join(smoke_row.get("missing_prerequisites", [])) or "none"
+        statuses = (
+            ", ".join(
+                str(status)
+                for status in smoke_row.get("validation_statuses", [])
+                if status is not None
+            )
+            or "none"
+        )
+        lines.append(
+            f"| {smoke_row['case_id']} | {smoke_row.get('status')} | {smoke_row.get('promotion_ready')} | {smoke_row.get('real_tools')} | {smoke_row.get('real_claude')} | {smoke_row.get('repeat_count')} | {smoke_row.get('passed_count')} | {smoke_row.get('failed_count')} | {smoke_row.get('skipped_count')} | {missing} | {statuses} |"
+        )
+    return lines
+
+
 def _comparison_markdown(
     suite: BenchmarkSuite, rows: list[ComparisonRow], evidence_context: dict[str, Any]
 ) -> str:
@@ -910,6 +1010,7 @@ def _comparison_markdown(
     lines.extend(_metric_markdown_lines(evidence_context))
     lines.extend(_preflight_markdown_lines(evidence_context))
     lines.extend(_capability_gate_markdown_lines(evidence_context))
+    lines.extend(_boutpp_real_smoke_markdown_lines(evidence_context))
     lines.extend(_approval_markdown_lines(evidence_context))
     if evidence_context["repeat_rows"]:
         lines.extend(
@@ -976,6 +1077,7 @@ def _analysis_markdown(
     lines.extend(_metric_markdown_lines(evidence_context))
     lines.extend(_preflight_markdown_lines(evidence_context))
     lines.extend(_capability_gate_markdown_lines(evidence_context))
+    lines.extend(_boutpp_real_smoke_markdown_lines(evidence_context))
     lines.extend(_approval_markdown_lines(evidence_context))
     if evidence_context["repeat_rows"]:
         lines.extend(

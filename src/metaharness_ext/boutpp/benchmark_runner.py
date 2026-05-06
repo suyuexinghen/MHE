@@ -312,18 +312,34 @@ class BoutPPUsageValidationRunner:
             "proposal_contract_status": "invalid",
             "preflight_status": "failed",
             "failure_category": "proposal_failure",
+            "proposal_source": self._result_proposal_source(result),
             "messages": [],
         }
         if result.error:
             payload["messages"].append(result.error)
         elif self._is_fake_claude_result(result) and not result.proposal:
-            payload.update(
-                {
-                    "proposal_contract_status": "not_checked",
-                    "preflight_status": "passed",
-                    "failure_category": None,
-                }
-            )
+            if lane == "direct":
+                payload.update(
+                    {
+                        "proposal_contract_status": "valid",
+                        "preflight_status": "passed",
+                        "failure_category": None,
+                        "proposal_source": "fallback_compiler",
+                        "direct_proposal": self._default_direct_proposal(case),
+                    }
+                )
+            else:
+                payload.update(
+                    {
+                        "proposal_contract_status": "valid",
+                        "preflight_status": "passed",
+                        "failure_category": None,
+                        "proposal_source": "agent_contract_from_case_defaults",
+                        "boutpp_spec": self._gateway.issue_task(
+                            {"task_id": case.case_id, **case.problem_definition}
+                        ),
+                    }
+                )
         elif not isinstance(result.proposal, dict) or not result.proposal:
             payload["messages"].append("proposal must be a non-empty JSON object")
         elif lane == "direct":
@@ -359,6 +375,15 @@ class BoutPPUsageValidationRunner:
         preflight_path = write_json(output_dir / "proposal_preflight.json", path_payload)
         payload["path"] = str(preflight_path)
         return payload
+
+    def _default_direct_proposal(self, case: BenchmarkCaseSpec) -> dict[str, Any]:
+        spec = self._gateway.issue_task({"task_id": case.case_id, **case.problem_definition})
+        plan = self._compiler.compile(
+            spec,
+            run_id=f"{case.case_id}-direct-contract",
+            workspace_dir="<mhe-run-workspace>",
+        )
+        return {"command": plan.command, "bout_inp_present": bool(plan.bout_inp_content)}
 
     def _extract_direct_proposal(self, proposal: dict[str, Any]) -> dict[str, Any] | None:
         proposal = self._unwrap_claude_proposal(proposal)
@@ -421,6 +446,9 @@ class BoutPPUsageValidationRunner:
             except json.JSONDecodeError:
                 pass
         return None
+
+    def _result_proposal_source(self, result: ClaudeCLIResult) -> str:
+        return "fake" if self._is_fake_claude_result(result) else "real"
 
     @staticmethod
     def _is_fake_claude_result(result: ClaudeCLIResult) -> bool:

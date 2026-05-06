@@ -74,37 +74,96 @@ class BoutPPValidatorComponent:
                     )
                 ],
             )
+        require_successful_return_code = (
+            True if validation_spec is None else validation_spec.require_successful_return_code
+        )
+        if require_successful_return_code and artifact.return_code not in {None, 0}:
+            message = f"BOUT++ returned non-zero code {artifact.return_code}"
+            return BoutPPValidationReport(
+                task_id=artifact.task_id,
+                plan_ref=plan_ref,
+                artifact_ref=artifact.artifact_id,
+                postprocess_ref=postprocess.report_id if postprocess else None,
+                passed=False,
+                status=BoutPPValidationStatus.RUNTIME_FAILED,
+                messages=[message],
+                issues=[
+                    ValidationIssue(
+                        code="boutpp_nonzero_return_code",
+                        message=message,
+                        subject=artifact.task_id,
+                        blocks_promotion=True,
+                    )
+                ],
+            )
         messages: list[str] = []
         issues: list[ValidationIssue] = []
         summary_metrics = dict(artifact.summary_metrics)
         if postprocess is not None:
             summary_metrics.update(postprocess.summary_metrics)
         if validation_spec is not None:
-            if validation_spec.required_variables and postprocess is not None:
-                missing_vars = [
-                    name for name in validation_spec.required_variables if name not in postprocess.variable_names
-                ]
-                if missing_vars:
-                    message = f"Missing variables: {', '.join(missing_vars)}"
-                    issues.append(
-                        ValidationIssue(
-                            code="boutpp_variable_missing",
-                            message=message,
-                            subject=artifact.task_id,
-                            blocks_promotion=True,
-                        )
+            missing_vars = [
+                name
+                for name in validation_spec.required_variables
+                if postprocess is None or name not in postprocess.variable_names
+            ]
+            if missing_vars:
+                message = f"Missing variables: {', '.join(missing_vars)}"
+                issues.append(
+                    ValidationIssue(
+                        code="boutpp_variable_missing",
+                        message=message,
+                        subject=artifact.task_id,
+                        blocks_promotion=True,
                     )
-                    return BoutPPValidationReport(
-                        task_id=artifact.task_id,
-                        plan_ref=plan_ref,
-                        artifact_ref=artifact.artifact_id,
-                        postprocess_ref=postprocess.report_id,
-                        passed=False,
-                        status=BoutPPValidationStatus.VARIABLE_MISSING,
-                        messages=[message],
-                        summary_metrics=summary_metrics,
-                        issues=issues,
+                )
+                return BoutPPValidationReport(
+                    task_id=artifact.task_id,
+                    plan_ref=plan_ref,
+                    artifact_ref=artifact.artifact_id,
+                    postprocess_ref=postprocess.report_id if postprocess else None,
+                    passed=False,
+                    status=BoutPPValidationStatus.VARIABLE_MISSING,
+                    messages=[message],
+                    summary_metrics=summary_metrics,
+                    issues=issues,
+                )
+            domain_messages = []
+            for name, expected_size in validation_spec.required_dimensions.items():
+                actual_size = None if postprocess is None else postprocess.dimension_sizes.get(name)
+                if actual_size != expected_size:
+                    domain_messages.append(
+                        f"dimension {name} expected {expected_size}, got {actual_size}"
                     )
+            for name, expected_dimensions in validation_spec.required_variable_dimensions.items():
+                actual_dimensions = (
+                    None if postprocess is None else postprocess.variable_dimensions.get(name)
+                )
+                if actual_dimensions != expected_dimensions:
+                    domain_messages.append(
+                        f"variable {name} dimensions expected {expected_dimensions}, got {actual_dimensions}"
+                    )
+            if domain_messages:
+                issues.extend(
+                    ValidationIssue(
+                        code="boutpp_domain_validation_failed",
+                        message=message,
+                        subject=artifact.task_id,
+                        blocks_promotion=True,
+                    )
+                    for message in domain_messages
+                )
+                return BoutPPValidationReport(
+                    task_id=artifact.task_id,
+                    plan_ref=plan_ref,
+                    artifact_ref=artifact.artifact_id,
+                    postprocess_ref=postprocess.report_id if postprocess else None,
+                    passed=False,
+                    status=BoutPPValidationStatus.DOMAIN_VALIDATION_FAILED,
+                    messages=domain_messages,
+                    summary_metrics=summary_metrics,
+                    issues=issues,
+                )
             for key, threshold in validation_spec.metric_thresholds.items():
                 value = summary_metrics.get(key)
                 if value is not None and isinstance(value, (int, float)) and value > threshold:
@@ -135,7 +194,8 @@ class BoutPPValidatorComponent:
             plan_ref=plan_ref,
             artifact_ref=artifact.artifact_id,
             postprocess_ref=postprocess.report_id if postprocess else None,
-            passed=artifact.status == "completed" and artifact.return_code in {None, 0},
+            passed=artifact.status == "completed"
+            and (not require_successful_return_code or artifact.return_code in {None, 0}),
             status=BoutPPValidationStatus.EXECUTED,
             messages=messages,
             summary_metrics=summary_metrics,

@@ -73,6 +73,8 @@ class BoutPPOutputSpec(BaseModel):
 
 class BoutPPValidationSpec(BaseModel):
     required_variables: list[str] = Field(default_factory=list)
+    required_dimensions: dict[str, int] = Field(default_factory=dict)
+    required_variable_dimensions: dict[str, list[str]] = Field(default_factory=dict)
     metric_thresholds: dict[str, float] = Field(default_factory=dict)
     require_successful_return_code: bool = True
 
@@ -202,6 +204,8 @@ class BoutPPPostprocessReport(BaseModel):
     dump_files: list[str] = Field(default_factory=list)
     restart_files: list[str] = Field(default_factory=list)
     variable_names: list[str] = Field(default_factory=list)
+    dimension_sizes: dict[str, int] = Field(default_factory=dict)
+    variable_dimensions: dict[str, list[str]] = Field(default_factory=dict)
     settings_summary: dict[str, Any] = Field(default_factory=dict)
     summary_metrics: dict[str, Any] = Field(default_factory=dict)
     warnings: list[str] = Field(default_factory=list)

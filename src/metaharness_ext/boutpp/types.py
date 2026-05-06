@@ -16,5 +16,6 @@ class BoutPPValidationStatus(str, Enum):
     RUNTIME_FAILED = "runtime_failed"
     ARTIFACT_MISSING = "artifact_missing"
     VARIABLE_MISSING = "variable_missing"
+    DOMAIN_VALIDATION_FAILED = "domain_validation_failed"
     METRIC_THRESHOLD_EXCEEDED = "metric_threshold_exceeded"
     EXECUTED = "executed"

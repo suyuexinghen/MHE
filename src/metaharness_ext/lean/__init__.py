@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from metaharness_ext.lean.backends import MockLeanBackend, MockLeanResult
+from metaharness_ext.lean.benchmark_cases import get_lean_proof_cases, lean_proof_case_catalog
+from metaharness_ext.lean.benchmark_runner import LeanProofBenchmarkRunner
 from metaharness_ext.lean.blueprint_compiler import LeanBlueprintCompilerComponent
 from metaharness_ext.lean.capabilities import (
     CANONICAL_CAPABILITIES,
@@ -87,6 +89,7 @@ __all__ = [
     "LeanExecutorComponent",
     "LeanFamily",
     "LeanGatewayComponent",
+    "LeanProofBenchmarkRunner",
     "LeanProjectSpec",
     "LeanPromotionMetadata",
     "LeanProofWorkspaceComponent",
@@ -99,4 +102,6 @@ __all__ = [
     "LeanValidatorComponent",
     "MockLeanBackend",
     "MockLeanResult",
+    "get_lean_proof_cases",
+    "lean_proof_case_catalog",
 ]

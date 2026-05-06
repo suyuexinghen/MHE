@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from metaharness_ext.boutpp.contracts import BoutPPRunArtifact
 from metaharness_ext.boutpp.postprocess import BoutPPPostprocessComponent
 
@@ -28,6 +30,29 @@ def test_postprocess_parses_logs_and_settings(tmp_path):
     assert report.settings_summary["solver.type"] == "rk4"
     assert report.summary_metrics["runtime_seconds"] == 2.0
     assert report.summary_metrics["log_file_count"] == 1
+
+
+def test_postprocess_collects_optional_netcdf_domain_metadata(tmp_path):
+    netcdf4 = pytest.importorskip("netCDF4")
+    dump = tmp_path / "BOUT.dmp.0.nc"
+    with netcdf4.Dataset(dump, "w") as dataset:
+        dataset.createDimension("t", 2)
+        dataset.createDimension("y", 3)
+        dataset.createVariable("T", "f8", ("t", "y"))
+    artifact = BoutPPRunArtifact(
+        artifact_id="a1",
+        run_id="r1",
+        task_id="t1",
+        plan_ref="p1",
+        status="completed",
+        dump_files=[str(dump)],
+    )
+
+    report = BoutPPPostprocessComponent().postprocess(artifact)
+
+    assert report.variable_names == ["T"]
+    assert report.dimension_sizes == {"t": 2, "y": 3}
+    assert report.variable_dimensions == {"T": ["t", "y"]}
 
 
 def test_postprocess_unavailable_for_unavailable_artifact():

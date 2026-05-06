@@ -87,6 +87,22 @@ class LeanExecutorComponent(HarnessComponent):
             cwd = str(Path(environment_report.lakefile_path).parent)
         cwd = cwd or str(Path(plan.target_file).resolve().parent)
         command = ["lake", "env", "lean", plan.target_file]
+        build_result = None
+        if Path(cwd, "lakefile.lean").exists():
+            build_result = subprocess.run(
+                ["lake", "build"],
+                capture_output=True,
+                text=True,
+                timeout=policy.timeout_seconds,
+                cwd=cwd,
+                check=False,
+            )
+            if build_result.returncode != 0:
+                return self._real_artifact_from_result(
+                    plan=plan,
+                    result=build_result,
+                    start=start,
+                )
         try:
             result = subprocess.run(
                 command,
@@ -115,6 +131,22 @@ class LeanExecutorComponent(HarnessComponent):
                 execution_mode="real_lean",
             )
 
+        if build_result is not None:
+            result.stdout = build_result.stdout + result.stdout
+            result.stderr = build_result.stderr + result.stderr
+        return self._real_artifact_from_result(
+            plan=plan,
+            result=result,
+            start=start,
+        )
+
+    def _real_artifact_from_result(
+        self,
+        *,
+        plan: LeanRunPlan,
+        result: subprocess.CompletedProcess[str],
+        start: float,
+    ) -> LeanRunArtifact:
         diagnostics = parse_lean_diagnostics(
             result.stdout, plan.target_file
         ) + parse_lean_diagnostics(result.stderr, plan.target_file)

@@ -153,11 +153,23 @@ Exit criteria:
 - smoke test skips cleanly without a local build.
 - no default CI path requires BOUT++ binaries.
 
+## Next Evidence Roadmap
+
+The CI/CD benchmark integration made the remaining evidence gaps concrete. Treat the next work as evidence production, not as a claim of solver superiority.
+
+| Priority | Evidence slice | Implementation target | Acceptance evidence | Claim boundary |
+|---|---|---|---|---|
+| High | Proposal contract visibility | Replace dry-run `not_checked` BOUT++ direct/agent proposal status with deterministic contract artifacts derived from case defaults when fake Claude is used | `result_bundle.json` shows `proposal_contract_status = valid` and comparator-visible proposal sources | Workflow contract evidence only; not real Claude quality |
+| High | Repeated real-smoke promotion | Surface retained `boutpp_real_repeated_smoke_summary.json` through comparator-visible promotion or capability rows | Comparison bundle links the repeated real-smoke root and preserves skip reasons for non-promoted cases | Case-scoped local executable integration only |
+| Medium | Domain artifact metrics | Add optional NetCDF variable discovery and validation when `netCDF4` or another reader is available | Validation report records variable presence and reader availability | Artifact/domain evidence only; no convergence claim without reference metrics |
+| Medium | Real direct/agent prompt evidence | Run gated real-Claude direct/agent comparison after contract evidence is stable | Proposal validity rate, preflight status, failure categories, and retained prompts are visible | Proposal/workflow quality only unless real tools also run |
+| Later | Broader BOUT++ examples | Promote additional examples only after stable executable, input directory, and output contract are known | Capability-gated skips become passing real-smoke cases with retained artifacts | No broad solver-family claim from one example |
+
 ## Future Work
 
 Keep these items outside the accepted baseline and treat them as roadmap backlog rather than acceptance debt:
 
-- real BOUT++ binary smoke integration with an opt-in local example build.
+- comparator-visible repeated real BOUT++ smoke promotion rows.
 - richer postprocess and evidence examples, including expanded xBOUT/boutdata notes.
-- optional benchmark comparison coverage for direct CLI/manual workflow versus the extension baseline.
+- real-Claude benchmark comparison coverage with explicit proposal contracts and failure classification.
 - solver-specific manifest examples for additional BOUT++ cases and variants.

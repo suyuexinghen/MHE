@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from metaharness.benchmark_drivers.claude_cli import FakeClaudeCLIBrainProvider
+from metaharness.benchmark_drivers.compare import write_comparison_outputs
 from metaharness_ext.boutpp.benchmark_cases import boutpp_usage_case_catalog
 from metaharness_ext.boutpp.benchmark_runner import BoutPPUsageValidationRunner
 
@@ -34,13 +35,32 @@ def test_boutpp_usage_runner_writes_lane_evidence(tmp_path: Path) -> None:
     assert (base / "agent" / "conduction-basic" / "agent_prompt.txt").exists()
     assert (base / "agent" / "conduction-basic" / "proposal_preflight.json").exists()
     direct_summary = json.loads((base / "direct" / "conduction-basic" / "summary.json").read_text())
-    assert direct_summary["proposal_contract_status"] == "not_checked"
+    assert direct_summary["proposal_contract_status"] == "valid"
     assert direct_summary["preflight_status"] == "passed"
     assert direct_summary["llm_calls"] == 1
+    direct_preflight = json.loads(
+        (base / "direct" / "conduction-basic" / "proposal_preflight.json").read_text()
+    )
+    assert direct_preflight["proposal_source"] == "fallback_compiler"
+    assert direct_preflight["direct_proposal"]["bout_inp_present"] is True
     assert (
         "solver:type=rk4"
         in (base / "extension" / "conduction-basic" / "usage_validation.md").read_text()
     )
+
+    rows = write_comparison_outputs(
+        runs_root=tmp_path,
+        suite="boutpp-usage",
+        cases=[case.case_id],
+        lanes=["extension", "direct", "agent"],
+    )
+    bundle = json.loads((base / "comparison" / "result_bundle.json").read_text())
+    assert rows[0].direct_proposal_contract_status == "valid"
+    assert rows[0].agent_proposal_contract_status == "valid"
+    assert bundle["evidence_context"]["proposal_sources"][case.case_id] == {
+        "direct": "fallback_compiler",
+        "agent": "agent_contract_from_case_defaults",
+    }
 
 
 def test_boutpp_direct_lane_fails_invalid_proposal(tmp_path: Path) -> None:

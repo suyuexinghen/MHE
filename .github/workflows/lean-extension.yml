@@ -1,0 +1,42 @@
+name: Lean Extension Dry Ladder
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  lean-extension-dry-ladder:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install development dependencies
+        run: python -m pip install -e '.[dev]'
+
+      - name: Run Ruff checks
+        run: ruff check src/metaharness_ext/lean tests/test_metaharness_lean_*.py src/metaharness/benchmark_drivers src/metaharness/cli.py
+
+      - name: Run focused Lean pytest suite
+        run: PYTHONPATH=src pytest tests/test_metaharness_lean_*.py
+
+      - name: Run Lean dry-run challenge benchmark
+        run: >-
+          PYTHONPATH=src python -m metaharness.cli benchmark-run
+          --suite lean-proof
+          --lanes extension,direct,agent
+          --cases simple-true-proof,implication-chain-proof,conjunction-swap-proof,negation-contrapositive-proof,exists-conjunction-swap-proof,project-helper-chain-proof,blueprint-structure-project-proof,malformed-proposal-repair,underspecified-real-claude-stress
+          --runs-root .runs/ci-lean-dry-smoke
+
+      - name: Compare Lean dry-run challenge benchmark
+        run: >-
+          PYTHONPATH=src python -m metaharness.cli benchmark-compare
+          --suite lean-proof
+          --runs-root .runs/ci-lean-dry-smoke

@@ -26,11 +26,13 @@ class BoutPPPostprocessComponent:
             return report
         report.settings_summary = self._parse_settings(artifact.settings_file)
         report.summary_metrics.update(self._parse_logs(artifact.log_files))
-        variables = self._collect_netcdf_variables(artifact.dump_files)
-        if variables is None:
+        netcdf_metadata = self._collect_netcdf_metadata(artifact.dump_files)
+        if netcdf_metadata is None:
             report.warnings.append("netCDF4 not available or dump files unreadable")
         else:
-            report.variable_names = variables
+            report.variable_names = sorted(netcdf_metadata["variable_dimensions"])
+            report.dimension_sizes = netcdf_metadata["dimension_sizes"]
+            report.variable_dimensions = netcdf_metadata["variable_dimensions"]
         report.summary_metrics.update(
             {
                 "log_file_count": len(artifact.log_files),
@@ -77,18 +79,22 @@ class BoutPPPostprocessComponent:
                 metrics["total_steps"] = int(total_steps)
         return metrics
 
-    def _collect_netcdf_variables(self, dump_files: list[str]) -> list[str] | None:
+    def _collect_netcdf_metadata(self, dump_files: list[str]) -> dict[str, Any] | None:
         if not dump_files:
-            return []
+            return {"dimension_sizes": {}, "variable_dimensions": {}}
         try:
             from netCDF4 import Dataset
         except Exception:
             return None
-        variables: set[str] = set()
+        dimension_sizes: dict[str, int] = {}
+        variable_dimensions: dict[str, list[str]] = {}
         for dump_file in dump_files:
             try:
                 with Dataset(dump_file) as dataset:
-                    variables.update(dataset.variables.keys())
+                    for name, dimension in dataset.dimensions.items():
+                        dimension_sizes[str(name)] = len(dimension)
+                    for name, variable in dataset.variables.items():
+                        variable_dimensions[str(name)] = list(variable.dimensions)
             except Exception:
                 return None
-        return sorted(variables)
+        return {"dimension_sizes": dimension_sizes, "variable_dimensions": variable_dimensions}

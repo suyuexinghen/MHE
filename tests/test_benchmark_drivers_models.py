@@ -269,6 +269,94 @@ def test_comparator_writes_preflight_summary_tables(tmp_path: Path) -> None:
     assert bundle["evidence_context"]["preflight_rows"][0]["status"] == "ready"
 
 
+def test_comparator_writes_boutpp_real_smoke_promotion_rows(tmp_path: Path) -> None:
+    case = BenchmarkCaseSpec(
+        case_id="conduction-basic",
+        suite="boutpp-usage",
+        task_family="boutpp_usage",
+        description="BOUT++ usage case",
+        required_capabilities=["boutpp"],
+        source_reference="conduction",
+        expected_metrics=["elapsed_seconds"],
+    )
+    for lane in ["extension", "direct", "agent"]:
+        _write_passing_lane_summary(tmp_path, case, lane)
+    write_json(
+        tmp_path / "boutpp-usage-benchmark" / "boutpp_real_repeated_smoke_summary.json",
+        {
+            "suite": "boutpp-real-smoke",
+            "real_tools": True,
+            "real_claude": False,
+            "repeat_count": 2,
+            "case_summaries": [
+                {
+                    "case_id": "conduction-real",
+                    "status": "passed",
+                    "repeat_count": 2,
+                    "passed_count": 2,
+                    "repeats": [
+                        {"validation_status": "executed"},
+                        {"validation_status": "executed"},
+                    ],
+                    "evidence_files": ["preflight.json", "validation.json"],
+                },
+                {
+                    "case_id": "candidate-skip",
+                    "status": "skipped",
+                    "repeat_count": 0,
+                    "passed_count": 0,
+                    "skip_reason": "Missing prerequisites: executable",
+                    "evidence_files": ["candidate-preflight.json"],
+                },
+            ],
+            "preflight_records": [
+                {
+                    "case_id": "conduction-real",
+                    "promotion_ready": True,
+                    "missing_prerequisites": [],
+                },
+                {
+                    "case_id": "candidate-skip",
+                    "promotion_ready": False,
+                    "missing_prerequisites": ["executable"],
+                    "skip_reason": "Missing prerequisites: executable",
+                },
+            ],
+        },
+    )
+
+    write_comparison_outputs(runs_root=tmp_path, suite="boutpp-usage")
+
+    comparison_dir = tmp_path / "boutpp-usage-benchmark" / "comparison"
+    report = (comparison_dir / "comparison_report.md").read_text()
+    analysis = (
+        tmp_path / "boutpp-usage-benchmark" / "reports" / "boutpp-usage-analysis-report.md"
+    ).read_text()
+    bundle = json.loads((comparison_dir / "result_bundle.json").read_text())
+    smoke_rows = {
+        row["case_id"]: row for row in bundle["evidence_context"]["boutpp_real_smoke_rows"]
+    }
+    assert smoke_rows["conduction-real"]["case_id"] == "conduction-real"
+    assert smoke_rows["conduction-real"]["promotion_ready"] is True
+    assert smoke_rows["conduction-real"]["real_tools"] is True
+    assert smoke_rows["conduction-real"]["real_claude"] is False
+    assert smoke_rows["conduction-real"]["passed_count"] == 2
+    assert smoke_rows["conduction-real"]["evidence_ref_count"] == 2
+    assert smoke_rows["conduction-real"]["source_summary_path"].endswith(
+        "boutpp_real_repeated_smoke_summary.json"
+    )
+    assert smoke_rows["candidate-skip"]["promotion_ready"] is False
+    assert smoke_rows["candidate-skip"]["skipped_count"] == 1
+    assert smoke_rows["candidate-skip"]["missing_prerequisites"] == ["executable"]
+    assert bundle["evidence_context"]["real_tools"] is False
+    assert "## BOUT++ real-smoke promotion evidence" in report
+    assert (
+        "| conduction-real | passed | True | True | False | 2 | 2 | 0 | 0 | none | executed, executed |"
+        in report
+    )
+    assert "## BOUT++ real-smoke promotion evidence" in analysis
+
+
 def test_comparator_writes_capability_gate_tables(tmp_path: Path) -> None:
     case = BenchmarkCaseSpec(
         case_id="euler-1d",

@@ -1,6 +1,6 @@
 # BOUT++ Real Smoke Method
 
-> 版本：v0.2 | 状态：local opt-in repeated smoke implemented | 面向 `metaharness_ext.boutpp` 的真实 BOUT++ smoke evidence 升级路径。
+> 版本：v0.3 | 状态：local opt-in repeated smoke implemented with comparator-visible promotion rows and optional domain validation | 面向 `metaharness_ext.boutpp` 的真实 BOUT++ smoke evidence 升级路径。
 
 ## Purpose
 
@@ -157,7 +157,7 @@ That run used `real_tools = true`, `real_claude = false`, `repeat_count = 2`, `m
 
 The typed BOUT++ compiler now supports top-level options through `BoutPPProblemSpec.top_level_options`, so the conduction smoke can render `MXG = 0` before named sections. Keep the tutorial mesh, conduction, variable, and solver settings in `options`; otherwise the generated `BOUT.inp` intentionally replaces the copied source input and BOUT++ will report missing mesh values such as `nx`.
 
-This evidence still validates only artifact-level execution and retained output discovery. It does not parse NetCDF variables, compare against analytic convergence criteria, or establish broad BOUT++ physics model coverage.
+This evidence still validates only artifact-level execution and retained output discovery unless optional domain requirements are explicitly set. The postprocess layer can collect NetCDF variable, dimension, and variable-dimension metadata when `netCDF4` is importable, and the validator can enforce `required_variables`, `required_dimensions`, and `required_variable_dimensions`. It still does not compare against analytic convergence criteria or establish broad BOUT++ physics model coverage.
 
 ## Smoke Execution Gate
 
@@ -192,7 +192,7 @@ A passing MHE smoke should preserve:
 
 If the smoke harness serializes additional reviewer evidence, it should also write `boutpp_problem_spec.json` and `boutpp_run_plan.json` beside the run artifacts. The current executor itself does not write those JSON files.
 
-NetCDF variable validation should be optional unless `netCDF4` is importable in the active Python environment.
+NetCDF variable/domain validation is optional. When `netCDF4` is unavailable or dump files are unreadable, postprocess records a warning; only specs that opt into required variables, dimensions, or variable-dimension mappings should block promotion on domain metadata.
 
 ## Comparison Benchmark Integration
 
@@ -205,12 +205,12 @@ For benchmark comparison, keep the existing dry-run `boutpp-usage` suite as the 
 | repeated real benchmark | multiple clean runs with retained artifacts | stability evidence for this case only |
 | broader real benchmark | additional cases and domain metrics | stronger but still case-scoped solver evidence |
 
-Do not merge the real smoke result into direct numerical superiority claims. The strongest current benchmark value remains workflow controllability: schema validation, environment gating, artifact discovery, reproducible run plans, and explicit skip reasons.
+Do not merge the real smoke result into direct numerical superiority claims. The strongest current benchmark value remains workflow controllability: schema validation, environment gating, artifact discovery, reproducible run plans, optional domain metadata checks, comparator-visible promotion rows, and explicit skip reasons.
 
 ## Backlog From This Method
 
 - Add an MPI launcher flag compatibility option if local `mpiexec` requires `-n` instead of `-np`.
-- Add a benchmark comparator row for real-smoke promotion status.
-- Add optional NetCDF variable assertions for `T` only when `netCDF4` is available.
+- Extend repeated real-smoke comparison evidence from skipped/passed promotion rows into retained clean CI artifacts.
+- Add case-specific optional NetCDF assertions, such as `T` variable dimensions, only when `netCDF4` is available and the case contract opts in.
 - Promote more example cases only after each has a stable executable contract, case-local input directory, and reviewer-visible preflight evidence.
 - Retain clean run roots under `.runs/boutpp-real-repeated-smoke-*` or `/var/tmp/mhe-runs/<run-id>` whenever real evidence is reported.

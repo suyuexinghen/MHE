@@ -13,6 +13,7 @@ BenchmarkSuite = Literal[
     "pycfd-pde",
     "boutpp-usage",
     "moose-usage",
+    "lean-proof",
 ]
 BenchmarkLane = Literal["extension", "direct", "agent"]
 LaneStatus = Literal["passed", "failed", "skipped", "schema_failed"]

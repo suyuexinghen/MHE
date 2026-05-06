@@ -53,6 +53,8 @@ from metaharness_ext.boutpp.benchmark_cases import get_boutpp_usage_cases
 from metaharness_ext.boutpp.benchmark_runner import BoutPPUsageValidationRunner
 from metaharness_ext.fealpy.benchmark_cases import get_fealpy_cases
 from metaharness_ext.fealpy.benchmark_runner import FealpyBenchmarkRunner
+from metaharness_ext.lean.benchmark_cases import get_lean_proof_cases
+from metaharness_ext.lean.benchmark_runner import LeanProofBenchmarkRunner
 from metaharness_ext.pycfd.benchmark_cases import pycfd_case_catalog
 from metaharness_ext.pycfd.benchmark_runner import PyCFDBenchmarkRunner
 
@@ -346,6 +348,13 @@ def _cmd_benchmark_run(args: argparse.Namespace) -> int:
                 allow_real_tools=args.allow_real_tools,
                 brain_provider=brain_provider,
             )
+        elif suite == "lean-proof":
+            cases = get_lean_proof_cases(case_ids)
+            runner = LeanProofBenchmarkRunner(
+                runs_root=runs_root,
+                allow_real_tools=args.allow_real_tools,
+                brain_provider=brain_provider,
+            )
         else:
             cases = get_qcompute_abacus_cases(case_ids)
             runner = QComputeAbacusBenchmarkRunner(
@@ -407,6 +416,7 @@ def _cmd_benchmark_compare(args: argparse.Namespace) -> int:
         real_claude=args.allow_real_claude,
         real_tools=args.allow_real_tools,
         repeat_count=args.repeat,
+        approval_config_root=Path(args.config_root),
     )
     json.dump([row.model_dump(mode="json") for row in rows], sys.stdout, indent=2, sort_keys=True)
     sys.stdout.write("\n")
@@ -917,6 +927,7 @@ def build_parser() -> argparse.ArgumentParser:
             "pycfd-pde",
             "boutpp-usage",
             "moose-usage",
+            "lean-proof",
         ],
         required=True,
     )
@@ -964,6 +975,7 @@ def build_parser() -> argparse.ArgumentParser:
             "pycfd-pde",
             "boutpp-usage",
             "moose-usage",
+            "lean-proof",
         ],
         required=True,
     )
@@ -979,6 +991,7 @@ def build_parser() -> argparse.ArgumentParser:
     benchmark_compare.add_argument("--allow-real-tools", action="store_true")
     benchmark_compare.add_argument("--allow-real-claude", action="store_true")
     benchmark_compare.add_argument("--repeat", type=int, default=1)
+    benchmark_compare.add_argument("--config-root", default=".mhe")
     benchmark_compare.set_defaults(func=_cmd_benchmark_compare)
 
     approval_check = subparsers.add_parser(
@@ -994,6 +1007,7 @@ def build_parser() -> argparse.ArgumentParser:
             "pycfd-pde",
             "boutpp-usage",
             "moose-usage",
+            "lean-proof",
         ],
         required=True,
     )
@@ -1028,6 +1042,7 @@ def build_parser() -> argparse.ArgumentParser:
             "pycfd-pde",
             "boutpp-usage",
             "moose-usage",
+            "lean-proof",
         ],
         default=None,
     )

@@ -26,6 +26,7 @@
 | [16-Benchmark Comparison CI/CD Implementation Plan](../blueprint/12-benchmark-comparison-cicd-implementation-plan.md) | 记录复用 `benchmark-run` / `benchmark-compare` / `benchmark-approval-check` 的 workflow 实施步骤和验证命令 | MHE 维护者 / CI 维护者 |
 | [17-Benchmark Comparison CI/CD Roadmap](../blueprint/12-benchmark-comparison-cicd-roadmap.md) | 规划从 dry-run CI 到 real tools、real Claude、repeat aggregation 和 release approval gate 的证据升级路径 | MHE 维护者 / 项目管理者 |
 | [18-MOOSE Usage Validation Method](13-moose-usage-validation-method.md) | 记录 MOOSE extension 的 dry-run usage comparison、malformed proposal repair contrast、opt-in local `moose_test-opt` real extension smoke gate 与 claim boundary | MHE / MOOSE 维护者 |
+| [19-Lean Proof Benchmark Evidence Roadmap](14-lean-proof-evidence-roadmap.md) | 记录 Lean proof benchmark 从简单 smoke 到 challenge cases、repair evidence、repeated real-Claude、project fixtures 和 approval plumbing 的证据升级路径与当前实现状态 | MHE / Lean 维护者 |
 | [MHE Extension Comparison Conclusions](mhe-extension-comparison-conclusions.md) | 集中记录 MHE extension benchmark 对比结论、claim boundary、术语解释和 dated conclusion log | MHE 维护者 / 项目管理者 |
 
 ## 写作边界
