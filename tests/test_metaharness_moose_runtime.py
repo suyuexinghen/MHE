@@ -97,9 +97,7 @@ def test_moose_executor_and_validator_use_mocked_subprocess(monkeypatch, tmp_pat
     def fake_run_command(command, *, plan, cwd):
         (cwd / "mesh.e").write_text("mesh output")
         stdout = (
-            "Nonlinear solve converged in 3\n"
-            "Linear solve converged in 7\n"
-            "residual norm = 1.0e-12\n"
+            "Nonlinear solve converged in 3\nLinear solve converged in 7\nresidual norm = 1.0e-12\n"
         )
         return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr="warning: mesh note\n")
 

@@ -12,7 +12,9 @@ from metaharness_ext.boutpp.contracts import (
 
 
 class BoutPPGovernanceAdapter:
-    def __init__(self, *, session_id: str | None = None, actor: str = "boutpp_governance_adapter") -> None:
+    def __init__(
+        self, *, session_id: str | None = None, actor: str = "boutpp_governance_adapter"
+    ) -> None:
         self.session_id = session_id
         self.actor = actor
 
@@ -38,7 +40,9 @@ class BoutPPGovernanceAdapter:
     ) -> CandidateRecord:
         validation = self._require_validation(bundle)
         report = self.build_core_validation_report(validation, policy)
-        candidate_snapshot = snapshot or GraphSnapshot(graph_version=self._resolve_graph_version(bundle, validation))
+        candidate_snapshot = snapshot or GraphSnapshot(
+            graph_version=self._resolve_graph_version(bundle, validation)
+        )
         return CandidateRecord(
             candidate_id=self._resolve_candidate_id(bundle, validation, candidate_snapshot),
             snapshot=candidate_snapshot,
@@ -65,14 +69,21 @@ class BoutPPGovernanceAdapter:
                 SessionEventType.CANDIDATE_VALIDATED,
                 graph_version=graph_version,
                 candidate_id=candidate_id,
-                payload={"valid": validation.passed, "issues": [issue.model_dump(mode="json") for issue in validation.issues]},
+                payload={
+                    "valid": validation.passed,
+                    "issues": [issue.model_dump(mode="json") for issue in validation.issues],
+                },
             ),
             make_session_event(
                 session_id,
                 SessionEventType.SAFETY_GATE_EVALUATED,
                 graph_version=graph_version,
                 candidate_id=candidate_id,
-                payload={"decision": policy.decision, "reason": policy.reason, "gate_count": len(policy.gates)},
+                payload={
+                    "decision": policy.decision,
+                    "reason": policy.reason,
+                    "gate_count": len(policy.gates),
+                },
             ),
         ]
         if policy.decision == "reject":
@@ -97,7 +108,9 @@ class BoutPPGovernanceAdapter:
     ) -> dict[str, list[str]]:
         validation = self._require_validation(bundle)
         graph_version = self._resolve_graph_version(bundle, validation) or None
-        candidate_id = self._resolve_candidate_id(bundle, validation, GraphSnapshot(graph_version=graph_version or 0))
+        candidate_id = self._resolve_candidate_id(
+            bundle, validation, GraphSnapshot(graph_version=graph_version or 0)
+        )
         session_events = self.build_session_events(bundle, policy)
         audit_refs: list[str] = []
         provenance_refs = list(dict.fromkeys([*bundle.evidence_refs, *validation.evidence_refs]))
@@ -110,8 +123,14 @@ class BoutPPGovernanceAdapter:
                 task_id=validation.task_id,
             )
             if graph_version is not None:
-                version_entity = provenance_graph.add_entity(id=f"graph-version:{graph_version}", kind="graph_version", graph_version=graph_version)
-                provenance_graph.relate(candidate_entity.id, RelationKind.WAS_DERIVED_FROM, version_entity.id)
+                version_entity = provenance_graph.add_entity(
+                    id=f"graph-version:{graph_version}",
+                    kind="graph_version",
+                    graph_version=graph_version,
+                )
+                provenance_graph.relate(
+                    candidate_entity.id, RelationKind.WAS_DERIVED_FROM, version_entity.id
+                )
                 provenance_refs.append(version_entity.id)
         if audit_log is not None:
             for event in session_events:
@@ -129,12 +148,18 @@ class BoutPPGovernanceAdapter:
             raise ValueError("validation report is required")
         return bundle.validation
 
-    def _resolve_graph_version(self, bundle: BoutPPEvidenceBundle, validation: BoutPPValidationReport) -> int:
+    def _resolve_graph_version(
+        self, bundle: BoutPPEvidenceBundle, validation: BoutPPValidationReport
+    ) -> int:
         if bundle.plan is not None and hasattr(bundle.plan, "graph_metadata"):
             graph_version = bundle.plan.graph_metadata.get("graph_version")
             if isinstance(graph_version, int):
                 return graph_version
-        return validation.summary_metrics.get("graph_version", 0) if isinstance(validation.summary_metrics.get("graph_version", 0), int) else 0
+        return (
+            validation.summary_metrics.get("graph_version", 0)
+            if isinstance(validation.summary_metrics.get("graph_version", 0), int)
+            else 0
+        )
 
     def _resolve_candidate_id(
         self,

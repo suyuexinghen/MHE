@@ -52,7 +52,11 @@ class BoutPPEvidencePolicy:
     def _gate_artifact(self, bundle: BoutPPEvidenceBundle) -> dict:
         artifact = bundle.artifact
         if artifact is None:
-            return {"gate": "boutpp_artifact_presence", "result": "defer", "reason": "Artifact missing."}
+            return {
+                "gate": "boutpp_artifact_presence",
+                "result": "defer",
+                "reason": "Artifact missing.",
+            }
         if artifact.status in {"failed", "timeout", "unavailable"}:
             return {
                 "gate": "boutpp_artifact_status",
@@ -101,7 +105,11 @@ class BoutPPEvidencePolicy:
 
     def _gate_readiness(self, gates: list[dict]) -> dict:
         if all(gate["result"] == "pass" for gate in gates):
-            return {"gate": "boutpp_evidence_ready", "result": "pass", "reason": "All gates passed."}
+            return {
+                "gate": "boutpp_evidence_ready",
+                "result": "pass",
+                "reason": "All gates passed.",
+            }
         return {
             "gate": "boutpp_evidence_ready",
             "result": "defer",

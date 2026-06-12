@@ -31,7 +31,9 @@ class BoutPPCompilerComponent:
 
     @staticmethod
     def _build_plan_id(spec: BoutPPProblemSpec) -> str:
-        payload = spec.model_dump_json(exclude={"graph_metadata", "promotion_metadata", "evidence_refs"})
+        payload = spec.model_dump_json(
+            exclude={"graph_metadata", "promotion_metadata", "evidence_refs"}
+        )
         return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
     def render_bout_inp(self, spec: BoutPPProblemSpec) -> str:
@@ -50,7 +52,9 @@ class BoutPPCompilerComponent:
     def _build_command(self, spec: BoutPPProblemSpec, data_dir: str) -> list[str]:
         command: list[str] = []
         if spec.mpi.launcher_mode == "mpi":
-            command.extend([spec.mpi.launcher, "-np", str(spec.mpi.processes), *spec.mpi.extra_args])
+            command.extend(
+                [spec.mpi.launcher, "-np", str(spec.mpi.processes), *spec.mpi.extra_args]
+            )
         command.append(spec.executable)
         command.extend(spec.restart.argv_tokens)
         command.extend(["-d", data_dir])
@@ -64,7 +68,9 @@ class BoutPPCompilerComponent:
         if isinstance(value, str):
             if value.startswith('"') and value.endswith('"'):
                 return value
-            if any(char.isspace() for char in value) and not any(op in value for op in "+-*/^&|!<>(){}[]"):
+            if any(char.isspace() for char in value) and not any(
+                op in value for op in "+-*/^&|!<>(){}[]"
+            ):
                 return f'"{value}"'
             return value
         return str(value)

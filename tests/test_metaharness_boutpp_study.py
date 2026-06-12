@@ -50,7 +50,12 @@ class FakePostprocess:
         return type(
             "Postprocess",
             (),
-            {"report_id": f"post-{artifact.run_id}", "summary_metrics": artifact.summary_metrics, "warnings": [], "variable_names": ["T"]},
+            {
+                "report_id": f"post-{artifact.run_id}",
+                "summary_metrics": artifact.summary_metrics,
+                "warnings": [],
+                "variable_names": ["T"],
+            },
         )()
 
 

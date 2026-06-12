@@ -114,11 +114,7 @@ def test_moose_real_tool_lanes_skip_without_binary(tmp_path: Path, monkeypatch) 
     for lane in ["extension", "direct", "agent"]:
         capability = json.loads(
             (
-                tmp_path
-                / "moose-usage-benchmark"
-                / lane
-                / case.case_id
-                / "capability_status.json"
+                tmp_path / "moose-usage-benchmark" / lane / case.case_id / "capability_status.json"
             ).read_text()
         )
         assert capability["lane"] == lane
@@ -155,14 +151,16 @@ def test_moose_real_tool_direct_and_agent_lanes_run_with_mocked_binary(
     def fake_run_command(self, command, *, plan, cwd):
         (cwd / "input_out.e").write_text("exodus output")
         stdout = (
-            "Nonlinear solve converged in 3\n"
-            "Linear solve converged in 7\n"
-            "residual norm = 1.0e-12\n"
+            "Nonlinear solve converged in 3\nLinear solve converged in 7\nresidual norm = 1.0e-12\n"
         )
         return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr="")
 
-    monkeypatch.setattr("metaharness_ext.moose.environment.MooseEnvironmentProbeComponent.probe", fake_probe)
-    monkeypatch.setattr("metaharness_ext.moose.executor.MooseExecutorComponent._run_command", fake_run_command)
+    monkeypatch.setattr(
+        "metaharness_ext.moose.environment.MooseEnvironmentProbeComponent.probe", fake_probe
+    )
+    monkeypatch.setattr(
+        "metaharness_ext.moose.executor.MooseExecutorComponent._run_command", fake_run_command
+    )
 
     summaries = runner.run_case(case, ["direct", "agent"])
 

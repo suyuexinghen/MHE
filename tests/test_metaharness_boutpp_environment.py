@@ -11,7 +11,9 @@ def test_probe_reports_missing_root(monkeypatch):
     probe = BoutPPEnvironmentProbeComponent()
     report = probe.probe(task_id="env")
     assert report.available is False
-    assert any("BOUTPP_ROOT" in item or "BOUT_ROOT" in item for item in report.missing_prerequisites)
+    assert any(
+        "BOUTPP_ROOT" in item or "BOUT_ROOT" in item for item in report.missing_prerequisites
+    )
 
 
 def test_probe_finds_absolute_executable_and_optional_reader(tmp_path, monkeypatch):
@@ -23,9 +25,11 @@ def test_probe_finds_absolute_executable_and_optional_reader(tmp_path, monkeypat
     monkeypatch.setenv("BOUTPP_ROOT", str(root))
     monkeypatch.setattr(
         "shutil.which",
-        lambda name: str(root / name)
-        if name in {"mpiexec", "cmake", "ncxx4-config", "bout-config"}
-        else None,
+        lambda name: (
+            str(root / name)
+            if name in {"mpiexec", "cmake", "ncxx4-config", "bout-config"}
+            else None
+        ),
     )
     probe = BoutPPEnvironmentProbeComponent()
     spec = BoutPPProblemSpec(task_id="env", executable=str(exe), mpi={"launcher_mode": "direct"})

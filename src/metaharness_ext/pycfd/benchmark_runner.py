@@ -856,7 +856,8 @@ class PyCFDBenchmarkRunner:
             case=case,
             lane=lane,
             status="failed",
-            evidence_files=evidence_files or [*self._claude_evidence_files(result), preflight["path"]],
+            evidence_files=evidence_files
+            or [*self._claude_evidence_files(result), preflight["path"]],
             attempt_log=attempt_log,
             error_message="; ".join(str(message) for message in preflight.get("messages", [])),
             proposal_contract_status=preflight["proposal_contract_status"],

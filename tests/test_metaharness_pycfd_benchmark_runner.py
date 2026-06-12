@@ -52,7 +52,9 @@ class SequencedFakeBrainProvider:
             proposal_path=str(output_dir / "proposal.json"),
             return_code=0,
         )
-        return ClaudeCLIResult(invocation=invocation, result={"proposal": proposal}, proposal=proposal)
+        return ClaudeCLIResult(
+            invocation=invocation, result={"proposal": proposal}, proposal=proposal
+        )
 
 
 class TestPyCFDBenchmarkRunner:

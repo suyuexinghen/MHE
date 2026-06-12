@@ -24,7 +24,9 @@ def _make_script(path: Path) -> Path:
 
 def test_execute_success(tmp_path):
     script = _make_script(tmp_path / "conduction")
-    spec = BoutPPProblemSpec(task_id="exec", executable=str(script), mpi={"launcher_mode": "direct"})
+    spec = BoutPPProblemSpec(
+        task_id="exec", executable=str(script), mpi={"launcher_mode": "direct"}
+    )
     compiler = BoutPPCompilerComponent()
     plan = compiler.compile(spec, run_id="run-1", workspace_dir=str(tmp_path / "ws"))
     executor = BoutPPExecutorComponent(workspace_root=str(tmp_path / "runs"))
@@ -37,8 +39,12 @@ def test_execute_success(tmp_path):
 
 
 def test_execute_unavailable_when_executable_missing(tmp_path):
-    spec = BoutPPProblemSpec(task_id="exec2", executable="missing-binary", mpi={"launcher_mode": "direct"})
-    plan = BoutPPCompilerComponent().compile(spec, run_id="run-2", workspace_dir=str(tmp_path / "ws"))
+    spec = BoutPPProblemSpec(
+        task_id="exec2", executable="missing-binary", mpi={"launcher_mode": "direct"}
+    )
+    plan = BoutPPCompilerComponent().compile(
+        spec, run_id="run-2", workspace_dir=str(tmp_path / "ws")
+    )
     artifact = BoutPPExecutorComponent(workspace_root=str(tmp_path / "runs")).execute(plan)
     assert artifact.status == "unavailable"
     assert artifact.error_message

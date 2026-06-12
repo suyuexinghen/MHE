@@ -88,7 +88,9 @@ class PyCFDStudyComponent:
         snapshot: dict,
         objective: str,
     ) -> PyCFDStudyTrial:
-        workspace_dir = spec.graph_metadata.get("study_workspace", f".runs/pycfd/studies/{trial_id}")
+        workspace_dir = spec.graph_metadata.get(
+            "study_workspace", f".runs/pycfd/studies/{trial_id}"
+        )
         plan = self._compiler.compile(spec, run_id=trial_id, workspace_dir=workspace_dir)
         artifact = self._executor.execute(plan)
         validation = self._validator.validate(artifact, plan_ref=plan.plan_id)

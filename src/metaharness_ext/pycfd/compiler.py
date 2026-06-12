@@ -20,6 +20,7 @@ if __name__ == "__main__":
     _result = run_pycfd_case(_config)
 '''
 
+
 class PyCFDCompilerComponent:
     """Compiles a PyCFDProblemSpec into a self-contained solver script."""
 

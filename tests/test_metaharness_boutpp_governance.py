@@ -18,6 +18,8 @@ def test_governance_builds_core_validation_report():
 def test_governance_requires_validation_for_candidate_record():
     bundle = BoutPPEvidenceBundle(bundle_id="b1", task_id="t1")
     try:
-        BoutPPGovernanceAdapter().build_candidate_record(bundle, BoutPPPolicyReport(passed=True, decision="allow", reason="ok"))
+        BoutPPGovernanceAdapter().build_candidate_record(
+            bundle, BoutPPPolicyReport(passed=True, decision="allow", reason="ok")
+        )
     except ValueError as error:
         assert "validation report is required" in str(error)

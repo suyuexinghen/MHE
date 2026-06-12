@@ -27,7 +27,9 @@ class BoutPPStudyComponent:
                 spec = self._apply_snapshot(study_spec.task_template, snapshot)
                 trial = self._run_trial(trial_id, spec, snapshot, study_spec.objective)
             except Exception as error:
-                trial = BoutPPStudyTrial(trial_id=trial_id, parameters=snapshot, passed=False, messages=[str(error)])
+                trial = BoutPPStudyTrial(
+                    trial_id=trial_id, parameters=snapshot, passed=False, messages=[str(error)]
+                )
             trials.append(trial)
             if study_spec.max_trials and len(trials) >= study_spec.max_trials:
                 break
@@ -51,7 +53,10 @@ class BoutPPStudyComponent:
             else:
                 values_per_axis.append([None])
         axis_paths = [axis.parameter_path for axis in study_spec.axes]
-        return [dict(zip(axis_paths, combo, strict=True)) for combo in itertools.product(*values_per_axis)]
+        return [
+            dict(zip(axis_paths, combo, strict=True))
+            for combo in itertools.product(*values_per_axis)
+        ]
 
     def _apply_snapshot(self, spec: BoutPPProblemSpec, snapshot: dict) -> BoutPPProblemSpec:
         mutated = copy.deepcopy(spec)
@@ -59,7 +64,9 @@ class BoutPPStudyComponent:
             container = mutated
             parts = dotted_path.split(".")
             for part in parts[:-1]:
-                container = getattr(container, part) if hasattr(container, part) else container[part]
+                container = (
+                    getattr(container, part) if hasattr(container, part) else container[part]
+                )
             last = parts[-1]
             if isinstance(container, dict):
                 container[last] = value
@@ -67,13 +74,26 @@ class BoutPPStudyComponent:
                 setattr(container, last, value)
         return mutated
 
-    def _run_trial(self, trial_id: str, spec: BoutPPProblemSpec, snapshot: dict, objective: str) -> BoutPPStudyTrial:
-        workspace_dir = spec.graph_metadata.get("study_workspace", f".runs/boutpp/studies/{trial_id}")
+    def _run_trial(
+        self, trial_id: str, spec: BoutPPProblemSpec, snapshot: dict, objective: str
+    ) -> BoutPPStudyTrial:
+        workspace_dir = spec.graph_metadata.get(
+            "study_workspace", f".runs/boutpp/studies/{trial_id}"
+        )
         plan = self._compiler.compile(spec, run_id=trial_id, workspace_dir=workspace_dir)
         artifact = self._executor.execute(plan)
         postprocess = self._postprocess.postprocess(artifact)
-        validation = self._validator.validate(artifact, plan_ref=plan.plan_id, postprocess=postprocess, validation_spec=spec.validation)
-        summary_metrics = {**artifact.summary_metrics, **postprocess.summary_metrics, **validation.summary_metrics}
+        validation = self._validator.validate(
+            artifact,
+            plan_ref=plan.plan_id,
+            postprocess=postprocess,
+            validation_spec=spec.validation,
+        )
+        summary_metrics = {
+            **artifact.summary_metrics,
+            **postprocess.summary_metrics,
+            **validation.summary_metrics,
+        }
         metric_value = summary_metrics.get(objective)
         if not isinstance(metric_value, (int, float)):
             metric_value = None
@@ -89,8 +109,12 @@ class BoutPPStudyComponent:
             messages=[*postprocess.warnings, *validation.messages],
         )
 
-    def _build_report(self, study_spec: BoutPPStudySpec, trials: list[BoutPPStudyTrial]) -> BoutPPStudyReport:
-        passing_trials = [trial for trial in trials if trial.passed and trial.metric_value is not None]
+    def _build_report(
+        self, study_spec: BoutPPStudySpec, trials: list[BoutPPStudyTrial]
+    ) -> BoutPPStudyReport:
+        passing_trials = [
+            trial for trial in trials if trial.passed and trial.metric_value is not None
+        ]
         best_trial = None
         recommended: dict | None = None
         if passing_trials:

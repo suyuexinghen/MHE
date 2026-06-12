@@ -14,7 +14,12 @@ class BoutPPEnvironmentProbeComponent:
         self._executable_root = executable_root
 
     def _resolve_root(self) -> str | None:
-        for candidate in (self._boutpp_root, self._executable_root, os.environ.get("BOUTPP_ROOT"), os.environ.get("BOUT_ROOT")):
+        for candidate in (
+            self._boutpp_root,
+            self._executable_root,
+            os.environ.get("BOUTPP_ROOT"),
+            os.environ.get("BOUT_ROOT"),
+        ):
             if candidate and Path(candidate).exists():
                 return str(Path(candidate).resolve())
         return None
@@ -43,7 +48,9 @@ class BoutPPEnvironmentProbeComponent:
                 ]
             )
         if self._executable_root:
-            search_roots.extend([Path(self._executable_root), Path(self._executable_root) / "examples"])
+            search_roots.extend(
+                [Path(self._executable_root), Path(self._executable_root) / "examples"]
+            )
         for base in search_roots:
             candidate = base / executable
             if candidate.exists():
@@ -78,7 +85,9 @@ class BoutPPEnvironmentProbeComponent:
         if hints:
             report.messages.append(f"BOUT++ feature hints: {', '.join(hints)}")
 
-    def probe(self, spec: BoutPPProblemSpec | None = None, task_id: str = "boutpp_env_probe") -> BoutPPEnvironmentReport:
+    def probe(
+        self, spec: BoutPPProblemSpec | None = None, task_id: str = "boutpp_env_probe"
+    ) -> BoutPPEnvironmentReport:
         report = BoutPPEnvironmentReport(task_id=task_id)
         report.python_version = sys.version.split()[0]
         root = self._resolve_root()

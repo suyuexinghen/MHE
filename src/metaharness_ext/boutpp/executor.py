@@ -62,7 +62,9 @@ class BoutPPExecutorComponent:
         artifact.stderr_excerpt = self._excerpt(result.stderr)
         artifact.status = "completed" if result.returncode == 0 else "failed"
         if result.returncode != 0:
-            artifact.error_message = result.stderr[:2000] if result.stderr else f"Exit code {result.returncode}"
+            artifact.error_message = (
+                result.stderr[:2000] if result.stderr else f"Exit code {result.returncode}"
+            )
         self._discover_artifacts(plan, artifact)
         return artifact
 
@@ -76,7 +78,9 @@ class BoutPPExecutorComponent:
 
     def _runtime_command(self, plan: BoutPPRunPlan, workspace: Path) -> list[str]:
         command = list(plan.command)
-        executable_index = 3 + len(plan.spec.mpi.extra_args) if plan.spec.mpi.launcher_mode == "mpi" else 0
+        executable_index = (
+            3 + len(plan.spec.mpi.extra_args) if plan.spec.mpi.launcher_mode == "mpi" else 0
+        )
         executable = Path(command[executable_index])
         if executable.is_absolute():
             return command
@@ -97,7 +101,9 @@ class BoutPPExecutorComponent:
         command = plan.command
         if plan.spec.mpi.launcher_mode == "mpi" and not shutil.which(command[0]):
             return f"MPI launcher not found: {command[0]}"
-        executable_index = 3 + len(plan.spec.mpi.extra_args) if plan.spec.mpi.launcher_mode == "mpi" else 0
+        executable_index = (
+            3 + len(plan.spec.mpi.extra_args) if plan.spec.mpi.launcher_mode == "mpi" else 0
+        )
         executable = Path(command[executable_index])
         if executable.is_absolute() and executable.exists():
             return None
@@ -112,9 +118,15 @@ class BoutPPExecutorComponent:
         settings = Path(artifact.data_dir or "") / plan.spec.output.settings_file
         if settings.exists():
             artifact.settings_file = str(settings)
-        artifact.log_files = sorted(glob.glob(str(Path(artifact.data_dir or "") / plan.spec.output.log_glob)))
-        artifact.dump_files = sorted(glob.glob(str(Path(artifact.data_dir or "") / plan.spec.output.dump_glob)))
-        artifact.restart_files = sorted(glob.glob(str(Path(artifact.data_dir or "") / plan.spec.output.restart_glob)))
+        artifact.log_files = sorted(
+            glob.glob(str(Path(artifact.data_dir or "") / plan.spec.output.log_glob))
+        )
+        artifact.dump_files = sorted(
+            glob.glob(str(Path(artifact.data_dir or "") / plan.spec.output.dump_glob))
+        )
+        artifact.restart_files = sorted(
+            glob.glob(str(Path(artifact.data_dir or "") / plan.spec.output.restart_glob))
+        )
         missing = []
         if plan.spec.output.require_settings and not artifact.settings_file:
             missing.append("settings")
@@ -125,7 +137,12 @@ class BoutPPExecutorComponent:
         if plan.spec.output.require_restarts and not artifact.restart_files:
             missing.append("restarts")
         artifact.missing_artifacts = missing
-        refs = [artifact.settings_file, *artifact.log_files, *artifact.dump_files, *artifact.restart_files]
+        refs = [
+            artifact.settings_file,
+            *artifact.log_files,
+            *artifact.dump_files,
+            *artifact.restart_files,
+        ]
         artifact.evidence_refs = [ref for ref in refs if ref]
 
     @staticmethod
