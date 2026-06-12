@@ -81,6 +81,8 @@ def moose_case_catalog() -> dict[str, BenchmarkCaseSpec]:
                 "allow_direct_fallback": True,
                 "real_tool_default_binary": f"{MOOSE_ROOT}/test/moose_test-opt",
                 "claim_boundary": "workflow and artifact evidence only; no numerical superiority claim",
+                "scientific_review_status": "pending_external_signoff",
+                "domain_metric_status": "solver-log metrics only; no analytic error reference",
             },
         ),
         BenchmarkCaseSpec(
@@ -110,6 +112,8 @@ def moose_case_catalog() -> dict[str, BenchmarkCaseSpec]:
                 "proposal_contract": "moose_hit_input_v1",
                 "malformed_direct_challenge": True,
                 "claim_boundary": "agent repair evidence is workflow evidence, not solver evidence",
+                "scientific_review_status": "pending_external_signoff",
+                "domain_metric_status": "solver-log metrics only; no analytic error reference",
             },
         ),
     ]

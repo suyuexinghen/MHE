@@ -1,6 +1,6 @@
 # MOOSE Usage Validation Method
 
-> 版本：v0.1 | 状态：dry-run comparison implemented; opt-in real extension smoke gated by local `moose_test-opt`.
+> 版本：v0.2 | 状态：dry-run comparison implemented; opt-in real extension smoke and gated real direct/agent lanes now exist, with solver-log/domain metric extraction pending retained real comparison evidence.
 
 ## Purpose
 
@@ -26,18 +26,23 @@ Allowed claims after an opt-in real extension smoke:
 - a local built MOOSE test application can be driven through the MHE MOOSE extension for the selected simple diffusion case;
 - the extension can discover the expected Exodus output, validate evidence, and produce an `allow` policy decision for that local case.
 
+Allowed claims after opt-in real direct/agent lane evidence:
+
+- direct and agent lanes can be gated by the same local binary/environment preflight, proposal contract, workspace isolation, and claim-boundary artifact;
+- solver-log metrics such as convergence markers, iteration counts, and residual samples can be extracted as evidence fields when real MOOSE logs contain them.
+
 Excluded claims:
 
 - no MOOSE numerical accuracy, convergence, or runtime superiority claim;
 - no claim that `moose-opt` is system-installed;
 - no broad MOOSE app coverage claim beyond the local `test/moose_test-opt` case;
-- no direct-vs-agent real-tool superiority claim until direct and agent real MOOSE CLI lanes are implemented and repeated.
+- no direct-vs-agent real-tool superiority claim until retained repeated direct/agent real MOOSE evidence and scientific review exist.
 
 ## Case Catalog
 
 | Case | Purpose | Default mode | Evidence meaning |
 |---|---|---|---|
-| `simple-diffusion-hit` | HIT input workflow for the MOOSE simple diffusion test case | dry-run all lanes; opt-in real extension lane | structured spec/plan/evidence, and real local output discovery when enabled |
+| `simple-diffusion-hit` | HIT input workflow for the MOOSE simple diffusion test case | dry-run all lanes; opt-in gated real extension/direct/agent lanes | structured spec/plan/evidence, real local output discovery when enabled, and solver-log metrics when real logs are present |
 | `malformed-hit-proposal` | proposal-contract contrast | dry-run all lanes | direct lane fails malformed proposal, agent lane records deterministic repair |
 
 Source anchors:
@@ -83,7 +88,7 @@ PYTHONPATH=src python -m metaharness.cli benchmark-run \
   --allow-real-tools
 ```
 
-Direct and agent real MOOSE CLI lanes are intentionally skipped in this first slice. They need a separate safe direct-run contract so benchmark reports do not confuse extension real execution with direct-Claude solver quality.
+Direct and agent real MOOSE CLI lanes now use the same proposal contract and workspace-isolated real-tool pipeline as the extension lane. They skip truthfully when the local binary or environment is missing, and their artifacts include `real_lane_boundary.json` so benchmark reports do not confuse real execution with direct-Claude solver quality.
 
 ## Artifact Layout
 
@@ -108,17 +113,20 @@ reports/moose-usage-analysis-report.md
 reports/moose-usage-backlog.md
 ```
 
-For real extension smoke, the extension lane also writes:
+For real-tool lanes, the lane directory also writes:
 
 ```text
 moose_environment_report.json
 moose_run_artifact.json
 moose_validation_report.json
 moose_policy_report.json
+real_lane_boundary.json
 workspace/input_out.e
 workspace/stdout.log
 workspace/stderr.log
 ```
+
+When the MOOSE log includes convergence or residual lines, lane `metrics.json` can include `solver_converged`, `nonlinear_iteration_count`, `linear_iteration_count`, `residual_sample_count`, and `last_residual_norm` as solver-log evidence fields.
 
 ## Acceptance Criteria
 
@@ -128,11 +136,12 @@ The first slice is complete when:
 - `malformed-hit-proposal` produces direct failed / agent passed with `repair_advantage = agent_repaired_direct_failure` in comparison evidence;
 - real extension smoke skips truthfully when the local MOOSE binary is missing;
 - real extension smoke can pass locally when `MHE_MOOSE_BINARY` and dependency environment variables point to the built test app;
+- direct and agent real-tool lanes are gated, can be exercised locally with the same proposal contract, and write claim-boundary evidence;
 - docs and central comparison conclusions retain numerical and performance non-claims.
 
 ## Next Evidence Needed
 
-- Implement safe real direct and agent MOOSE CLI lanes with proposal preflight and workspace isolation.
-- Add repeated real extension smoke for `simple-diffusion-hit`.
-- Parse MOOSE solver logs for domain-specific convergence/residual evidence before any scientific claim.
-- Add more MOOSE app/input families only after each has source-truth anchors and stable expected outputs.
+- Retain remote GitHub Actions artifacts for `moose-usage` real-tool and real-Claude runs.
+- Run repeated real extension/direct/agent smoke for `simple-diffusion-hit` with `MHE_MOOSE_BINARY` and dependency preflight recorded.
+- Review solver-log metrics and add analytic/domain error references only after a scientifically accepted fixture exists.
+- Add more MOOSE app/input families only after each has source-truth anchors, stable expected outputs, and independent scientific review.

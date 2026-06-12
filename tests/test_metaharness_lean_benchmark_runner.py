@@ -27,22 +27,37 @@ def test_lean_proof_catalog_includes_next_evidence_cases() -> None:
     assert "exists-conjunction-swap-proof" in cases
     assert "malformed-proposal-repair" in cases
     assert "underspecified-real-claude-stress" in cases
+    assert "malformed-json-real-claude-stress" in cases
+    assert "sorry-proof-real-claude-stress" in cases
     assert "project-helper-chain-proof" in cases
     assert "blueprint-structure-project-proof" in cases
+    assert "mathlib-add-zero-sentinel" in cases
     assert (
         cases["implication-chain-proof"].metadata["challenge_kind"] == "positive_nontrivial_proof"
     )
     assert cases["negation-contrapositive-proof"].metadata["human_math_review"] == (
         "pending_external_signoff"
     )
+    assert cases["negation-contrapositive-proof"].metadata["external_review_required"] is True
     assert cases["malformed-proposal-repair"].metadata["direct_fake_fallback_enabled"] is False
     assert cases["underspecified-real-claude-stress"].metadata["direct_prompt_style"] == (
         "natural_language_noncontract"
     )
+    assert cases["malformed-json-real-claude-stress"].metadata["direct_prompt_style"] == (
+        "json_missing_lean_source"
+    )
+    assert cases["sorry-proof-real-claude-stress"].metadata["direct_prompt_style"] == (
+        "json_with_sorry_source"
+    )
     assert "Helper.lean" in cases["project-helper-chain-proof"].problem_definition["project_files"]
-    assert "Blueprint/Proof.lean" in cases["blueprint-structure-project-proof"].problem_definition[
-        "project_files"
-    ]
+    assert (
+        "Blueprint/Proof.lean"
+        in cases["blueprint-structure-project-proof"].problem_definition["project_files"]
+    )
+    assert cases["mathlib-add-zero-sentinel"].capability_gated is True
+    assert cases["mathlib-add-zero-sentinel"].metadata["mathlib_scale_claim"] == (
+        "dependency_gated_not_promoted"
+    )
 
 
 def test_lean_proof_dry_run_writes_three_lane_outputs(tmp_path: Path) -> None:
@@ -115,9 +130,7 @@ def test_lean_proof_runner_accepts_conjunction_swap_proposal(tmp_path: Path) -> 
 
 
 def test_lean_proof_runner_accepts_curated_harder_proposals(tmp_path: Path) -> None:
-    cases = get_lean_proof_cases(
-        ["negation-contrapositive-proof", "exists-conjunction-swap-proof"]
-    )
+    cases = get_lean_proof_cases(["negation-contrapositive-proof", "exists-conjunction-swap-proof"])
     for case in cases:
         provider = FakeClaudeCLIBrainProvider(
             {
@@ -125,30 +138,69 @@ def test_lean_proof_runner_accepts_curated_harder_proposals(tmp_path: Path) -> N
                 "lean_source": case.problem_definition["lean_source"],
             }
         )
-        runner = LeanProofBenchmarkRunner(runs_root=tmp_path / case.case_id, brain_provider=provider)
+        runner = LeanProofBenchmarkRunner(
+            runs_root=tmp_path / case.case_id, brain_provider=provider
+        )
 
         summaries = runner.run_case(case, ["direct", "agent"])
 
         assert all(summary.proposal_contract_status == "valid" for summary in summaries)
         assert all(summary.status == "passed" for summary in summaries)
+        manifest = (
+            tmp_path
+            / case.case_id
+            / "lean-proof-benchmark"
+            / "direct"
+            / case.case_id
+            / "lean_human_review_manifest.json"
+        )
+        assert json.loads(manifest.read_text())["external_review_status"] == (
+            "pending_external_signoff"
+        )
+        write_comparison_outputs(
+            runs_root=tmp_path / case.case_id,
+            suite="lean-proof",
+            cases=[case.case_id],
+            lanes=["direct", "agent"],
+        )
+        bundle = json.loads(
+            (
+                tmp_path
+                / case.case_id
+                / "lean-proof-benchmark"
+                / "comparison"
+                / "result_bundle.json"
+            ).read_text()
+        )
+        assert (
+            bundle["evidence_context"]["review_manifest_rows"][0]["external_review_status"]
+            == "pending_external_signoff"
+        )
 
 
-def test_lean_proof_stress_prompt_exposes_agent_repair_advantage(tmp_path: Path) -> None:
-    case = get_lean_proof_cases(["underspecified-real-claude-stress"])[0]
-    runner = LeanProofBenchmarkRunner(runs_root=tmp_path)
-
-    summaries = runner.run_case(case, ["extension", "direct", "agent"])
-    rows = write_comparison_outputs(
-        runs_root=tmp_path,
-        suite="lean-proof",
-        cases=[case.case_id],
-        lanes=["extension", "direct", "agent"],
+def test_lean_proof_stress_prompts_expose_agent_repair_advantage(tmp_path: Path) -> None:
+    cases = get_lean_proof_cases(
+        [
+            "underspecified-real-claude-stress",
+            "malformed-json-real-claude-stress",
+            "sorry-proof-real-claude-stress",
+        ]
     )
+    for case in cases:
+        runner = LeanProofBenchmarkRunner(runs_root=tmp_path / case.case_id)
 
-    assert [summary.status for summary in summaries] == ["passed", "failed", "passed"]
-    assert summaries[1].proposal_contract_status == "invalid"
-    assert summaries[2].repair_outcome == "repaired_success"
-    assert rows[0].verdict == "agent_repaired_success"
+        summaries = runner.run_case(case, ["extension", "direct", "agent"])
+        rows = write_comparison_outputs(
+            runs_root=tmp_path / case.case_id,
+            suite="lean-proof",
+            cases=[case.case_id],
+            lanes=["extension", "direct", "agent"],
+        )
+
+        assert [summary.status for summary in summaries] == ["passed", "failed", "passed"]
+        assert summaries[1].proposal_contract_status == "invalid"
+        assert summaries[2].repair_outcome == "repaired_success"
+        assert rows[0].verdict == "agent_repaired_success"
 
 
 def test_lean_proof_runner_accepts_project_helper_proposal(tmp_path: Path) -> None:
@@ -213,6 +265,36 @@ def test_lean_proof_runner_accepts_blueprint_project_proposal(tmp_path: Path) ->
 
     assert all(summary.proposal_contract_status == "valid" for summary in summaries)
     assert all(summary.status == "passed" for summary in summaries)
+
+
+def test_lean_proof_mathlib_sentinel_writes_dependency_gate(tmp_path: Path) -> None:
+    case = get_lean_proof_cases(["mathlib-add-zero-sentinel"])[0]
+    runner = LeanProofBenchmarkRunner(runs_root=tmp_path)
+
+    summaries = runner.run_case(case, ["extension", "direct", "agent"])
+    rows = write_comparison_outputs(
+        runs_root=tmp_path,
+        suite="lean-proof",
+        cases=[case.case_id],
+        lanes=["extension", "direct", "agent"],
+    )
+
+    assert [summary.status for summary in summaries] == ["skipped", "skipped", "skipped"]
+    assert all(summary.preflight_status == "blocked" for summary in summaries)
+    assert rows[0].verdict == "capability_skip"
+    case_root = tmp_path / "lean-proof-benchmark" / "extension" / case.case_id
+    gate = json.loads((case_root / "capability_status.json").read_text())
+    source_refs = json.loads((case_root / "source_refs.json").read_text())
+    assert gate["missing_capabilities"] == ["mathlib_dependency_gate"]
+    assert gate["promotion_ready"] is False
+    assert source_refs["requires_mathlib"] is True
+    bundle = json.loads(
+        (tmp_path / "lean-proof-benchmark" / "comparison" / "result_bundle.json").read_text()
+    )
+    family_rows = bundle["evidence_context"]["theorem_family_repeat_rows"]
+    by_family_lane = {(row["theorem_family"], row["lane"]): row for row in family_rows}
+    assert by_family_lane[("mathlib_sentinel", "direct")]["skipped_count"] == 1
+    assert by_family_lane[("mathlib_sentinel", "direct")]["failed_count"] == 0
 
 
 def test_lean_proof_real_extension_lane_executes_when_allowed(tmp_path: Path) -> None:
@@ -283,6 +365,50 @@ def test_lean_proof_cli_runs_dry_run_suite(tmp_path: Path, capsys) -> None:
     assert (
         tmp_path / "lean-proof-benchmark" / "extension" / "simple-true-proof" / "summary.json"
     ).exists()
+
+
+def test_lean_proof_cli_compare_reports_theorem_family_rates(tmp_path: Path, capsys) -> None:
+    run_status = main(
+        [
+            "benchmark-run",
+            "--suite",
+            "lean-proof",
+            "--lanes",
+            "extension,direct,agent",
+            "--cases",
+            "malformed-proposal-repair,underspecified-real-claude-stress",
+            "--runs-root",
+            str(tmp_path),
+            "--repeat",
+            "2",
+        ]
+    )
+    capsys.readouterr()
+    compare_status = main(
+        [
+            "benchmark-compare",
+            "--suite",
+            "lean-proof",
+            "--runs-root",
+            str(tmp_path),
+            "--repeat",
+            "2",
+        ]
+    )
+
+    assert run_status == 0
+    assert compare_status == 0
+    capsys.readouterr()
+    bundle = json.loads(
+        (tmp_path / "lean-proof-benchmark" / "comparison" / "result_bundle.json").read_text()
+    )
+    family_rows = bundle["evidence_context"]["theorem_family_repeat_rows"]
+    by_family_lane = {(row["theorem_family"], row["lane"]): row for row in family_rows}
+    assert by_family_lane[("stress_prompt", "direct")]["invalid_contract_rate"] == 1.0
+    assert by_family_lane[("stress_prompt", "agent")]["valid_contract_rate"] == 1.0
+    assert by_family_lane[("contract_repair", "agent")]["repair_rate"] == 1.0
+    report = (tmp_path / "lean-proof-benchmark" / "comparison" / "comparison_report.md").read_text()
+    assert "Theorem-family proposal statistics" in report
 
 
 def test_lean_proof_cli_compare_accepts_config_root(tmp_path: Path, capsys) -> None:

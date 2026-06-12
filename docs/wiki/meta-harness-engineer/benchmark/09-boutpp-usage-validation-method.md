@@ -1,6 +1,6 @@
 # BOUT++ Usage Validation Method
 
-> 版本：v0.3 | 状态：dry-run comparison implemented with comparator-visible proposal contracts and real-Claude proposal evidence | 面向 `metaharness_ext.boutpp` 的 usage-validation slice。
+> 版本：v0.4 | 状态：dry-run comparison implemented with comparator-visible proposal contracts, real-Claude proposal evidence, and repeated proposal statistics | 面向 `metaharness_ext.boutpp` 的 usage-validation slice。
 
 ## Purpose
 
@@ -45,3 +45,14 @@ The benchmark slice records:
 - Dry-run comparison bundles show `direct_proposal_contract_status = valid`, `agent_proposal_contract_status = valid`, `direct` proposal source `fallback_compiler`, and `agent` proposal source `agent_contract_from_case_defaults` when the fake provider is used.
 - Gated real-Claude direct/agent comparison bundles can show proposal source `real`, proposal contracts `valid`, preflight `passed`, and explicit failure categories without implying real BOUT++ solver execution.
 - When a retained `boutpp_real_repeated_smoke_summary.json` is placed under the `boutpp-usage-benchmark` root, `benchmark-compare` exposes its promotion status through `evidence_context.boutpp_real_smoke_rows` and the generated reports.
+- Repeated direct/agent comparison bundles expose `evidence_context.proposal_repeat_rows`, including proposal-contract validity counts/rates, pass/failure rates, preflight status counts/rates, failure-category counts/rates, LLM calls, and repair totals.
+
+## Retained Evidence
+
+```text
+.runs/boutpp-real-tools-real-claude-final/boutpp-usage-benchmark/comparison/result_bundle.json
+.runs/boutpp-real-tools-real-claude-final/boutpp-usage-benchmark/comparison/comparison_report.md
+.runs/boutpp-real-tools-real-claude-final/boutpp-usage-benchmark/comparison/repeat_summary.json
+```
+
+That retained comparison used `real_tools = true`, `real_claude = true`, and `repeat_count = 2`. The extension, direct, and agent lanes passed `conduction-basic` in both repeats; direct and agent proposal contracts were valid in both repeats (`valid_contract_rate = 1.0`), preflight passed in both repeats (`preflight_passed_rate = 1.0`), failure categories were `none=2` (`failure_category_rates.none = 1.0`), and no repairs were required. This is proposal/workflow evidence only; real BOUT++ execution evidence remains attached through the retained real-smoke summary rows.

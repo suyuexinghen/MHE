@@ -107,17 +107,13 @@ class MooseBenchmarkRunner:
                     failure_category="proposal_contract_failed",
                 )
         if self.allow_real_tools:
-            return write_lane_outputs(
-                runs_root=self.runs_root,
-                case=case,
+            return self._run_real_moose_pipeline(
+                case,
+                output_dir,
                 lane="direct",
-                status="skipped",
+                contract=contract,
                 attempt_log=attempt_log,
                 evidence_files=evidence_files,
-                skip_reason="direct real MOOSE CLI lane is not implemented in this first benchmark slice",
-                proposal_contract_status=contract["status"],
-                preflight_status="passed",
-                repair_outcome=contract.get("repair_outcome"),
             )
         return write_lane_outputs(
             runs_root=self.runs_root,
@@ -170,17 +166,13 @@ class MooseBenchmarkRunner:
         preflight_path = self._write_proposal_contract(output_dir, case, "agent", contract)
         evidence_files.append(str(preflight_path))
         if self.allow_real_tools:
-            return write_lane_outputs(
-                runs_root=self.runs_root,
-                case=case,
+            return self._run_real_moose_pipeline(
+                case,
+                output_dir,
                 lane="agent",
-                status="skipped",
+                contract=contract,
                 attempt_log=attempt_log,
                 evidence_files=evidence_files,
-                skip_reason="agent real MOOSE CLI lane is not implemented in this first benchmark slice",
-                proposal_contract_status=contract["status"],
-                preflight_status="passed",
-                repair_outcome=contract.get("repair_outcome"),
             )
         return write_lane_outputs(
             runs_root=self.runs_root,
@@ -199,38 +191,56 @@ class MooseBenchmarkRunner:
         )
 
     def _run_extension_pipeline(self, case: BenchmarkCaseSpec, output_dir: Path) -> LaneSummary:
+        return self._run_real_moose_pipeline(case, output_dir, lane="extension")
+
+    def _run_real_moose_pipeline(
+        self,
+        case: BenchmarkCaseSpec,
+        output_dir: Path,
+        *,
+        lane: BenchmarkLane,
+        contract: dict[str, Any] | None = None,
+        attempt_log: AttemptLog | None = None,
+        evidence_files: list[str] | None = None,
+    ) -> LaneSummary:
         started_at = time.perf_counter()
         binary = self._real_binary(case)
         if binary is None:
-            evidence = self._write_real_tool_gate(output_dir, case)
+            evidence = self._write_real_tool_gate(output_dir, case, lane=lane)
             return write_lane_outputs(
                 runs_root=self.runs_root,
                 case=case,
-                lane="extension",
+                lane=lane,
                 status="skipped",
-                evidence_files=[str(evidence)],
+                attempt_log=attempt_log,
+                evidence_files=[*(evidence_files or []), str(evidence)],
                 skip_reason="MOOSE real binary not found; set MHE_MOOSE_BINARY or build test/moose_test-opt",
+                proposal_contract_status=None if contract is None else contract["status"],
                 preflight_status="blocked",
+                repair_outcome=None if contract is None else contract.get("repair_outcome"),
                 started_at=started_at,
             )
-        spec = self._problem_spec(case, output_dir, binary=binary)
+        spec = self._problem_spec(case, output_dir, binary=binary, contract=contract)
         environment = MooseEnvironmentProbeComponent().probe(spec)
         if not environment.available:
             env_path = write_json(output_dir / "moose_environment_report.json", environment)
             return write_lane_outputs(
                 runs_root=self.runs_root,
                 case=case,
-                lane="extension",
+                lane=lane,
                 status="skipped",
-                evidence_files=[str(env_path)],
+                attempt_log=attempt_log,
+                evidence_files=[*(evidence_files or []), str(env_path)],
                 skip_reason=f"MOOSE environment unavailable: {environment.status}",
+                proposal_contract_status=None if contract is None else contract["status"],
                 preflight_status="blocked",
+                repair_outcome=None if contract is None else contract.get("repair_outcome"),
                 started_at=started_at,
             )
         plan = MooseInputCompilerComponent().compile(
             spec,
             environment=environment,
-            run_id=f"{case.case_id}-real",
+            run_id=f"{case.case_id}-{lane}-real",
             workspace_dir=str(output_dir / "workspace"),
         )
         artifact = MooseExecutorComponent().execute_plan(plan, environment)
@@ -243,7 +253,7 @@ class MooseBenchmarkRunner:
             validation=validation,
         )
         policy = MooseEvidencePolicy().evaluate(bundle)
-        evidence_files = [
+        real_evidence_files = [
             str(write_json(output_dir / "moose_problem_spec.json", spec)),
             str(write_json(output_dir / "moose_environment_report.json", environment)),
             str(write_json(output_dir / "moose_run_plan.json", plan)),
@@ -251,22 +261,31 @@ class MooseBenchmarkRunner:
             str(write_json(output_dir / "moose_validation_report.json", validation)),
             str(write_json(output_dir / "moose_evidence_bundle.json", bundle)),
             str(write_json(output_dir / "moose_policy_report.json", policy)),
+            str(self._write_real_lane_boundary(output_dir, case, lane, contract)),
         ]
         status = "passed" if validation.passed and policy.decision == "allow" else "failed"
+        metrics = {
+            "spec_valid": 1.0,
+            "plan_valid": 1.0,
+            "elapsed_seconds": 0.0,
+            **{
+                key: float(value)
+                for key, value in artifact.summary_metrics.items()
+                if isinstance(value, int | float)
+            },
+        }
         return write_lane_outputs(
             runs_root=self.runs_root,
             case=case,
-            lane="extension",
+            lane=lane,
             status=status,
-            metrics={
-                "spec_valid": 1.0,
-                "plan_valid": 1.0,
-                "output_count": float(artifact.summary_metrics.get("output_count", 0)),
-                "elapsed_seconds": 0.0,
-            },
-            evidence_files=evidence_files,
-            error_message=None if status == "passed" else validation.messages[-1],
+            metrics=metrics,
+            evidence_files=[*(evidence_files or []), *real_evidence_files],
+            attempt_log=attempt_log,
+            error_message=None if status == "passed" else "MOOSE validation or policy failed",
+            proposal_contract_status=None if contract is None else contract["status"],
             preflight_status="passed",
+            repair_outcome=None if contract is None else contract.get("repair_outcome"),
             started_at=started_at,
         )
 
@@ -301,9 +320,24 @@ class MooseBenchmarkRunner:
         ]
 
     def _problem_spec(
-        self, case: BenchmarkCaseSpec, output_dir: Path, *, binary: str
+        self,
+        case: BenchmarkCaseSpec,
+        output_dir: Path,
+        *,
+        binary: str,
+        contract: dict[str, Any] | None = None,
     ) -> MooseProblemSpec:
         problem = case.problem_definition
+        input_source = str(
+            contract.get("input_source")
+            if contract is not None and contract.get("input_source")
+            else problem["input_source"]
+        )
+        expected_outputs = list(
+            contract.get("expected_outputs")
+            if contract is not None and contract.get("expected_outputs")
+            else [str(problem.get("expected_output", "input_out.e"))]
+        )
         return MooseProblemSpec(
             task_id=case.case_id,
             executable=MooseExecutableSpec(
@@ -320,15 +354,16 @@ class MooseBenchmarkRunner:
             ),
             input=MooseInputSpec(
                 mode="inline",
-                inline_source=str(problem["input_source"]),
+                inline_source=input_source,
                 input_filename=str(problem.get("input_filename", "input.i")),
             ),
             expected_outputs=[
                 MooseOutputSpec(
                     name="exodus",
                     kind="exodus",
-                    file_name=str(problem.get("expected_output", "input_out.e")),
+                    file_name=str(output_name),
                 )
+                for output_name in expected_outputs
             ],
             graph_metadata={"benchmark_suite": case.suite, "case_id": case.case_id},
         )
@@ -348,19 +383,30 @@ class MooseBenchmarkRunner:
         if not isinstance(input_source, str) or "[Mesh]" not in input_source:
             missing.append("input_source")
         expected_outputs = proposal.get("expected_outputs")
-        if not isinstance(expected_outputs, list) or not expected_outputs:
+        raw_expected_outputs = expected_outputs if isinstance(expected_outputs, list) else []
+        if not raw_expected_outputs:
+            missing.append("expected_outputs")
+        expected_output_names = [
+            str(item)
+            for item in raw_expected_outputs
+            if isinstance(item, str) and item.strip() and "/" not in item and ".." not in item
+        ]
+        if raw_expected_outputs and not expected_output_names:
             missing.append("expected_outputs")
         return {
             "case_id": case.case_id,
             "contract": case.metadata.get("proposal_contract", "moose_hit_input_v1"),
             "status": "valid" if not missing else "invalid",
-            "missing_fields": missing,
+            "missing_fields": sorted(set(missing)),
             "proposal_keys": sorted(proposal),
+            "input_source": input_source if isinstance(input_source, str) else None,
+            "expected_outputs": expected_output_names,
         }
 
     def _fallback_contract(
         self, case: BenchmarkCaseSpec, contract: dict[str, Any], *, source: str
     ) -> dict[str, Any]:
+        problem = case.problem_definition
         return {
             **contract,
             "status": "valid",
@@ -371,6 +417,8 @@ class MooseBenchmarkRunner:
             else "fallback_from_case_defaults",
             "proposal_source": source,
             "repaired_fields": contract.get("missing_fields", []),
+            "input_source": str(problem["input_source"]),
+            "expected_outputs": [str(problem.get("expected_output", "input_out.e"))],
         }
 
     def _write_proposal_contract(
@@ -427,17 +475,49 @@ class MooseBenchmarkRunner:
             )
         ]
 
-    def _write_real_tool_gate(self, output_dir: Path, case: BenchmarkCaseSpec) -> Path:
+    def _write_real_tool_gate(
+        self, output_dir: Path, case: BenchmarkCaseSpec, *, lane: BenchmarkLane
+    ) -> Path:
         return write_json(
             output_dir / "capability_status.json",
             {
                 "case_id": case.case_id,
+                "lane": lane,
                 "status": "skipped",
                 "promotion_ready": False,
                 "missing_capabilities": ["moose_test_app_binary"],
                 "solver_binary": self._default_binary(case),
                 "solver_family": "moose_test_app",
                 "plan_status": "binary_missing_or_not_executable",
+                "claim_boundary": case.metadata.get("claim_boundary"),
+            },
+        )
+
+    def _write_real_lane_boundary(
+        self,
+        output_dir: Path,
+        case: BenchmarkCaseSpec,
+        lane: BenchmarkLane,
+        contract: dict[str, Any] | None,
+    ) -> Path:
+        return write_json(
+            output_dir / "real_lane_boundary.json",
+            {
+                "case_id": case.case_id,
+                "lane": lane,
+                "real_tools": True,
+                "proposal_contract_status": None if contract is None else contract["status"],
+                "proposal_source": None if contract is None else contract.get("proposal_source"),
+                "repair_outcome": None if contract is None else contract.get("repair_outcome"),
+                "scientific_review_status": case.metadata.get("scientific_review_status"),
+                "domain_metric_status": case.metadata.get("domain_metric_status"),
+                "claim_boundary": case.metadata.get("claim_boundary"),
+                "non_claims": [
+                    "no analytic error reference",
+                    "no runtime superiority claim",
+                    "no broad MOOSE app coverage claim",
+                    "no MHE-over-direct-Claude superiority claim",
+                ],
             },
         )
 

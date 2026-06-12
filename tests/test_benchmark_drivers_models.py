@@ -141,6 +141,11 @@ def _write_lane_summary(
     passed: bool = True,
     metrics: dict[str, float] | None = None,
     metric_diffs: dict[str, float] | None = None,
+    proposal_contract_status: str | None = None,
+    preflight_status: str | None = None,
+    failure_category: str | None = None,
+    llm_calls: int = 0,
+    repair_count: int = 0,
 ) -> None:
     summary = LaneSummary(
         case_id=case.case_id,
@@ -151,6 +156,11 @@ def _write_lane_summary(
         metrics=metrics or {"error": 0.0},
         metric_diffs=metric_diffs or {},
         evidence_files=["evidence.txt"],
+        proposal_contract_status=proposal_contract_status,
+        preflight_status=preflight_status,
+        failure_category=failure_category,
+        llm_calls=llm_calls,
+        repair_count=repair_count,
     )
     write_json(case_dir(tmp_path, case.suite, lane, case.case_id) / "summary.json", summary)
 
@@ -267,6 +277,67 @@ def test_comparator_writes_preflight_summary_tables(tmp_path: Path) -> None:
     assert "| advdiff-2d | ready | True | True | True | True | 2 | 0 | none |" in report
     assert "## Preflight summaries" in analysis
     assert bundle["evidence_context"]["preflight_rows"][0]["status"] == "ready"
+
+
+def test_comparator_writes_proposal_repeat_statistics(tmp_path: Path) -> None:
+    case = BenchmarkCaseSpec(
+        case_id="conduction-basic",
+        suite="boutpp-usage",
+        task_family="boutpp_usage",
+        description="BOUT++ usage case",
+        required_capabilities=["boutpp"],
+        source_reference="conduction",
+        expected_metrics=["elapsed_seconds"],
+    )
+    for root in [tmp_path, tmp_path / "repeat-02"]:
+        _write_lane_summary(
+            root,
+            case,
+            "direct",
+            proposal_contract_status="valid",
+            preflight_status="passed",
+            llm_calls=1,
+        )
+        _write_lane_summary(
+            root,
+            case,
+            "agent",
+            proposal_contract_status="valid",
+            preflight_status="passed",
+            failure_category=None,
+            llm_calls=1,
+        )
+    _write_lane_summary(tmp_path, case, "extension")
+
+    write_comparison_outputs(runs_root=tmp_path, suite="boutpp-usage", repeat_count=2)
+
+    comparison_dir = tmp_path / "boutpp-usage-benchmark" / "comparison"
+    report = (comparison_dir / "comparison_report.md").read_text()
+    bundle = json.loads((comparison_dir / "result_bundle.json").read_text())
+    rows = {
+        (row["case_id"], row["lane"]): row
+        for row in bundle["evidence_context"]["proposal_repeat_rows"]
+    }
+    assert rows[("conduction-basic", "direct")]["run_count"] == 2
+    assert rows[("conduction-basic", "direct")]["valid_contract_count"] == 2
+    assert rows[("conduction-basic", "direct")]["valid_contract_rate"] == 1.0
+    assert rows[("conduction-basic", "direct")]["invalid_contract_rate"] == 0.0
+    assert rows[("conduction-basic", "direct")]["preflight_passed_count"] == 2
+    assert rows[("conduction-basic", "direct")]["preflight_passed_rate"] == 1.0
+    assert rows[("conduction-basic", "direct")]["preflight_failed_rate"] == 0.0
+    assert rows[("conduction-basic", "direct")]["pass_rate"] == 1.0
+    assert rows[("conduction-basic", "direct")]["failure_rate"] == 0.0
+    assert rows[("conduction-basic", "direct")]["total_llm_calls"] == 2
+    assert rows[("conduction-basic", "agent")]["failure_categories"] == {"none": 2}
+    assert rows[("conduction-basic", "agent")]["failure_category_rates"] == {"none": 1.0}
+    assert "## Proposal repeat statistics" in report
+    assert "Valid contract rate" in report
+    assert "Invalid contract rate" in report
+    assert "Preflight failed rate" in report
+    assert (
+        "| conduction-basic | direct | 2 | 2 | 1.00 | 0 | 0.00 | 2 | 1.00 | 0 | 0.00 | 2 | 1.00 | 0 | 0.00 | none=2 | none=1.00 | 2 | 0 |"
+        in report
+    )
 
 
 def test_comparator_writes_boutpp_real_smoke_promotion_rows(tmp_path: Path) -> None:

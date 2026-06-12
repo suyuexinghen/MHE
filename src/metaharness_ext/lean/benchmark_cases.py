@@ -31,6 +31,16 @@ LEAN_REPAIR_SOURCE = """theorem main : True := by
   trivial
 """
 
+LEAN_SORRY_STRESS_SOURCE = """theorem main : True := by
+  trivial
+"""
+
+LEAN_MATHLIB_SENTINEL_SOURCE = """import Mathlib
+
+theorem main (n : Nat) : n + 0 = n := by
+  simpa using Nat.add_zero n
+"""
+
 LEAN_PROJECT_HELPER_SOURCE = """theorem helper (p q : Prop) (hp : p) (hpq : p -> q) : q := by
   exact hpq hp
 """
@@ -78,6 +88,8 @@ CLAIM_BOUNDARY = (
 TOOLCHAIN = "leanprover/lean4:v4.14.0"
 CURATED_CASE_REVIEW = {
     "review_status": "lean_validated_engineer_curated",
+    "external_review_required": True,
+    "external_review_manifest": "lean_human_review_manifest.json",
     "human_math_review": "pending_external_signoff",
 }
 
@@ -90,6 +102,7 @@ def _lean_case(
     target_statement: str,
     metadata: dict[str, Any] | None = None,
     project_files: dict[str, str] | None = None,
+    capability_gated: bool = False,
 ) -> BenchmarkCaseSpec:
     return BenchmarkCaseSpec(
         case_id=case_id,
@@ -111,6 +124,7 @@ def _lean_case(
             "project_files": project_files or {},
             "toolchain": TOOLCHAIN,
         },
+        capability_gated=capability_gated,
         metadata={
             "proposal_contract": "lean_proof_source_v1",
             "claim_boundary": CLAIM_BOUNDARY,
@@ -127,34 +141,49 @@ def lean_proof_case_catalog() -> dict[str, BenchmarkCaseSpec]:
             description="Lean theorem proof smoke for MHE gateway, direct Claude, and agent-mediated workflows.",
             lean_source=LEAN_TRUE_SOURCE,
             target_statement="theorem main : True",
+            metadata={"theorem_family": "smoke"},
         ),
         _lean_case(
             case_id="implication-chain-proof",
             description="Lean proof challenge requiring use of assumptions and implication application.",
             lean_source=LEAN_IMPLICATION_SOURCE,
             target_statement="theorem main (p q : Prop) (hp : p) (hpq : p -> q) : q",
-            metadata={"challenge_kind": "positive_nontrivial_proof"},
+            metadata={
+                "challenge_kind": "positive_nontrivial_proof",
+                "theorem_family": "propositional_implication",
+            },
         ),
         _lean_case(
             case_id="conjunction-swap-proof",
             description="Lean proof challenge requiring decomposition and reconstruction of a conjunction.",
             lean_source=LEAN_CONJUNCTION_SOURCE,
             target_statement="theorem main (p q : Prop) (h : p ∧ q) : q ∧ p",
-            metadata={"challenge_kind": "positive_nontrivial_proof"},
+            metadata={
+                "challenge_kind": "positive_nontrivial_proof",
+                "theorem_family": "propositional_conjunction",
+            },
         ),
         _lean_case(
             case_id="negation-contrapositive-proof",
             description="Curated Lean proof challenge requiring implication use under negation introduction.",
             lean_source=LEAN_NEGATION_SOURCE,
             target_statement="theorem main (p q : Prop) (hpq : p -> q) (hnq : ¬ q) : ¬ p",
-            metadata={"challenge_kind": "curated_nontrivial_proof", **CURATED_CASE_REVIEW},
+            metadata={
+                "challenge_kind": "curated_nontrivial_proof",
+                "theorem_family": "propositional_negation",
+                **CURATED_CASE_REVIEW,
+            },
         ),
         _lean_case(
             case_id="exists-conjunction-swap-proof",
             description="Curated Lean proof challenge requiring existential elimination and conjunction reconstruction.",
             lean_source=LEAN_EXISTS_SWAP_SOURCE,
             target_statement="theorem main (α : Type) (p q : α -> Prop) (h : ∃ x, p x ∧ q x) : ∃ x, q x ∧ p x",
-            metadata={"challenge_kind": "curated_nontrivial_proof", **CURATED_CASE_REVIEW},
+            metadata={
+                "challenge_kind": "curated_nontrivial_proof",
+                "theorem_family": "first_order_exists",
+                **CURATED_CASE_REVIEW,
+            },
         ),
         _lean_case(
             case_id="malformed-proposal-repair",
@@ -163,6 +192,7 @@ def lean_proof_case_catalog() -> dict[str, BenchmarkCaseSpec]:
             target_statement="theorem main : True",
             metadata={
                 "challenge_kind": "malformed_proposal_repair",
+                "theorem_family": "contract_repair",
                 "direct_fake_fallback_enabled": False,
                 "agent_repair_expected": True,
             },
@@ -174,9 +204,38 @@ def lean_proof_case_catalog() -> dict[str, BenchmarkCaseSpec]:
             target_statement="theorem main (p q : Prop) (hpq : p -> q) (hnq : ¬ q) : ¬ p",
             metadata={
                 "challenge_kind": "real_claude_underspecified_prompt_stress",
+                "theorem_family": "stress_prompt",
                 "direct_fake_fallback_enabled": False,
                 "agent_repair_expected": True,
                 "direct_prompt_style": "natural_language_noncontract",
+                "agent_prompt_style": "contract_repair_from_stress",
+            },
+        ),
+        _lean_case(
+            case_id="malformed-json-real-claude-stress",
+            description="Stress case where the direct prompt asks for JSON that omits required Lean source fields.",
+            lean_source=LEAN_REPAIR_SOURCE,
+            target_statement="theorem main : True",
+            metadata={
+                "challenge_kind": "real_claude_malformed_json_stress",
+                "theorem_family": "stress_prompt",
+                "direct_fake_fallback_enabled": False,
+                "agent_repair_expected": True,
+                "direct_prompt_style": "json_missing_lean_source",
+                "agent_prompt_style": "contract_repair_from_stress",
+            },
+        ),
+        _lean_case(
+            case_id="sorry-proof-real-claude-stress",
+            description="Stress case where the direct prompt asks for a proposal containing sorry, which must fail the contract.",
+            lean_source=LEAN_SORRY_STRESS_SOURCE,
+            target_statement="theorem main : True",
+            metadata={
+                "challenge_kind": "real_claude_sorry_contract_stress",
+                "theorem_family": "stress_prompt",
+                "direct_fake_fallback_enabled": False,
+                "agent_repair_expected": True,
+                "direct_prompt_style": "json_with_sorry_source",
                 "agent_prompt_style": "contract_repair_from_stress",
             },
         ),
@@ -185,7 +244,10 @@ def lean_proof_case_catalog() -> dict[str, BenchmarkCaseSpec]:
             description="Project-scale Lean proof fixture with a helper theorem imported by the target proof.",
             lean_source=LEAN_PROJECT_MAIN_SOURCE,
             target_statement="theorem main (p q r : Prop) (hp : p) (hpq : p -> q) (hqr : q -> r) : r",
-            metadata={"challenge_kind": "project_scale_positive_proof"},
+            metadata={
+                "challenge_kind": "project_scale_positive_proof",
+                "theorem_family": "project_helper",
+            },
             project_files={"Helper.lean": LEAN_PROJECT_HELPER_SOURCE},
         ),
         _lean_case(
@@ -195,6 +257,7 @@ def lean_proof_case_catalog() -> dict[str, BenchmarkCaseSpec]:
             target_statement="theorem main (p q : Prop) (h : p ∧ q) : q ∧ p",
             metadata={
                 "challenge_kind": "blueprint_style_project_fixture",
+                "theorem_family": "blueprint_project",
                 "blueprint_style": True,
                 "mathlib_scale": False,
                 "mathlib_scale_claim": "not_claimed",
@@ -203,6 +266,21 @@ def lean_proof_case_catalog() -> dict[str, BenchmarkCaseSpec]:
                 "Blueprint/Domain.lean": LEAN_BLUEPRINT_DOMAIN_SOURCE,
                 "Blueprint/Proof.lean": LEAN_BLUEPRINT_PROOF_SOURCE,
             },
+        ),
+        _lean_case(
+            case_id="mathlib-add-zero-sentinel",
+            description="Mathlib dependency-gated sentinel that records missing Mathlib-scale capability instead of overclaiming coverage.",
+            lean_source=LEAN_MATHLIB_SENTINEL_SOURCE,
+            target_statement="theorem main (n : Nat) : n + 0 = n",
+            metadata={
+                "challenge_kind": "mathlib_dependency_sentinel",
+                "theorem_family": "mathlib_sentinel",
+                "requires_mathlib": True,
+                "mathlib_scale": True,
+                "mathlib_scale_claim": "dependency_gated_not_promoted",
+                "promotion_ready": False,
+            },
+            capability_gated=True,
         ),
     ]
     return {case.case_id: case for case in cases}

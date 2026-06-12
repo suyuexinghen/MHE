@@ -24,6 +24,16 @@ def test_boutpp_real_smoke_catalog_tracks_positive_and_candidate_cases() -> None
     assert catalog["conduction-real"].default_enabled is True
     assert catalog["conduction-real"].output.require_dumps is True
     assert catalog["conduction-real"].output.require_restarts is True
+    assert catalog["conduction-real"].validation.required_variables == ["T"]
+    assert catalog["conduction-real"].validation.required_dimensions == {
+        "t": 101,
+        "x": 1,
+        "y": 54,
+        "z": 1,
+    }
+    assert catalog["conduction-real"].validation.required_variable_dimensions == {
+        "T": ["t", "x", "y", "z"]
+    }
     assert catalog["boutpp-python-runexample"].default_enabled is False
     assert catalog["staggered-grid-wrapper"].skip_reason is not None
 
@@ -51,6 +61,30 @@ def test_boutpp_real_smoke_preflight_reports_missing_prerequisites(tmp_path: Pat
     assert "build_root" in preflight["missing_prerequisites"]
     assert "executable" in preflight["missing_prerequisites"]
     assert preflight["skip_reason"].startswith("Missing prerequisites")
+
+
+def test_boutpp_real_smoke_preflight_requires_netcdf_for_domain_validation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    build_root = tmp_path / "build"
+    source_data = build_root / "examples/conduction/data"
+    executable = build_root / "examples/conduction/conduction"
+    source_data.mkdir(parents=True)
+    executable.write_text("#!/bin/sh\nexit 0\n")
+    executable.chmod(0o755)
+    (source_data / "BOUT.inp").write_text("[mesh]\nny = 100\n")
+    monkeypatch.setattr("metaharness_ext.boutpp.real_smoke.netcdf4_reader_available", lambda: False)
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/mpirun")
+
+    preflight = preflight_boutpp_real_smoke_case(
+        boutpp_real_smoke_case_catalog()["conduction-real"],
+        build_root,
+        "mpirun",
+    )
+
+    assert preflight["promotion_ready"] is False
+    assert preflight["missing_prerequisites"] == ["netcdf4_reader"]
 
 
 def test_boutpp_repeated_smoke_writes_skipped_candidate_summary(tmp_path: Path) -> None:

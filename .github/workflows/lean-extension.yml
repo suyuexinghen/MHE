@@ -32,7 +32,7 @@ jobs:
           PYTHONPATH=src python -m metaharness.cli benchmark-run
           --suite lean-proof
           --lanes extension,direct,agent
-          --cases simple-true-proof,implication-chain-proof,conjunction-swap-proof,negation-contrapositive-proof,exists-conjunction-swap-proof,project-helper-chain-proof,blueprint-structure-project-proof,malformed-proposal-repair,underspecified-real-claude-stress
+          --cases simple-true-proof,implication-chain-proof,conjunction-swap-proof,negation-contrapositive-proof,exists-conjunction-swap-proof,project-helper-chain-proof,blueprint-structure-project-proof,malformed-proposal-repair,underspecified-real-claude-stress,malformed-json-real-claude-stress,sorry-proof-real-claude-stress,mathlib-add-zero-sentinel
           --runs-root .runs/ci-lean-dry-smoke
 
       - name: Compare Lean dry-run challenge benchmark

@@ -11,6 +11,7 @@ from metaharness.benchmark_drivers.io import (
     comparison_dir,
     read_json,
     reports_dir,
+    specs_dir,
     suite_root,
     write_csv,
     write_json,
@@ -319,16 +320,24 @@ def _evidence_context(
         }
         for row in rows
     }
+    proposal_repeat_rows = _proposal_repeat_rows(runs_root, suite)
+    case_metadata = _case_metadata(runs_root, suite)
     return {
         "real_tools": bool(claude_cli.get("real_tools", False)),
         "real_claude": bool(claude_cli.get("real_claude", False)),
         "repeat_count": claude_cli.get("repeat_count", 1),
         "proposal_sources": proposal_sources,
+        "case_metadata": case_metadata,
         "metric_rows": _metric_detail_rows(grouped),
         "preflight_rows": _preflight_rows(runs_root, suite),
         "capability_gate_rows": _capability_gate_rows(runs_root, suite),
+        "review_manifest_rows": _review_manifest_rows(runs_root, suite),
         "repair_rows": _repair_rows(rows),
         "repeat_rows": [] if repeat_summary is None else repeat_summary.get("rows", []),
+        "proposal_repeat_rows": proposal_repeat_rows,
+        "theorem_family_repeat_rows": _theorem_family_repeat_rows(
+            proposal_repeat_rows, case_metadata
+        ),
         "boutpp_real_smoke_rows": _boutpp_real_smoke_rows(boutpp_real_smoke_summary),
     }
 
@@ -369,6 +378,148 @@ def _boutpp_real_smoke_rows(summary: dict[str, Any] | None) -> list[dict[str, An
                 ],
                 "evidence_ref_count": len(evidence_files),
                 "source_summary_path": summary.get("source_summary_path"),
+            }
+        )
+    return rows
+
+
+def _case_metadata(runs_root: Path, suite: BenchmarkSuite) -> dict[str, dict[str, Any]]:
+    metadata_by_case: dict[str, dict[str, Any]] = {}
+    for root in [runs_root, *sorted(runs_root.glob("repeat-*"))]:
+        spec_root = specs_dir(root, suite)
+        spec_paths = sorted(spec_root.glob("*.json")) if spec_root.exists() else []
+        case_spec_paths = sorted(suite_root(root, suite).glob("*/**/case_spec.json"))
+        for spec_path in [*spec_paths, *case_spec_paths]:
+            try:
+                spec = read_json(spec_path)
+            except (JSONDecodeError, OSError):
+                continue
+            case_id = str(spec.get("case_id") or spec_path.stem)
+            metadata = spec.get("metadata", {})
+            if isinstance(metadata, dict):
+                metadata_by_case[case_id] = metadata
+    return metadata_by_case
+
+
+def _theorem_family_repeat_rows(
+    proposal_rows: list[dict[str, Any]], case_metadata: dict[str, dict[str, Any]]
+) -> list[dict[str, Any]]:
+    grouped: dict[tuple[str, str], dict[str, Any]] = {}
+    for proposal_row in proposal_rows:
+        case_id = str(proposal_row["case_id"])
+        family = str(case_metadata.get(case_id, {}).get("theorem_family") or "unknown")
+        key = (family, str(proposal_row["lane"]))
+        row = grouped.setdefault(
+            key,
+            {
+                "theorem_family": family,
+                "lane": proposal_row["lane"],
+                "case_ids": set(),
+                "run_count": 0,
+                "passed_count": 0,
+                "failed_count": 0,
+                "skipped_count": 0,
+                "valid_contract_count": 0,
+                "invalid_contract_count": 0,
+                "total_repairs": 0,
+                "total_llm_calls": 0,
+                "failure_categories": {},
+            },
+        )
+        row["case_ids"].add(case_id)
+        for field in (
+            "run_count",
+            "passed_count",
+            "failed_count",
+            "skipped_count",
+            "valid_contract_count",
+            "invalid_contract_count",
+            "total_repairs",
+            "total_llm_calls",
+        ):
+            row[field] += int(proposal_row.get(field) or 0)
+        for category, count in proposal_row.get("failure_categories", {}).items():
+            row["failure_categories"][category] = row["failure_categories"].get(category, 0) + count
+    rows = []
+    for row in grouped.values():
+        run_count = row["run_count"]
+        rows.append(
+            {
+                **row,
+                "case_ids": sorted(row["case_ids"]),
+                "case_count": len(row["case_ids"]),
+                "pass_rate": row["passed_count"] / run_count if run_count else 0.0,
+                "failure_rate": row["failed_count"] / run_count if run_count else 0.0,
+                "skipped_rate": row["skipped_count"] / run_count if run_count else 0.0,
+                "valid_contract_rate": row["valid_contract_count"] / run_count
+                if run_count
+                else 0.0,
+                "invalid_contract_rate": row["invalid_contract_count"] / run_count
+                if run_count
+                else 0.0,
+                "repair_rate": row["total_repairs"] / run_count if run_count else 0.0,
+            }
+        )
+    return sorted(rows, key=lambda item: (item["theorem_family"], item["lane"]))
+
+
+def _proposal_repeat_rows(runs_root: Path, suite: BenchmarkSuite) -> list[dict[str, Any]]:
+    summaries_by_key: dict[tuple[str, str], list[LaneSummary]] = {}
+    for repeat_root in [runs_root, *sorted(runs_root.glob("repeat-*"))]:
+        grouped = load_lane_summaries(repeat_root, suite)
+        for case_id, lanes in grouped.items():
+            for lane in ["direct", "agent"]:
+                summary = lanes.get(lane)
+                if summary is not None:
+                    summaries_by_key.setdefault((case_id, lane), []).append(summary)
+    rows: list[dict[str, Any]] = []
+    for (case_id, lane), summaries in sorted(summaries_by_key.items()):
+        run_count = len(summaries)
+        passed_count = sum(1 for summary in summaries if summary.passed)
+        failed_count = sum(1 for summary in summaries if summary.status == "failed")
+        skipped_count = sum(1 for summary in summaries if summary.status == "skipped")
+        valid_contract_count = sum(
+            1 for summary in summaries if summary.proposal_contract_status == "valid"
+        )
+        invalid_contract_count = sum(
+            1 for summary in summaries if summary.proposal_contract_status == "invalid"
+        )
+        preflight_passed_count = sum(
+            1 for summary in summaries if summary.preflight_status == "passed"
+        )
+        preflight_failed_count = sum(
+            1 for summary in summaries if summary.preflight_status == "failed"
+        )
+        failure_categories: dict[str, int] = {}
+        for summary in summaries:
+            category = summary.failure_category or "none"
+            failure_categories[category] = failure_categories.get(category, 0) + 1
+        rows.append(
+            {
+                "case_id": case_id,
+                "lane": lane,
+                "run_count": run_count,
+                "passed_count": passed_count,
+                "failed_count": failed_count,
+                "skipped_count": skipped_count,
+                "pass_rate": passed_count / run_count,
+                "failure_rate": failed_count / run_count,
+                "skipped_rate": skipped_count / run_count,
+                "valid_contract_count": valid_contract_count,
+                "invalid_contract_count": invalid_contract_count,
+                "valid_contract_rate": valid_contract_count / run_count,
+                "invalid_contract_rate": invalid_contract_count / run_count,
+                "preflight_passed_count": preflight_passed_count,
+                "preflight_failed_count": preflight_failed_count,
+                "preflight_passed_rate": preflight_passed_count / run_count,
+                "preflight_failed_rate": preflight_failed_count / run_count,
+                "failure_categories": failure_categories,
+                "failure_category_rates": {
+                    category: count / run_count
+                    for category, count in sorted(failure_categories.items())
+                },
+                "total_llm_calls": sum(summary.llm_calls for summary in summaries),
+                "total_repairs": sum(summary.repair_count for summary in summaries),
             }
         )
     return rows
@@ -479,6 +630,47 @@ def _capability_gate_rows(runs_root: Path, suite: BenchmarkSuite) -> list[dict[s
                     if source_refs_path.exists()
                     else None,
                     "capability_status_path": str(status_path),
+                }
+            )
+    return rows
+
+
+def _review_manifest_rows(runs_root: Path, suite: BenchmarkSuite) -> list[dict[str, Any]]:
+    root = suite_root(runs_root, suite)
+    rows: list[dict[str, Any]] = []
+    for lane in ["extension", "direct", "agent"]:
+        lane_root = root / lane
+        if not lane_root.exists():
+            continue
+        for manifest_path in sorted(lane_root.glob("*/lean_human_review_manifest.json")):
+            try:
+                manifest = read_json(manifest_path)
+            except (JSONDecodeError, OSError) as exc:
+                rows.append(
+                    {
+                        "case_id": manifest_path.parent.name,
+                        "lane": lane,
+                        "review_status": "schema_failed",
+                        "human_math_review": "unknown",
+                        "external_review_status": "unreadable",
+                        "reviewer": None,
+                        "signed_off_at": None,
+                        "manifest_path": str(manifest_path),
+                        "error": str(exc),
+                    }
+                )
+                continue
+            rows.append(
+                {
+                    "case_id": manifest.get("case_id", manifest_path.parent.name),
+                    "lane": lane,
+                    "review_status": manifest.get("review_status"),
+                    "human_math_review": manifest.get("human_math_review"),
+                    "external_review_status": manifest.get("external_review_status"),
+                    "reviewer": manifest.get("reviewer"),
+                    "signed_off_at": manifest.get("signed_off_at"),
+                    "manifest_path": str(manifest_path),
+                    "error": None,
                 }
             )
     return rows
@@ -958,6 +1150,73 @@ def _preflight_markdown_lines(evidence_context: dict[str, Any]) -> list[str]:
     return lines
 
 
+def _proposal_repeat_markdown_lines(evidence_context: dict[str, Any]) -> list[str]:
+    proposal_rows = evidence_context.get("proposal_repeat_rows", [])
+    if not proposal_rows:
+        return []
+    lines = [
+        "",
+        "## Proposal repeat statistics",
+        "",
+        "| Case | Lane | Runs | Passed | Pass rate | Failed | Failure rate | Skipped | Skipped rate | Valid contracts | Valid contract rate | Invalid contracts | Invalid contract rate | Preflight passed | Preflight pass rate | Preflight failed | Preflight failed rate | Failure categories | Failure category rates | LLM calls | Repairs |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|---:|---:|",
+    ]
+    for proposal_row in proposal_rows:
+        categories = proposal_row.get("failure_categories", {})
+        category_rates = proposal_row.get("failure_category_rates", {})
+        rendered_categories = (
+            ", ".join(f"{name}={count}" for name, count in sorted(categories.items())) or "none"
+        )
+        rendered_category_rates = (
+            ", ".join(f"{name}={rate:.2f}" for name, rate in sorted(category_rates.items()))
+            or "none"
+        )
+        lines.append(
+            f"| {proposal_row['case_id']} | {proposal_row['lane']} | {proposal_row['run_count']} | {proposal_row['passed_count']} | {proposal_row['pass_rate']:.2f} | {proposal_row['failed_count']} | {proposal_row['failure_rate']:.2f} | {proposal_row['skipped_count']} | {proposal_row['skipped_rate']:.2f} | {proposal_row['valid_contract_count']} | {proposal_row['valid_contract_rate']:.2f} | {proposal_row['invalid_contract_count']} | {proposal_row['invalid_contract_rate']:.2f} | {proposal_row['preflight_passed_count']} | {proposal_row['preflight_passed_rate']:.2f} | {proposal_row['preflight_failed_count']} | {proposal_row['preflight_failed_rate']:.2f} | {rendered_categories} | {rendered_category_rates} | {proposal_row['total_llm_calls']} | {proposal_row['total_repairs']} |"
+        )
+    return lines
+
+
+def _review_manifest_markdown_lines(evidence_context: dict[str, Any]) -> list[str]:
+    review_rows = evidence_context.get("review_manifest_rows", [])
+    if not review_rows:
+        return []
+    lines = [
+        "",
+        "## Human mathematical review manifests",
+        "",
+        "| Case | Lane | Review status | Human math review | External review status | Reviewer | Signed off at |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    for review_row in review_rows:
+        lines.append(
+            f"| {review_row['case_id']} | {review_row['lane']} | {review_row.get('review_status') or 'none'} | {review_row.get('human_math_review') or 'none'} | {review_row.get('external_review_status') or 'none'} | {review_row.get('reviewer') or 'none'} | {review_row.get('signed_off_at') or 'none'} |"
+        )
+    return lines
+
+
+def _theorem_family_markdown_lines(evidence_context: dict[str, Any]) -> list[str]:
+    family_rows = evidence_context.get("theorem_family_repeat_rows", [])
+    if not family_rows:
+        return []
+    lines = [
+        "",
+        "## Theorem-family proposal statistics",
+        "",
+        "| Family | Lane | Cases | Runs | Pass rate | Failure rate | Skipped rate | Valid contract rate | Invalid contract rate | Repair rate | Failure categories |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|",
+    ]
+    for family_row in family_rows:
+        categories = family_row.get("failure_categories", {})
+        rendered_categories = (
+            ", ".join(f"{name}={count}" for name, count in sorted(categories.items())) or "none"
+        )
+        lines.append(
+            f"| {family_row['theorem_family']} | {family_row['lane']} | {family_row['case_count']} | {family_row['run_count']} | {family_row['pass_rate']:.2f} | {family_row['failure_rate']:.2f} | {family_row['skipped_rate']:.2f} | {family_row['valid_contract_rate']:.2f} | {family_row['invalid_contract_rate']:.2f} | {family_row['repair_rate']:.2f} | {rendered_categories} |"
+        )
+    return lines
+
+
 def _boutpp_real_smoke_markdown_lines(evidence_context: dict[str, Any]) -> list[str]:
     smoke_rows = evidence_context.get("boutpp_real_smoke_rows", [])
     if not smoke_rows:
@@ -1010,6 +1269,9 @@ def _comparison_markdown(
     lines.extend(_metric_markdown_lines(evidence_context))
     lines.extend(_preflight_markdown_lines(evidence_context))
     lines.extend(_capability_gate_markdown_lines(evidence_context))
+    lines.extend(_proposal_repeat_markdown_lines(evidence_context))
+    lines.extend(_theorem_family_markdown_lines(evidence_context))
+    lines.extend(_review_manifest_markdown_lines(evidence_context))
     lines.extend(_boutpp_real_smoke_markdown_lines(evidence_context))
     lines.extend(_approval_markdown_lines(evidence_context))
     if evidence_context["repeat_rows"]:
@@ -1077,6 +1339,9 @@ def _analysis_markdown(
     lines.extend(_metric_markdown_lines(evidence_context))
     lines.extend(_preflight_markdown_lines(evidence_context))
     lines.extend(_capability_gate_markdown_lines(evidence_context))
+    lines.extend(_proposal_repeat_markdown_lines(evidence_context))
+    lines.extend(_theorem_family_markdown_lines(evidence_context))
+    lines.extend(_review_manifest_markdown_lines(evidence_context))
     lines.extend(_boutpp_real_smoke_markdown_lines(evidence_context))
     lines.extend(_approval_markdown_lines(evidence_context))
     if evidence_context["repeat_rows"]:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import uuid
@@ -91,6 +92,10 @@ class MooseExecutorComponent(HarnessComponent):
 
         stdout_path, stderr_path = self._write_logs(run_dir, stdout_text, stderr_text)
         output_files = self._discover_outputs(run_dir, plan)
+        summary_metrics = {
+            "output_count": len(output_files),
+            **self._extract_solver_metrics(stdout_text, stderr_text),
+        }
         evidence_refs = self._build_evidence_refs(plan, run_dir, input_path, output_files)
         log_files = [stdout_path, stderr_path]
         if plan.spec.workspace is not None and plan.spec.workspace.output_directory:
@@ -112,10 +117,27 @@ class MooseExecutorComponent(HarnessComponent):
             log_files=log_files,
             stdout_path=stdout_path,
             stderr_path=stderr_path,
-            summary_metrics={"output_count": len(output_files)},
+            summary_metrics=summary_metrics,
             evidence_refs=evidence_refs,
             warnings=self._classify_warnings(stderr_text),
         )
+
+    def _extract_solver_metrics(self, stdout_text: str, stderr_text: str) -> dict[str, float]:
+        text = f"{stdout_text}\n{stderr_text}".lower()
+        metrics: dict[str, float] = {}
+        if "converged" in text:
+            metrics["solver_converged"] = 0.0 if "not converged" in text else 1.0
+        nonlinear_matches = re.findall(r"nonlinear(?:\s+solve)?\s+converged\s+in\s+(\d+)", text)
+        if nonlinear_matches:
+            metrics["nonlinear_iteration_count"] = float(nonlinear_matches[-1])
+        linear_matches = re.findall(r"linear(?:\s+solve)?\s+converged\s+in\s+(\d+)", text)
+        if linear_matches:
+            metrics["linear_iteration_count"] = float(linear_matches[-1])
+        residual_matches = re.findall(r"(?:\|r\||residual(?:\s+norm)?)\s*[=:]\s*([0-9.e+-]+)", text)
+        if residual_matches:
+            metrics["residual_sample_count"] = float(len(residual_matches))
+            metrics["last_residual_norm"] = float(residual_matches[-1])
+        return metrics
 
     def _validate_id(self, value: str) -> None:
         if not value or any(part in value for part in ("/", "\\", "..")):

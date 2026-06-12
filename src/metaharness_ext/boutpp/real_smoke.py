@@ -69,7 +69,9 @@ def boutpp_real_smoke_case_catalog() -> dict[str, BoutPPRealSmokeCase]:
                 require_restarts=True,
             ),
             validation=BoutPPValidationSpec(
-                required_variables=[],
+                required_variables=["T"],
+                required_dimensions={"t": 101, "x": 1, "y": 54, "z": 1},
+                required_variable_dimensions={"T": ["t", "x", "y", "z"]},
                 metric_thresholds={},
                 require_successful_return_code=True,
             ),
@@ -108,6 +110,14 @@ def preferred_mpi_launcher() -> str | None:
     return None
 
 
+def netcdf4_reader_available() -> bool:
+    try:
+        import netCDF4  # noqa: F401
+    except Exception:
+        return False
+    return True
+
+
 def preflight_boutpp_real_smoke_case(
     case: BoutPPRealSmokeCase,
     build_root: Path,
@@ -130,6 +140,13 @@ def preflight_boutpp_real_smoke_case(
         missing.append("source_BOUT_inp")
     if case.default_enabled and not launcher_available:
         missing.append("mpi_launcher")
+    domain_validation_requested = bool(
+        case.validation.required_variables
+        or case.validation.required_dimensions
+        or case.validation.required_variable_dimensions
+    )
+    if case.default_enabled and domain_validation_requested and not netcdf4_reader_available():
+        missing.append("netcdf4_reader")
     promotion_ready = case.default_enabled and not missing
     skip_reason = None
     if case.skip_reason:
@@ -240,6 +257,9 @@ def run_repeated_boutpp_real_smoke(
                     "validation_passed": validation.passed,
                     "evidence_ref_count": len(artifact.evidence_refs),
                     "missing_artifacts": artifact.missing_artifacts,
+                    "variable_names": postprocess.variable_names,
+                    "dimension_sizes": postprocess.dimension_sizes,
+                    "variable_dimensions": postprocess.variable_dimensions,
                     "summary_metrics": validation.summary_metrics,
                 }
             )
@@ -274,6 +294,7 @@ __all__ = [
     "boutpp_real_smoke_case_catalog",
     "build_boutpp_real_smoke_spec",
     "get_boutpp_real_smoke_cases",
+    "netcdf4_reader_available",
     "preferred_mpi_launcher",
     "preflight_boutpp_real_smoke_case",
     "run_repeated_boutpp_real_smoke",

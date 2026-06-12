@@ -18,6 +18,7 @@ on:
           - pycfd-pde
           - boutpp-usage
           - moose-usage
+          - lean-proof
       cases:
         description: "Optional comma-separated case IDs"
         default: ""
@@ -100,6 +101,7 @@ jobs:
             --runs-root ".runs/ci-real-claude/$SUITE" \
             --allow-real-claude \
             --repeat "$REPEAT" \
+            --config-root .mhe \
             "${TOOL_ARGS[@]}"
       - name: Check approval policy
         run: |

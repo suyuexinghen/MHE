@@ -1,6 +1,6 @@
 # BOUT++ Real Smoke Method
 
-> 版本：v0.3 | 状态：local opt-in repeated smoke implemented with comparator-visible promotion rows and optional domain validation | 面向 `metaharness_ext.boutpp` 的真实 BOUT++ smoke evidence 升级路径。
+> 版本：v0.4 | 状态：local opt-in repeated smoke implemented with comparator-visible promotion rows and `T` NetCDF domain validation | 面向 `metaharness_ext.boutpp` 的真实 BOUT++ smoke evidence 升级路径。
 
 ## Purpose
 
@@ -77,7 +77,7 @@ The current probe records:
 - optional Python readers: `netCDF4`, `xarray`, `xbout`, `boutdata`, and `boutpp`;
 - executable availability for the requested `BoutPPProblemSpec`.
 
-Missing optional Python readers should warn but not block artifact-oriented smoke validation.
+Missing optional Python readers should warn but not block artifact-oriented smoke validation. Promoted cases that opt into NetCDF domain requirements are stricter: missing `netCDF4` blocks promotion because the requested variable/dimension checks cannot be evaluated.
 
 ## MHE Smoke Spec Shape
 
@@ -148,16 +148,17 @@ The harness writes per-case `preflight.json`, per-repeat `boutpp_problem_spec.js
 Retained local evidence:
 
 ```text
-.runs/boutpp-real-repeated-smoke-v2/boutpp_real_repeated_smoke_summary.json
+.runs/boutpp-real-tools-domain-final/boutpp_real_repeated_smoke_summary.json
+.runs/boutpp-real-tools-real-claude-final/boutpp-usage-benchmark/boutpp_real_repeated_smoke_summary.json
 ```
 
-That run used `real_tools = true`, `real_claude = false`, `repeat_count = 2`, `mpi_launcher = "mpirun"`, and `build_root = "/home/linden/code/work/Solvers/FEM/BOUT-dev/build"`. The enabled `conduction-real` case passed both repeats with `return_code = 0`, `validation_passed = true`, seven evidence references per repeat, two logs, two dump files, and two restart files. The two additional example candidates were preserved as capability-gated skips with reviewer-visible skip reasons.
+The retained domain run used `real_tools = true`, `real_claude = false`, `repeat_count = 2`, `mpi_launcher = "mpirun"`, and `build_root = "/home/linden/code/work/Solvers/FEM/BOUT-dev/build"`. The enabled `conduction-real` case passed both repeats with `return_code = 0`, `validation_passed = true`, `T` variable dimensions `t/x/y/z`, domain sizes `t=101`, `x=1`, `y=54`, `z=1`, logs, dump files, and restart files. The two additional example candidates were preserved as capability-gated skips with reviewer-visible skip reasons.
 
 ## Current Limitation
 
 The typed BOUT++ compiler now supports top-level options through `BoutPPProblemSpec.top_level_options`, so the conduction smoke can render `MXG = 0` before named sections. Keep the tutorial mesh, conduction, variable, and solver settings in `options`; otherwise the generated `BOUT.inp` intentionally replaces the copied source input and BOUT++ will report missing mesh values such as `nx`.
 
-This evidence still validates only artifact-level execution and retained output discovery unless optional domain requirements are explicitly set. The postprocess layer can collect NetCDF variable, dimension, and variable-dimension metadata when `netCDF4` is importable, and the validator can enforce `required_variables`, `required_dimensions`, and `required_variable_dimensions`. It still does not compare against analytic convergence criteria or establish broad BOUT++ physics model coverage.
+This evidence remains case-scoped even with the `conduction-real` domain requirements enabled. The postprocess layer can collect NetCDF variable, dimension, and variable-dimension metadata when `netCDF4` is importable, and the validator enforces the case-specific `T` variable shape for promoted conduction smoke evidence. It still does not compare against analytic convergence criteria or establish broad BOUT++ physics model coverage.
 
 ## Smoke Execution Gate
 
@@ -210,7 +211,6 @@ Do not merge the real smoke result into direct numerical superiority claims. The
 ## Backlog From This Method
 
 - Add an MPI launcher flag compatibility option if local `mpiexec` requires `-n` instead of `-np`.
-- Extend repeated real-smoke comparison evidence from skipped/passed promotion rows into retained clean CI artifacts.
-- Add case-specific optional NetCDF assertions, such as `T` variable dimensions, only when `netCDF4` is available and the case contract opts in.
+- Preserve retained clean real-smoke and real-Claude comparison roots as CI or release artifacts when those gated jobs run remotely.
+- Add analytic/error-norm or convergence checks only after a reviewed BOUT++ reference fixture exists for the promoted case.
 - Promote more example cases only after each has a stable executable contract, case-local input directory, and reviewer-visible preflight evidence.
-- Retain clean run roots under `.runs/boutpp-real-repeated-smoke-*` or `/var/tmp/mhe-runs/<run-id>` whenever real evidence is reported.

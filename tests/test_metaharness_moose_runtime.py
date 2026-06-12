@@ -96,9 +96,12 @@ def test_moose_executor_and_validator_use_mocked_subprocess(monkeypatch, tmp_pat
 
     def fake_run_command(command, *, plan, cwd):
         (cwd / "mesh.e").write_text("mesh output")
-        return subprocess.CompletedProcess(
-            command, 0, stdout="done\n", stderr="warning: mesh note\n"
+        stdout = (
+            "Nonlinear solve converged in 3\n"
+            "Linear solve converged in 7\n"
+            "residual norm = 1.0e-12\n"
         )
+        return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr="warning: mesh note\n")
 
     monkeypatch.setattr(executor, "_run_command", fake_run_command)
 
@@ -110,6 +113,10 @@ def test_moose_executor_and_validator_use_mocked_subprocess(monkeypatch, tmp_pat
     assert artifact.command[0] == "/usr/bin/moose-opt"
     assert Path(artifact.input_files[0]).read_text() == plan.input_source
     assert Path(artifact.output_files[0]).name == "mesh.e"
+    assert artifact.summary_metrics["solver_converged"] == 1.0
+    assert artifact.summary_metrics["nonlinear_iteration_count"] == 3.0
+    assert artifact.summary_metrics["linear_iteration_count"] == 7.0
+    assert artifact.summary_metrics["last_residual_norm"] == 1.0e-12
     assert artifact.warnings[0].severity == "suspicious"
     assert validation.passed is True
     assert validation.status.value == "executed"

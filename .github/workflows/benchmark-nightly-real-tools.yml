@@ -19,6 +19,7 @@ on:
           - pycfd-pde
           - boutpp-usage
           - moose-usage
+          - lean-proof
       cases:
         description: "Optional comma-separated case IDs"
         default: ""
@@ -50,6 +51,8 @@ jobs:
             smoke_cases: conduction-basic
           - suite: moose-usage
             smoke_cases: simple-diffusion-hit
+          - suite: lean-proof
+            smoke_cases: simple-true-proof,project-helper-chain-proof,blueprint-structure-project-proof,mathlib-add-zero-sentinel
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

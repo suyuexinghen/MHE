@@ -52,6 +52,8 @@ class LeanProofBenchmarkRunner:
 
     def run_extension(self, case: BenchmarkCaseSpec) -> LaneSummary:
         output_dir = case_dir(self.runs_root, case.suite, "extension", case.case_id)
+        if self._is_dependency_blocked(case):
+            return self._blocked_dependency_summary(case, output_dir, "extension")
         if not self.allow_real_tools:
             return dry_run_summary(
                 runs_root=self.runs_root,
@@ -63,6 +65,8 @@ class LeanProofBenchmarkRunner:
 
     def run_direct(self, case: BenchmarkCaseSpec) -> LaneSummary:
         output_dir = case_dir(self.runs_root, case.suite, "direct", case.case_id)
+        if self._is_dependency_blocked(case):
+            return self._blocked_dependency_summary(case, output_dir, "direct")
         result = self.brain_provider.propose(
             prompt=self._proposal_prompt(case, "direct"),
             output_dir=output_dir,
@@ -125,6 +129,7 @@ class LeanProofBenchmarkRunner:
                 *evidence_files,
                 str(write_text(output_dir / "Main.lean", source)),
                 str(self._write_claim_boundary(output_dir, case, "direct", real_tools=False)),
+                *self._review_evidence_files(output_dir, case),
             ],
             attempt_log=attempt_log,
             proposal_contract_status=contract["status"],
@@ -133,6 +138,8 @@ class LeanProofBenchmarkRunner:
 
     def run_agent(self, case: BenchmarkCaseSpec) -> LaneSummary:
         output_dir = case_dir(self.runs_root, case.suite, "agent", case.case_id)
+        if self._is_dependency_blocked(case):
+            return self._blocked_dependency_summary(case, output_dir, "agent")
         result = self.brain_provider.propose(
             prompt=self._proposal_prompt(case, "agent"),
             output_dir=output_dir,
@@ -199,6 +206,7 @@ class LeanProofBenchmarkRunner:
                 *evidence_files,
                 str(write_text(output_dir / "Main.lean", source)),
                 str(self._write_claim_boundary(output_dir, case, "agent", real_tools=False)),
+                *self._review_evidence_files(output_dir, case),
             ],
             attempt_log=attempt_log,
             proposal_contract_status=contract["status"],
@@ -227,7 +235,12 @@ class LeanProofBenchmarkRunner:
                 case=case,
                 lane=lane,
                 status="skipped",
-                evidence_files=[*(initial_evidence or []), str(gate_path)],
+                evidence_files=[
+                    *(initial_evidence or []),
+                    str(gate_path),
+                    str(self._write_source_refs(output_dir, case)),
+                    *self._review_evidence_files(output_dir, case),
+                ],
                 attempt_log=attempt_log,
                 skip_reason=gate["skip_reason"],
                 preflight_status="blocked",
@@ -262,6 +275,7 @@ class LeanProofBenchmarkRunner:
             str(write_json(output_dir / "lean_environment_report.json", bundle.environment_report)),
             str(write_json(output_dir / "lean_evidence_bundle.json", bundle)),
             str(self._write_claim_boundary(output_dir, case, lane, real_tools=True)),
+            *self._review_evidence_files(output_dir, case),
         ]
         status = "passed" if validation.status is LeanValidationStatus.FULLY_PROVEN else "failed"
         return write_lane_outputs(
@@ -300,7 +314,12 @@ class LeanProofBenchmarkRunner:
                 case=case,
                 lane="direct",
                 status="skipped",
-                evidence_files=[*evidence_files, str(gate_path)],
+                evidence_files=[
+                    *evidence_files,
+                    str(gate_path),
+                    str(self._write_source_refs(output_dir, case)),
+                    *self._review_evidence_files(output_dir, case),
+                ],
                 attempt_log=attempt_log,
                 skip_reason=gate["skip_reason"],
                 proposal_contract_status=contract["status"],
@@ -352,6 +371,7 @@ class LeanProofBenchmarkRunner:
                 str(stdout_path),
                 str(stderr_path),
                 str(self._write_claim_boundary(output_dir, case, "direct", real_tools=True)),
+                *self._review_evidence_files(output_dir, case),
             ],
             attempt_log=attempt_log,
             error_message=None if status == "passed" else "direct Lean execution failed",
@@ -374,7 +394,62 @@ class LeanProofBenchmarkRunner:
             str(write_json(output_dir / "lean_task_spec.json", task)),
             str(write_json(output_dir / "lean_evidence_bundle.json", bundle)),
             str(self._write_claim_boundary(output_dir, case, "extension", real_tools=False)),
+            *self._review_evidence_files(output_dir, case),
         ]
+
+    def _is_dependency_blocked(self, case: BenchmarkCaseSpec) -> bool:
+        return bool(case.metadata.get("requires_mathlib"))
+
+    def _blocked_dependency_summary(
+        self, case: BenchmarkCaseSpec, output_dir: Path, lane: BenchmarkLane
+    ) -> LaneSummary:
+        gate = self._dependency_gate_status(output_dir, case)
+        gate_path = write_json(output_dir / "capability_status.json", gate)
+        return write_lane_outputs(
+            runs_root=self.runs_root,
+            case=case,
+            lane=lane,
+            status="skipped",
+            evidence_files=[
+                str(gate_path),
+                str(self._write_source_refs(output_dir, case)),
+                str(
+                    self._write_claim_boundary(
+                        output_dir, case, lane, real_tools=self.allow_real_tools
+                    )
+                ),
+                *self._review_evidence_files(output_dir, case),
+            ],
+            skip_reason=gate["skip_reason"],
+            preflight_status="blocked",
+            failure_category="dependency_skip",
+        )
+
+    def _dependency_gate_status(self, output_dir: Path, case: BenchmarkCaseSpec) -> dict[str, Any]:
+        if case.metadata.get("requires_mathlib"):
+            return {
+                "case_id": case.case_id,
+                "status": "skipped",
+                "promotion_ready": False,
+                "missing_capabilities": ["mathlib_dependency_gate"],
+                "solver_binary": shutil.which("lean"),
+                "solver_family": "lean4_mathlib",
+                "plan_status": "dependency_gate_pending",
+                "skip_reason": "Mathlib dependency gate is not configured for this sentinel case.",
+                "output_dir": str(output_dir),
+                "mathlib_scale_claim": case.metadata.get("mathlib_scale_claim"),
+            }
+        return {
+            "case_id": case.case_id,
+            "status": "passed",
+            "promotion_ready": True,
+            "missing_capabilities": [],
+            "solver_binary": shutil.which("lean"),
+            "solver_family": "lean4",
+            "plan_status": "ready",
+            "skip_reason": None,
+            "output_dir": str(output_dir),
+        }
 
     def _write_project(self, project_root: Path, case: BenchmarkCaseSpec, source: str) -> Path:
         project_root.mkdir(parents=True, exist_ok=True)
@@ -410,6 +485,9 @@ class LeanProofBenchmarkRunner:
         )
 
     def _real_tool_gate(self, output_dir: Path, case: BenchmarkCaseSpec) -> dict[str, Any]:
+        dependency_gate = self._dependency_gate_status(output_dir, case)
+        if not dependency_gate["promotion_ready"]:
+            return dependency_gate
         lean_available = shutil.which("lean") is not None
         lake_available = shutil.which("lake") is not None
         missing = []
@@ -441,6 +519,19 @@ class LeanProofBenchmarkRunner:
                 f"Give a brief natural-language proof idea for {target_statement!r}. "
                 "Do not return JSON. Do not include a complete Lean file. "
                 "This intentionally underspecified response is used only to test contract validation."
+            )
+        if prompt_style == "json_missing_lean_source":
+            return (
+                "Return only a JSON object with target_lemma and proof_idea fields. "
+                f"Use target_lemma={case.problem_definition['target_lemma']!r}. "
+                "Do not include lean_source. This intentionally malformed proposal tests contract validation."
+            )
+        if prompt_style == "json_with_sorry_source":
+            return (
+                "Return only a JSON object with target_lemma and lean_source fields. "
+                f"Use target_lemma={case.problem_definition['target_lemma']!r}. "
+                f"Set lean_source to a Lean file for {target_statement!r} that contains sorry. "
+                "This intentionally invalid proposal tests rejection of incomplete proofs."
             )
         repair_note = ""
         if prompt_style == "contract_repair_from_stress":
@@ -534,7 +625,48 @@ class LeanProofBenchmarkRunner:
                     "no theorem-discovery superiority claim",
                     "no runtime superiority claim",
                     "no broad Lean project validation claim",
+                    "no external human mathematical review claim unless manifest status is signed_off",
+                    "no Mathlib-scale coverage claim from dependency-gated sentinels",
                 ],
+            },
+        )
+
+    def _write_source_refs(self, output_dir: Path, case: BenchmarkCaseSpec) -> Path:
+        return write_json(
+            output_dir / "source_refs.json",
+            {
+                "case_id": case.case_id,
+                "source_reference": case.source_reference,
+                "target_statement": case.problem_definition.get("target_statement"),
+                "toolchain": case.problem_definition.get("toolchain"),
+                "project_files": sorted(self._project_files(case)),
+                "challenge_kind": case.metadata.get("challenge_kind"),
+                "theorem_family": case.metadata.get("theorem_family"),
+                "requires_mathlib": bool(case.metadata.get("requires_mathlib")),
+                "mathlib_scale_claim": case.metadata.get("mathlib_scale_claim"),
+            },
+        )
+
+    def _review_evidence_files(self, output_dir: Path, case: BenchmarkCaseSpec) -> list[str]:
+        if not case.metadata.get("external_review_required"):
+            return []
+        return [str(self._write_human_review_manifest(output_dir, case))]
+
+    def _write_human_review_manifest(self, output_dir: Path, case: BenchmarkCaseSpec) -> Path:
+        return write_json(
+            output_dir / str(case.metadata.get("external_review_manifest")),
+            {
+                "case_id": case.case_id,
+                "review_status": case.metadata.get("review_status"),
+                "human_math_review": case.metadata.get("human_math_review"),
+                "external_review_required": True,
+                "external_review_status": "pending_external_signoff",
+                "reviewer": None,
+                "signed_off_at": None,
+                "target_statement": case.problem_definition.get("target_statement"),
+                "claim_boundary": (
+                    "Lean validation and engineer curation do not replace external human mathematical review."
+                ),
             },
         )
 

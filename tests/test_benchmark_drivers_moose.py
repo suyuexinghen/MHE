@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
+from metaharness.benchmark_drivers.claude_cli import FakeClaudeCLIBrainProvider
 from metaharness.benchmark_drivers.compare import write_comparison_outputs
 from metaharness.benchmark_drivers.moose_cases import get_moose_cases
 from metaharness.benchmark_drivers.moose_runner import MooseBenchmarkRunner
 from metaharness.cli import main
+from metaharness_ext.moose.contracts import MooseEnvironmentReport
 
 
 def test_moose_catalog_includes_usage_and_repair_cases() -> None:
@@ -95,23 +98,93 @@ def test_moose_cli_runs_dry_run_suite(tmp_path: Path, capsys) -> None:
     ).exists()
 
 
-def test_moose_real_tool_extension_lane_skips_without_binary(tmp_path: Path, monkeypatch) -> None:
+def test_moose_real_tool_lanes_skip_without_binary(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("MHE_MOOSE_BINARY", str(tmp_path / "missing-moose_test-opt"))
     case = get_moose_cases(["simple-diffusion-hit"])[0]
     runner = MooseBenchmarkRunner(runs_root=tmp_path, allow_real_tools=True)
 
-    summary = runner.run_extension(case)
+    summaries = runner.run_case(case, ["extension", "direct", "agent"])
 
-    assert summary.status == "skipped"
-    assert summary.preflight_status == "blocked"
-    capability = json.loads(
-        (
-            tmp_path
-            / "moose-usage-benchmark"
-            / "extension"
-            / case.case_id
-            / "capability_status.json"
-        ).read_text()
+    assert {summary.lane: summary.status for summary in summaries} == {
+        "extension": "skipped",
+        "direct": "skipped",
+        "agent": "skipped",
+    }
+    assert all(summary.preflight_status == "blocked" for summary in summaries)
+    for lane in ["extension", "direct", "agent"]:
+        capability = json.loads(
+            (
+                tmp_path
+                / "moose-usage-benchmark"
+                / lane
+                / case.case_id
+                / "capability_status.json"
+            ).read_text()
+        )
+        assert capability["lane"] == lane
+        assert capability["promotion_ready"] is False
+        assert capability["missing_capabilities"] == ["moose_test_app_binary"]
+
+
+def test_moose_real_tool_direct_and_agent_lanes_run_with_mocked_binary(
+    tmp_path: Path, monkeypatch
+) -> None:
+    binary = tmp_path / "moose_test-opt"
+    binary.write_text("#!/bin/sh\n")
+    binary.chmod(0o755)
+    monkeypatch.setenv("MHE_MOOSE_BINARY", str(binary))
+    case = get_moose_cases(["simple-diffusion-hit"])[0]
+    proposal = {
+        "input_source": case.problem_definition["input_source"],
+        "expected_outputs": [case.problem_definition["expected_output"]],
+    }
+    runner = MooseBenchmarkRunner(
+        runs_root=tmp_path,
+        allow_real_tools=True,
+        brain_provider=FakeClaudeCLIBrainProvider(proposal=proposal),
     )
-    assert capability["promotion_ready"] is False
-    assert capability["missing_capabilities"] == ["moose_test_app_binary"]
+
+    def fake_probe(self, spec):
+        return MooseEnvironmentReport(
+            task_id=spec.task_id,
+            available=True,
+            status="available",
+            binary_path=str(binary),
+        )
+
+    def fake_run_command(self, command, *, plan, cwd):
+        (cwd / "input_out.e").write_text("exodus output")
+        stdout = (
+            "Nonlinear solve converged in 3\n"
+            "Linear solve converged in 7\n"
+            "residual norm = 1.0e-12\n"
+        )
+        return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr("metaharness_ext.moose.environment.MooseEnvironmentProbeComponent.probe", fake_probe)
+    monkeypatch.setattr("metaharness_ext.moose.executor.MooseExecutorComponent._run_command", fake_run_command)
+
+    summaries = runner.run_case(case, ["direct", "agent"])
+
+    assert {summary.lane: summary.status for summary in summaries} == {
+        "direct": "passed",
+        "agent": "passed",
+    }
+    for summary in summaries:
+        assert summary.proposal_contract_status == "valid"
+        assert summary.preflight_status == "passed"
+        assert summary.metrics["solver_converged"] == 1.0
+        assert summary.metrics["nonlinear_iteration_count"] == 3.0
+        assert summary.metrics["linear_iteration_count"] == 7.0
+        assert summary.metrics["last_residual_norm"] == 1.0e-12
+        boundary = json.loads(
+            (
+                tmp_path
+                / "moose-usage-benchmark"
+                / summary.lane
+                / case.case_id
+                / "real_lane_boundary.json"
+            ).read_text()
+        )
+        assert boundary["real_tools"] is True
+        assert boundary["scientific_review_status"] == "pending_external_signoff"
